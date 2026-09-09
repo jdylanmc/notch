@@ -53,3 +53,6 @@ build/
 *.xcarchive
 *.dSYM
 
+
+# Machine-specific local build settings (signing identity)
+scripts/local.env

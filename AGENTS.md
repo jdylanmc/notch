@@ -59,6 +59,44 @@ Prefer `-only-testing:` while iterating. A full run rebuilds the whole app.
 
 SwiftLint is CI-enforced upstream. Install with `brew install swiftlint`.
 
+### Local signing identity (one-time, per machine)
+
+The project signs macOS builds ad-hoc. Ad-hoc signing gives the binary a new
+code hash on every build, and TCC pins Accessibility, Camera and Calendar
+grants to that hash — so **every rebuild silently invalidates permissions that
+were already granted**, with no error and no prompt. For a repository built for
+AI-assisted development that is a real tax: the rebuild that verifies a change
+also breaks the permissions needed to verify it.
+
+Signing local builds with a stable self-signed identity fixes it. The
+designated requirement becomes the certificate rather than the build hash:
+
+```
+designated => identifier "com.jdylanmc.notchpocket"
+              and certificate leaf = H"b6b368…"    # stable
+```
+
+Set-up:
+
+1. Keychain Access → **Certificate Assistant → Create a Certificate…**
+2. Name it, Identity Type **Self Signed Root**, Certificate Type **Code
+   Signing**.
+3. Create `scripts/local.env` — git-ignored, machine-specific:
+
+   ```bash
+   SIGN_IDENTITY="notch-pocket Local"
+   ```
+
+The scripts pick it up automatically and fall back to ad-hoc signing when it is
+absent, so CI is unaffected. They also pass `ENABLE_HARDENED_RUNTIME=NO`: ad-hoc
+signing disables the hardened runtime implicitly, a real identity does not, and
+the hardened runtime blocks XCTest's injection into the host app — the entire
+suite fails to run without it. Enabling the hardened runtime properly belongs to
+notarization, not to signing locally.
+
+Grant Accessibility once more after switching; the requirement changed. It
+should not need granting again.
+
 ## Layout
 
 ```
