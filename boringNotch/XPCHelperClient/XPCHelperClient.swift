@@ -26,7 +26,11 @@ final class XPCHelperClient: NSObject, ObservableObject {
         super.init()
     }
 
-    private let serviceName = "theboringteam.boringnotch.BoringNotchXPCHelper"
+    /// Must equal the helper target's PRODUCT_BUNDLE_IDENTIFIER. The helper is a
+    /// bundled XPCService, so its service name is its bundle ID — and nothing
+    /// checks this at compile time. A mismatch fails silently: the connection
+    /// simply never establishes.
+    private let serviceName = "com.jdylanmc.notchpocket.XPCHelper"
 
     /// Coarse, UI-friendly view of helper connectivity. Flips to false from
     /// the connection's interruption/invalidation handlers so a crashed
