@@ -44,6 +44,22 @@ final class MeetingLinkDetectorTests: XCTestCase {
         XCTAssertEqual(link?.provider, .teams)
     }
 
+    func testTeamsCloudMicrosoftHost() {
+        let link = detect(url: "https://teams.cloud.microsoft/l/meetup-join/19%3ameeting_abc")
+        XCTAssertEqual(link?.provider, .teams)
+    }
+
+    func testTeamsGovHost() {
+        XCTAssertEqual(
+            detect(location: "https://gov.teams.microsoft.us/l/meetup-join/19%3ameeting_abc")?.provider,
+            .teams
+        )
+    }
+
+    func testCloudMicrosoftNonTeamsHostIgnored() {
+        XCTAssertNil(detect(location: "https://outlook.cloud.microsoft/mail/inbox"))
+    }
+
     func testWebexSubdomain() {
         XCTAssertEqual(detect(location: "https://acme.webex.com/meet/x")?.provider, .webex)
     }

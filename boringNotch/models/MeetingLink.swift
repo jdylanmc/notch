@@ -33,7 +33,7 @@ enum MeetingProvider: String, Codable, CaseIterable, Sendable {
         switch self {
         case .googleMeet: return ["meet.google.com", "hangouts.google.com"]
         case .zoom: return ["zoom.us", "zoomgov.com"]
-        case .teams: return ["teams.microsoft.com", "teams.live.com"]
+        case .teams: return ["teams.microsoft.com", "teams.live.com", "teams.cloud.microsoft", "teams.microsoft.us"]
         case .webex: return ["webex.com"]
         case .whereby: return ["whereby.com"]
         case .jitsi: return ["meet.jit.si"]
