@@ -324,6 +324,7 @@ extension Defaults.Keys {
             "com.apple.FaceTime",
             "com.apple.mail",
             "com.microsoft.Outlook",
+            "com.microsoft.teams2",      // Microsoft Teams
             "net.whatsapp.WhatsApp",
             "ru.keepcoder.Telegram",     // Telegram Desktop (App Store build)
             "com.tdesktop.Telegram",

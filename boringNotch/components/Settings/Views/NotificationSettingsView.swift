@@ -21,6 +21,7 @@ private let knownNotificationApps: [KnownNotificationApp] = [
     .init(bundleID: "com.apple.FaceTime", name: "FaceTime"),
     .init(bundleID: "com.apple.mail", name: "Mail"),
     .init(bundleID: "com.microsoft.Outlook", name: "Outlook"),
+    .init(bundleID: "com.microsoft.teams2", name: "Microsoft Teams"),
     .init(bundleID: "net.whatsapp.WhatsApp", name: "WhatsApp"),
     .init(bundleID: "ru.keepcoder.Telegram", name: "Telegram"),
     .init(bundleID: "com.tdesktop.Telegram", name: "Telegram Desktop"),
