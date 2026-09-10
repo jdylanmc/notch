@@ -1,0 +1,29 @@
+name: PR target policy tests
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/base_ref_check.yml'
+      - '.github/workflows/base_ref_check_comment.yml'
+      - '.github/workflows/pr_target_policy_tests.yml'
+      - '.github/scripts/pr-target-policy.test.cjs'
+  push:
+    branches: [pocket]
+    paths:
+      - '.github/workflows/base_ref_check.yml'
+      - '.github/workflows/base_ref_check_comment.yml'
+      - '.github/workflows/pr_target_policy_tests.yml'
+      - '.github/scripts/pr-target-policy.test.cjs'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test PR target policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: node --test .github/scripts/pr-target-policy.test.cjs
