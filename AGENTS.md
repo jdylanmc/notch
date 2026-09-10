@@ -13,10 +13,10 @@ Repository guidance for AI coding agents. Read this before editing anything here
    write, stop that step and report the blocker. Passing checks never grants
    merge or release approval.
 3. **Verify honestly:** Use [the existing commands](#build-test-lint) and
-   [verification expectations](#verification-expectations). For this issue #1
-   documentation task, stop after editing `AGENTS.md`; the orchestrator owns
-   validation after reconciliation. Report pending checks and unverified runtime
-   behavior explicitly.
+   [verification expectations](#verification-expectations). Follow the current
+   task's validation ownership and ordering when working in an orchestrated
+   delivery. Report checks actually run, pending checks, and unverified runtime
+   behavior explicitly; never substitute another run's result.
 
 Known traps: [inherited branch/CI policy](#branch-topology),
 [Xcode selection](#build-test-lint), [local versus release signing](#local-signing-identity-one-time-per-machine),
@@ -41,8 +41,8 @@ buildable, agent-operable independent app.
   Existing other-player code is not authorization for a broader support promise
   or for deletion.
 - Remove other nonessential functionality only in separately scoped foundation
-  work after tracing dependencies. This issue #1 documentation change removes
-  no features. No new product features until #54 is established.
+  work after tracing dependencies. Keep setup and feature removal in separately
+  scoped changes. No new product features until #54 is established.
 - **Only the user approves merges and releases.** Binary uploads to Apple and
   external publication are the **last P0 foundation stage**; local package
   preparation may precede them, but is not release approval.
@@ -60,9 +60,9 @@ Upstream-bound work requires an explicit request and a separate branch based on
 `upstream/dev`, not `pocket`; check upstream's current contribution policy for
 that request. Do not mix it with fork-local work.
 
-Inherited workflows and `CODEOWNERS` have not yet been reconciled for this
-policy (separate issues #3, #49, #51). Report conflicts rather than retargeting a
-fork-local PR or weakening checks.
+Some inherited workflows and `CODEOWNERS` still need reconciliation (issues
+#49 and #51); inspect their current configuration. Report conflicts rather than
+retargeting a fork-local PR or weakening checks.
 
 ## Build, test, lint
 
@@ -92,7 +92,7 @@ All three scripts source `scripts/env.sh`. It respects an explicit
 found. Command Line Tools alone are insufficient. Set `DEVELOPER_DIR` to a valid
 full Xcode when needed; the script does not validate or repair an explicit value.
 
-Prefer `-only-testing:` while iterating; the test script forwards arguments.
+The test script forwards arguments.
 `CONFIGURATION=Release scripts/build.sh` selects a Release build, not packaging,
 notarization, or publication.
 
@@ -201,8 +201,7 @@ before distribution; this documentation change does not fix it.
 Pure logic — link detection, bundle-ID resolution, state machines — belongs in
 `boringNotchTests/` and must have a test. End-to-end notification delivery,
 Accessibility mirroring, and media integration need runtime checks on a real
-machine; unit tests alone cannot establish those behaviors. Broader test
-expansion remains separate issue #7, not part of this setup change.
+machine; unit tests alone cannot establish those behaviors.
 
 **Do not report a runtime-only change as verified because the suite passed.**
 Name which claims are covered by tests and which are not.
@@ -223,9 +222,7 @@ Before reporting a change complete:
 4. Runtime-only behaviour is exercised by launching the built app, or is
    explicitly reported as unverified.
 
-For this bounded issue #1 edit, the orchestrator runs `scripts/build.sh`,
-`scripts/test.sh`, and `scripts/lint.sh` **after reconciliation** and reports
-exact results. Until then validation is pending, not passed. Report preexisting
+Report exact commands and results for the current change. Report preexisting
 failures and toolchain/script blockers explicitly; do not hide them, weaken
 checks, or fix them outside the approved scope.
 
