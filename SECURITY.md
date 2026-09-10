@@ -2,16 +2,17 @@
 
 ## Supported Versions
 
-Only the latest release (and the `main` branch) receives security fixes.
-Beta builds on the `dev` branch are development snapshots.
+Notch Pocket development and security fixes target `pocket`. There are no
+independent binary releases available yet; inherited upstream releases are not
+Notch Pocket releases.
 
 ## Reporting a Vulnerability
 
-The Bored Team and community take security bugs in Boring Notch seriously. We appreciate your efforts to responsibly disclose your findings, and will make every effort to acknowledge your contributions.
+Notch Pocket is maintained by [@jdylanmc](https://github.com/jdylanmc), independently of The Bored Team. Please disclose security findings responsibly.
 
-To report a security issue, please use the GitHub Security Advisory ["Report a Vulnerability"](https://github.com/TheBoredTeam/boring.notch/security/advisories/new) tab.
+If enabled, use the repository's GitHub Security Advisory ["Report a Vulnerability"](https://github.com/jdylanmc/notch/security/advisories/new) tab. If private reporting is unavailable, contact the maintainer through their GitHub profile to arrange a private channel; do not post sensitive details in public issues.
 
-The Bored Team will send a response indicating the next steps in handling your report. After the initial reply to your report, we will keep you informed of the progress towards a fix and full announcement, and may ask for additional information or guidance.
+The maintainer may request additional information to investigate a report.
 
 Report security bugs in third-party dependencies to the person or team maintaining the package or dependency.
 
@@ -19,25 +20,25 @@ Report security bugs in third-party dependencies to the person or team maintaini
 
 ### Private / undocumented APIs
 
-Boring Notch uses private macOS APIs and frameworks to deliver features not
+Notch Pocket uses private macOS APIs and frameworks to deliver features not
 possible with the public SDK: the notch window lives in a private SkyLight
-space (`boringNotch/private/`), media metadata comes from the private
+space (`notchPocket/private/`), media metadata comes from the private
 `MediaRemote.framework` (via the vendored
 [MediaRemoteAdapter](mediaremote-adapter/README.md)), and OSD display control
 uses private DisplayServices/brightness symbols. These interfaces are
 undocumented, may change with any macOS update, and the app may lose features
-without warning when they do. This usage is also why the app is distributed
-outside the App Store.
+without warning when they do. These APIs also constrain any future distribution;
+local builds are not App Store or notarized releases.
 
 ### XPC helper privilege model
 
-The app is sandboxed (see `boringNotch/boringNotch.entitlements`), but its
-bundled XPC service `BoringNotchXPCHelper`
-(`BoringNotchXPCHelper/BoringNotchXPCHelper.entitlements`) is **not** —
+The app is sandboxed (see `notchPocket/notchPocket.entitlements`), but its
+bundled XPC service `notchPocketXPCHelper`
+(`notchPocketXPCHelper/notchPocketXPCHelper.entitlements`) is **not** —
 sandboxed processes cannot drive the Accessibility API on other apps or load
 private frameworks the app needs for notification/brightness features. The
 helper is intentionally minimal: it exposes a narrow typed protocol
-(`Shared/BoringNotchXPCHelperProtocol.swift`) and accepts connections only
+(`Shared/NotchPocketXPCHelperProtocol.swift`) and accepts connections only
 from the bundled app. When auditing, treat the helper as the highest-trust
 component in the repo: its attack surface is the XPC protocol plus the
 Accessibility API.

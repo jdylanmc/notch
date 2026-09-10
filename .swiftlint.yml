@@ -1,15 +1,14 @@
-# SwiftLint configuration for boring.notch
+# SwiftLint configuration for Notch Pocket
 # Run with: swiftlint --config .swiftlint.yml
 
 included:
-  - boringNotch
-  - BoringNotchXPCHelper
+  - notchPocket
+  - notchPocketXPCHelper
   - Shared
 
 excluded:
-  - boringNotch/Assets.xcassets
+  - notchPocket/Assets.xcassets
   - mediaremote-adapter
-  - updater
   - .build
 
 # Crash-vector rules — demoted to warning for audited legacy sites.
@@ -71,7 +70,7 @@ identifier_name:
     - vm
     - s
     - NotchLayout
-    - BoringFaceAnimation
+    - NotchPocketFaceAnimation
     - MusicLiveActivity
     - HelpText
     - NotchBehaviour

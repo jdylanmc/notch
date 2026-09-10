@@ -22,13 +22,13 @@ Known traps: [inherited branch/CI policy](#branch-topology),
 [Xcode selection](#build-test-lint), [local versus release signing](#local-signing-identity-one-time-per-machine),
 [bundled XPC naming](#the-xpc-service-name-is-not-compiler-checked),
 [bundle identity/data](#bundle-identity-is-load-bearing), and
-[upstream updater configuration](#sparkle-points-at-upstream).
+[update isolation](#update-isolation).
 These are constraints to inspect, not claims that setup or runtime is solved.
 
 ## What this repository is
 
-`notch-pocket` is an independent macOS app built on the historical foundation of
-[TheBoredTeam/boring.notch](https://github.com/TheBoredTeam/boring.notch).
+**Notch Pocket** is an independent macOS app. Historical source and artwork
+attribution is recorded in [third-party notices](THIRD_PARTY_LICENSES).
 Upstream is not ongoing product authority; routine upstream synchronization is
 not a requirement. Preserve attribution, existing license headers, `LICENSE`
 (GNU GPL v3), and `THIRD_PARTY_LICENSES`.
@@ -49,19 +49,20 @@ buildable, agent-operable independent app.
 
 ## Branch topology
 
-Remotes: `origin` is `jdylanmc/notch`, `upstream` is `TheBoredTeam/boring.notch`.
+`origin` is `jdylanmc/notch`. The historical source remote, if configured as
+`upstream`, is documented in [third-party notices](THIRD_PARTY_LICENSES).
 
 Fork-local code **and documentation** use dedicated branches from
 **`origin/pocket`**, with pull requests targeting **`jdylanmc/notch:pocket`**.
-Do not import newer upstream code as a setup prerequisite. Inherited `dev` and
-`main` instructions in `CONTRIBUTING.md` do not govern fork-local work.
+Do not import newer upstream code as a setup prerequisite.
+`CONTRIBUTING.md` follows the same fork-local policy.
 
 Upstream-bound work requires an explicit request and a separate branch based on
 `upstream/dev`, not `pocket`; check upstream's current contribution policy for
 that request. Do not mix it with fork-local work.
 
-Some inherited workflows and `CODEOWNERS` still need reconciliation (issues
-#49 and #51); inspect their current configuration. Report conflicts rather than
+`CODEOWNERS` names `@jdylanmc`. Some inherited workflow branch/release policies
+still need reconciliation (#51); inspect their current configuration. Report conflicts rather than
 retargeting a fork-local PR or weakening checks.
 
 ## Build, test, lint
@@ -72,7 +73,7 @@ and Xcode 26+. The project's macOS 14.0 deployment target is distinct from the
 build-host requirements. Metal compilation needs Xcode's Metal toolchain.
 
 Run the existing scripts **from the repository root**. `scripts/env.sh` defaults
-to scheme `boringNotch`, configuration `Debug`, and destination `platform=macOS`:
+to scheme `notchPocket`, configuration `Debug`, and destination `platform=macOS`:
 
 ```bash
 scripts/build.sh                                                    # Debug build
@@ -83,7 +84,7 @@ scripts/lint.sh                                                     # SwiftLint,
 For a targeted iteration, not a substitute for the full verification gate:
 
 ```bash
-scripts/test.sh -only-testing:boringNotchTests/MeetingLinkDetectorTests
+scripts/test.sh -only-testing:notchPocketTests/MeetingLinkDetectorTests
 ```
 
 All three scripts source `scripts/env.sh`. It respects an explicit
@@ -138,7 +139,7 @@ hardened-runtime requirements, and notarization need separate approved work.
 ## Layout
 
 ```
-boringNotch/
+notchPocket/
   managers/          long-lived services (media, notifications, battery, XPC client)
   models/            data types and Defaults keys — Constants.swift holds every setting
   Providers/         parsing and lookup helpers (MeetingLinkDetector lives here)
@@ -148,19 +149,20 @@ boringNotch/
   enums/generic.swift  NotchViews — the tab enum, the seam for adding a pane
   metal/             shaders (needs Xcode's Metal toolchain, not CLT)
 Shared/              code shared between app and XPC helper
-BoringNotchXPCHelper/  bundled XPC service: notification watching, message sending
-boringNotchTests/    XCTest target
+notchPocketXPCHelper/  bundled XPC service: notification watching, message sending
+notchPocketTests/    XCTest target
 ```
 
 ## Rules
 
-### Do not hand-edit `Localizable.xcstrings`
+### Maintain the owned localization catalog
 
-Keep the existing Crowdin localization path described in `CONTRIBUTING.md`.
-The inherited `.github/workflows/crowdin.yml` uses `dev`; it does not establish
-translation synchronization for `pocket`. Add new user-facing strings through
-the normal SwiftUI localization path, not manual catalog edits. This constraint
-does not make upstream synchronization product authority.
+Use Xcode's string catalog and normal SwiftUI localization flow for new strings.
+Surgical edits to `notchPocket/Localizable.xcstrings` are permitted for owned
+identity and translation maintenance. Preserve locale records, placeholders,
+and JSON validity; check duplicate keys when renaming entries. Do not broadly
+rewrite translations. The inherited Crowdin workflow uses `dev`; it does not
+establish translation synchronization for `pocket`. See `CONTRIBUTING.md`.
 
 ### Trace dependencies before changing feature scope
 
@@ -171,7 +173,7 @@ scope above; do not bundle refactors or removals into setup documentation.
 
 ### The XPC service name is not compiler-checked
 
-`boringNotch/XPCHelperClient/XPCHelperClient.swift` uses
+`notchPocket/XPCHelperClient/XPCHelperClient.swift` uses
 `NSXPCConnection(serviceName:)` with `com.jdylanmc.notchpocket.XPCHelper`.
 This is a **bundled application XPC service**, embedded in `Contents/XPCServices`,
 not a privileged Mach-service installation. Its `Info.plist` declares
@@ -188,18 +190,77 @@ Preserve `com.jdylanmc.notchpocket`, helper identifier
 can move settings/container lookup and invalidate privacy grants; they are not
 cosmetic cleanup. Do not change identifiers or reset data as part of setup.
 
-### Sparkle points at upstream
+### Update isolation
 
-`boringNotch/Info.plist` retains upstream's `SUFeedURL` and a `SUPublicEDKey`;
-it also sets `SUEnableAutomaticChecks` to false. This inherited configuration is
-an update-isolation risk, **not proof that a fork build automatically replaces
-itself with upstream**. Resolve and verify updater isolation in separate work
-before distribution; this documentation change does not fix it.
+The in-app updater, its package dependency, feed/key, services, preferences UI,
+and onboarding step are removed. There is no automatic or manual in-app update
+channel. The decorative `SparkleView` is unrelated and remains.
+The historical appcast, feed deployment, and upstream tap publishing automation
+are removed rather than replaced with unowned destinations. Future owned
+updates require separate approved implementation. Existing artifact/release
+workflows are not permission to publish or evidence of distribution readiness.
+
+### Identity compatibility notes
+
+The #49 naming cleanup uses `notchPocket.xcodeproj`, app target/module/source
+folder `notchPocket`, test target/folder `notchPocketTests`, and helper
+target/folder `notchPocketXPCHelper`. Swift types use `NotchPocket…`, including
+`NotchPocketApp`, `NotchPocketViewCoordinator`, and `NotchPocketXPCHelper`.
+The visible product is **Notch Pocket**; `PRODUCT_NAME`, app filename, and
+executable remain `notch-pocket`. Never derive the `.app` filename from the
+project or scheme name in packaging code.
+
+The source and resource paths use the owned identity throughout. Compatibility
+and migration requirements:
+
+- **Settings/data:** `models/Constants.swift` persists `"notchPocketShelf"`
+  (default `true`). `ShelfPersistenceService` uses `notchPocket/Shelf` beneath
+  the app's Application Support directory. Other settings keys are unchanged.
+  **Before launching over an earlier development build**, quit the app, back up
+  its container/preferences and shelf contents, then explicitly migrate the
+  previous shelf directory and preference value to these names. Check for
+  destination conflicts, preserve security-scoped bookmarks and file contents,
+  and verify the result before cleanup. Do not reset or delete data. There is
+  no automatic legacy-directory discovery or migration in the app.
+- **Runtime identifiers:** the settings window ID is
+  `"NotchPocketSettingsWindow"`; sharing uses
+  `"com.notchPocket.sharingDidFinish"` and camera errors use
+  `"NotchPocket.WebcamManager"`. Other window IDs remain unchanged.
+- **Existing player authentication:** the YouTube Music HTTP client's
+  `/auth/notchPocket` route uses the owned client identity. Reconnection may
+  require reauthorization in that player. This is not a new support commitment.
+- **XPC serialization:** `Shared/NotchPocketXPCHelperProtocol.swift` retains
+  `@objc(BNLunarBrightnessEvent)`, the coded class, and its `brightness`/`display`
+  fields. Both helper `main.swift` and `XPCHelperClient.swift` whitelist that
+  exact class. Renamed protocols/exported objects are locally constructed on
+  both ends; message selectors and payload shapes are unchanged, and these
+  objects are not encoded as payload classes. Their implicit module-qualified
+  Objective-C names change with the modules. The only custom secure-coded XPC
+  payload already has an explicit, unchanged Objective-C name. App color
+  archives use `NSColor`, not renamed app classes; notch panels are constructed
+  directly rather than loaded from a nib/archive. Live XPC/window restoration
+  still needs runtime verification.
+- **Private/dependency names:** do not rename `KeyboardBrightnessClient`,
+  dependency modules, or third-party identifiers. Queue labels and ephemeral
+  audio-device names are internal diagnostics, not storage/wire identities.
+- **Attribution/artwork:** author and copyright/license headers remain. Source
+  origin credits are in `THIRD_PARTY_LICENSES`. The upstream team wordmark is no
+  longer presented or bundled; retained icon/audio artwork is not newly
+  commissioned or reattributed.
+- **Localization:** owned product-name substitutions preserve locale records
+  and placeholders. Historical credit translations are retained in the license
+  notices, not the runtime catalog. Crowdin is not an independent translation
+  path for `pocket`.
+- **Unfinished distribution work:** release scripts consume
+  `notch-pocket.app`/`.dmg`, but no independent binaries are published or
+  implied. Branch policy, distribution signing, and future owned update
+  infrastructure still require separate work. Do not run public release
+  automation as part of naming or local setup.
 
 ### Test what is testable, and say what is not
 
 Pure logic — link detection, bundle-ID resolution, state machines — belongs in
-`boringNotchTests/` and must have a test. End-to-end notification delivery,
+`notchPocketTests/` and must have a test. End-to-end notification delivery,
 Accessibility mirroring, and media integration need runtime checks on a real
 machine; unit tests alone cannot establish those behaviors.
 

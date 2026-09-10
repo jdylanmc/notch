@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Boring Notch (${{ matrix.xcode }} on ${{ matrix.os }})
+    name: Build Notch Pocket (${{ matrix.xcode }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -40,7 +40,7 @@ jobs:
         with:
           xcode: ${{ matrix.xcode }}
           platform: macOS
-          scheme: boringNotch
+          scheme: notchPocket
           action: build
           verbosity: xcpretty
           upload-logs: always
@@ -55,7 +55,7 @@ jobs:
         with:
           xcode: ${{ matrix.xcode }}
           platform: macOS
-          scheme: boringNotch
+          scheme: notchPocket
           action: test
           verbosity: xcpretty
           upload-logs: always
