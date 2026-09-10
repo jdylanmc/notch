@@ -10,7 +10,7 @@ Please, go through these steps before you submit a PR.
 
 3. **After** these steps, you're ready to open a pull request.
 
-    a. Your pull request MUST NOT target the `main` branch on this repository. You probably want to target `dev` instead.
+    a. Pull requests to `jdylanmc/notch` must target `pocket`. Inherited `dev`/`main` guidance is for upstream, not this product.
 
     b. Give a descriptive title to your PR.
 

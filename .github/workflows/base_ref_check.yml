@@ -1,4 +1,4 @@
-name: Fork PR target policy
+name: PR target policy
 
 on:
   pull_request_target:
@@ -8,8 +8,8 @@ permissions: {}
 
 jobs:
   validate:
+    # Preserve the existing status context for branch-protection references.
     name: Fork PR target check
-    if: ${{ github.event.pull_request.head.repo.fork == true }}
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -19,21 +19,6 @@ jobs:
         with:
           script: |
             const base = context.payload.pull_request.base.ref;
-            const pull_number = context.payload.pull_request.number;
-
-            const allowedPatterns = [
-              /^README\.md$/,
-              /^CONTRIBUTING\.md$/,
-              /^SECURITY\.md$/,
-              /^LICENSE$/,
-              /^THIRD_PARTY_LICENSES$/,
-              /^\.gitignore$/,
-              /^crowdin\.yml$/,
-              /^\.github\/.+$/
-            ];
-
-            const isAllowedPath = (path) =>
-              allowedPatterns.some((pattern) => pattern.test(path));
 
             const toSafeLiteral = (value) =>
               JSON.stringify(String(value))
@@ -47,57 +32,11 @@ jobs:
                 .replace(/#/g, '\\u0023')
                 .replace(/`/g, '\\u0060');
 
-            const describeFile = (file) => {
-              if (file.previous_filename) {
-                return `- ${toSafeLiteral(file.previous_filename)} -> ${toSafeLiteral(file.filename)}`;
-              }
-              return `- ${toSafeLiteral(file.filename)}`;
-            };
-
-            if (base === 'dev') {
-              core.info('PR targets dev: allowed.');
+            if (base === 'pocket') {
+              core.info('PR targets pocket: allowed.');
               return;
             }
 
-            if (base !== 'main') {
-              core.setFailed(
-                `PR targets ${toSafeLiteral(base)}: not allowed. Only "dev" and "main" are permitted.`
-              );
-              return;
-            }
-
-            const files = await github.paginate(github.rest.pulls.listFiles, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number,
-              per_page: 100
-            });
-
-            // Treat renames conservatively: both old and new paths must be allowed.
-            const disallowed = files.filter((file) => {
-              const pathsToCheck = [file.filename, file.previous_filename].filter(Boolean);
-              return pathsToCheck.some((path) => !isAllowedPath(path));
-            });
-
-            if (disallowed.length > 0) {
-              core.setFailed([
-                "PR targets 'main' but includes changes outside the allowed paths.",
-                "Only allowlisted repository metadata changes may target 'main'.",
-                '',
-                'Allowed paths:',
-                '- "README.md"',
-                '- "CONTRIBUTING.md"',
-                '- "SECURITY.md"',
-                '- "LICENSE"',
-                '- "THIRD_PARTY_LICENSES"',
-                '- ".gitignore"',
-                '- "crowdin.yml"',
-                '- ".github/**"',
-                '',
-                'Disallowed changed paths:',
-                ...disallowed.map(describeFile)
-              ].join('\n'));
-              return;
-            }
-
-            core.info("PR targets main and only changes allowed paths: allowed.");
+            core.setFailed(
+              `PR targets ${toSafeLiteral(base)}: not allowed. Notch Pocket pull requests must target "pocket".`
+            );

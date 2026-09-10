@@ -1,4 +1,4 @@
-name: Fork PR target guidance
+name: PR target guidance
 
 on:
   pull_request_target:
@@ -9,7 +9,6 @@ permissions: {}
 jobs:
   comment:
     name: Sync PR target guidance comment
-    if: ${{ github.event.pull_request.head.repo.fork == true }}
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -21,21 +20,8 @@ jobs:
           script: |
             const prNumber = context.payload.pull_request.number;
 
+            // Retain the marker so we can remove stale upstream-policy comments.
             const marker = '<!-- fork-pr-target-policy -->';
-
-            const allowedPatterns = [
-              /^README\.md$/,
-              /^CONTRIBUTING\.md$/,
-              /^SECURITY\.md$/,
-              /^LICENSE$/,
-              /^THIRD_PARTY_LICENSES$/,
-              /^\.gitignore$/,
-              /^crowdin\.yml$/,
-              /^\.github\/.+$/
-            ];
-
-            const isAllowedPath = (path) =>
-              allowedPatterns.some((pattern) => pattern.test(path));
 
             const toSafeLiteral = (value) =>
               JSON.stringify(String(value))
@@ -55,11 +41,6 @@ jobs:
               pull_number: prNumber
             });
 
-            if (pr.data.head.repo.fork !== true) {
-              core.info('PR does not come from a fork; skipping comment sync.');
-              return;
-            }
-
             const base = pr.data.base.ref;
 
             const comments = await github.paginate(github.rest.issues.listComments, {
@@ -74,49 +55,15 @@ jobs:
               comment.body?.includes(marker)
             );
 
-            let body = null;
-
-            if (base === 'main') {
-              const files = await github.paginate(github.rest.pulls.listFiles, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: prNumber,
-                per_page: 100
-              });
-
-              const disallowed = files.filter((file) => {
-                const pathsToCheck = [file.filename, file.previous_filename].filter(Boolean);
-                return pathsToCheck.some((path) => !isAllowedPath(path));
-              });
-
-              if (disallowed.length > 0) {
-                body = [
-                  marker,
-                  '⚠️ This PR targets `main`.',
-                  '',
-                  'Fork PRs should normally target `dev`.',
-                  'Targeting `main` is only allowed for repository metadata changes such as docs, licensing, and `.github/**` updates.',
-                  'This PR changes one or more files outside that allowlist, so please retarget it to `dev`.'
-                ].join('\n');
-              }
-            } else if (base === 'dev') {
-              if (existing) {
-                body = [
-                  marker,
-                  '✅ This PR now targets `dev`.',
-                  '',
-                  '`dev` is the expected target branch for fork PRs, so no further action is needed.'
-                ].join('\n');
-              }
-            } else {
-              body = [
+            const body = base === 'pocket'
+              ? null
+              : [
                 marker,
                 `❌ This PR targets ${toSafeLiteral(base)}.`,
                 '',
-                'Fork PRs may only target `dev` or `main`.',
-                'Please retarget this PR to one of those branches.'
+                'Notch Pocket pull requests must target `pocket`.',
+                'Please retarget this PR to `pocket`.'
               ].join('\n');
-            }
 
             if (body && existing) {
               if (existing.body !== body) {
