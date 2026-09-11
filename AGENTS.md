@@ -87,6 +87,36 @@ For a targeted iteration, not a substitute for the full verification gate:
 scripts/test.sh -only-testing:notchPocketTests/MeetingLinkDetectorTests
 ```
 
+### Repo-local live UI control
+
+Use the ordinary [notch skill](.github/skills/notch/SKILL.md) and
+[native helper guide](scripts/notch-control/README.md) for issue #18's initial
+discovery, Settings General/About, and selected-window screenshot slice.
+Follow orchestration ownership: do not build, test, or exercise runtime during
+an authoring-only phase.
+
+After reconciliation, helper checks are
+`bash scripts/notch-control/control.sh build` and
+`bash scripts/notch-control/control.sh test`, in addition to the app gates.
+Use `bash scripts/notch-control/control.sh lint` for the package's eight Swift
+files: it supplies script-input files to the root config, avoiding an app scan.
+The package test command builds the helper for a permission-free invalid-input
+subprocess contract check; it does not launch the app.
+Runtime verification must assert the exact built app using `--app-path`, inspect
+the before/after images locally, restore Settings state, and preserve app
+identity, permissions, preferences and shelf. Discovery success is not proof of
+Accessibility or capture permission. Missing grants require human action and
+potential terminal-host restart; never automate privacy changes.
+
+Capture only a freshly selected app-owned window. Honor sharing exclusion and
+report unsupported windows; no desktop fallback, raw private text/tree dumping,
+media/shelf/notification actions, or notch open/close controls. Keep images
+local and report ignored `scripts/notch-control/.build/` residue.
+Package tests cover deterministic policy/output logic, not native runtime
+integration. Do not claim full notch control or issue closure from this slice.
+
+### App build environment
+
 All three scripts source `scripts/env.sh`. It respects an explicit
 `DEVELOPER_DIR`; otherwise it checks the selected developer directory, then
 `/Applications/Xcode.app/Contents/Developer`, and errors if no full Xcode is
