@@ -5410,6 +5410,17 @@
         }
       }
     },
+    "Close Notch" : {
+      "comment" : "Accessibility action to collapse the notch, not close its window.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close Notch"
+          }
+        }
+      }
+    },
     "Closed Notch" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -16220,7 +16231,6 @@
     "Open in %@" : {},
     "Open in Calendar" : {},
     "Open Notch" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

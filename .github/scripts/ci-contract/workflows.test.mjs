@@ -346,7 +346,7 @@ test('PR policy identities, events and permissions remain unchanged', () => {
   });
 });
 
-test('canonical helper launcher includes all 29 tests and exactly eight Swift lint inputs', () => {
+test('canonical helper launcher includes all 41 tests and exactly nine Swift lint inputs', () => {
   const packageRoot = new URL('scripts/notch-control/', root);
   const swiftFiles = ['Package.swift', ...['Sources', 'Tests'].flatMap((folder) =>
     readdirSync(new URL(`${folder}/`, packageRoot), { recursive: true })
@@ -356,12 +356,14 @@ test('canonical helper launcher includes all 29 tests and exactly eight Swift li
     'Sources/NotchControl/Accessibility.swift', 'Sources/NotchControl/AppTarget.swift',
     'Sources/NotchControl/Capture.swift', 'Sources/NotchControl/NotchControl.swift',
     'Tests/ControlCoreTests/ControlCoreTests.swift',
+    'Tests/ControlCoreTests/NotchActionTests.swift',
   ]);
   const launcher = read('scripts/notch-control/control.sh');
   launcherTestContract(launcher);
   launcherLintContract(launcher);
-  const tests = read('scripts/notch-control/Tests/ControlCoreTests/ControlCoreTests.swift');
-  assert.equal([...tests.matchAll(/^\s+func test\w+\(/gm)].length, 29);
+  const tests = swiftFiles.filter((path) => path.startsWith('Tests/'))
+    .map((path) => read(`scripts/notch-control/${path}`)).join('\n');
+  assert.equal([...tests.matchAll(/^\s+func test\w+\(/gm)].length, 41);
 });
 
 test('reject actual-source mutation: Swift test filter after redirection', () => {

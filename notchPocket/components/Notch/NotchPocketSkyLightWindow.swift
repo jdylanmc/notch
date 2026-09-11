@@ -9,6 +9,7 @@ import Cocoa
 import SkyLightWindow
 import Defaults
 import Combine
+import SwiftUI
 
 extension SkyLightOperator {
     func undelegateWindow(_ window: NSWindow) {
@@ -34,11 +35,15 @@ extension SkyLightOperator {
 @MainActor
 protocol NotchObservationSource: AnyObject {
     var notchState: NotchState { get }
+    func open() -> Bool
+    func close()
 }
 
 extension NotchPocketViewModel: NotchObservationSource {}
 
 class NotchPocketSkyLightWindow: NSPanel {
+    static let openNotchAction = NSAccessibility.Action(rawValue: "com.jdylanmc.notchpocket.notch.v1.open")
+    static let closeNotchAction = NSAccessibility.Action(rawValue: "com.jdylanmc.notchpocket.notch.v1.close")
     private var isSkyLightEnabled: Bool = false
     weak var observationSource: (any NotchObservationSource)?
 
@@ -60,6 +65,41 @@ class NotchPocketSkyLightWindow: NSPanel {
     override func setAccessibilityIdentifier(_ accessibilityIdentifier: String?) {}
 
     override func setAccessibilityValue(_ accessibilityValue: Any?) {}
+
+    // Explicit AX action names keep discovery locale-independent. The legacy transport
+    // has no result payload: clients must observe AXValue, not equate dispatch with success.
+    override func accessibilityActionNames() -> [NSAccessibility.Action] {
+        let native = super.accessibilityActionNames()
+        guard observationSource != nil, windowNumber > 0 else { return native }
+        return native + [Self.openNotchAction, Self.closeNotchAction]
+    }
+
+    override func accessibilityActionDescription(_ action: NSAccessibility.Action) -> String? {
+        switch action {
+        case Self.openNotchAction:
+            return String(localized: "Open Notch")
+        case Self.closeNotchAction:
+            return String(localized: "Close Notch", comment: "Accessibility action to collapse the notch, not close its window.")
+        default:
+            return super.accessibilityActionDescription(action)
+        }
+    }
+
+    override func accessibilityPerformAction(_ action: NSAccessibility.Action) {
+        switch action {
+        case Self.openNotchAction:
+            guard let source = observationSource, windowNumber > 0, source.notchState != .open else { return }
+            withAnimation(StandardAnimations.interactive) {
+                _ = source.open()
+            }
+        case Self.closeNotchAction:
+            guard let source = observationSource, windowNumber > 0, source.notchState != .closed else { return }
+            // Match ordinary closing: ContentView owns the state-driven close animation.
+            source.close()
+        default:
+            super.accessibilityPerformAction(action)
+        }
+    }
 
     override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
         if selector == #selector(setAccessibilityValue(_:)) ||

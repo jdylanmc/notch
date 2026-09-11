@@ -73,7 +73,9 @@ final class NotchObservationControl: BoundedAccessibilityReader {
         return result
     }
 
-    func state() throws -> (notch: NotchInspection, windows: [WindowInfo]) {
+    private func snapshot() throws -> (
+        notch: NotchInspection, windows: [WindowInfo], panels: [(AXUIElement, String)]
+    ) {
         let before = try panels()
         let metadata = try before.map { window, identifier in
             NotchPanelMetadata(identifier: identifier, value: try string(window, kAXValueAttribute))
@@ -86,7 +88,69 @@ final class NotchObservationControl: BoundedAccessibilityReader {
         let windows = try target.windows()
         let result = try observeNotchPanels(metadata, windows: windows, pid: target.identity.pid)
         try target.requireAccessibility()
-        return (result, windows)
+        _ = try target.budget.remaining()
+        return (result, windows, after)
+    }
+
+    func state() throws -> (notch: NotchInspection, windows: [WindowInfo]) {
+        let current = try snapshot()
+        return (current.notch, current.windows)
+    }
+
+    private func actionNames(_ element: AXUIElement) throws -> [String] {
+        try target.budget.read(pause: Thread.sleep(forTimeInterval:), prepare: { try self.prepare(element) }, attempt: {
+            var value: CFArray?
+            let result = AXUIElementCopyActionNames(element, &value)
+            if result == .cannotComplete { return .cannotComplete(result.rawValue) }
+            if result == .noValue || result == .notImplemented { return .value([]) }
+            guard result == .success else {
+                throw ControlFailure(.accessibilityFailed, "Accessibility action discovery failed (AX \(result.rawValue)).")
+            }
+            guard let names = value as? [String], names.count <= 600 else {
+                throw ControlFailure(.unsupportedControl, "Accessibility action names have an unsupported shape.")
+            }
+            return .value(names)
+        })
+    }
+
+    func change(_ action: NotchAction, windowID: UInt32) throws -> NotchActionResult {
+        var selected: AXUIElement?
+        let transport = NotchActionTransport(
+            observe: {
+                let current = try self.snapshot()
+                _ = try selectedNotchPanel(current.notch, windowID: windowID)
+                let identifier = NotchPanelMetadata.versionPrefix + String(windowID)
+                let matching = current.panels.filter { $0.1 == identifier }
+                guard matching.count == 1, let element = matching.first?.0,
+                      selected == nil || CFEqual(selected, element) else {
+                    throw ControlFailure(.staleTarget, "Selected Accessibility panel changed; inspect again.")
+                }
+                selected = element
+                return current.notch
+            },
+            actionNames: {
+                guard let selected else {
+                    throw ControlFailure(.staleTarget, "No selected Accessibility panel.")
+                }
+                return try self.actionNames(selected)
+            },
+            perform: { name in
+                guard let selected else {
+                    throw ControlFailure(.staleTarget, "No selected Accessibility panel.")
+                }
+                try self.prepare(selected)
+                _ = try self.target.budget.remaining()
+                let result = AXUIElementPerformAction(selected, name as CFString)
+                guard result == .success else {
+                    throw ControlFailure(.accessibilityFailed,
+                                         "Notch action dispatch failed (AX \(result.rawValue)); not retried.")
+                }
+            }
+        )
+        return try changeNotchState(
+            windowID: windowID, action: action, budget: target.budget,
+            pause: Thread.sleep(forTimeInterval:), transport: transport
+        )
     }
 }
 

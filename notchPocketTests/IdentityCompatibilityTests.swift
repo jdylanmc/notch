@@ -15,6 +15,22 @@ final class IdentityCompatibilityTests: XCTestCase {
     @MainActor
     private final class ObservationSource: NotchObservationSource {
         var notchState: NotchState = .closed
+        var openCalls = 0
+        var closeCalls = 0
+        var refusesOpen = false
+        var refusesClose = false
+
+        func open() -> Bool {
+            openCalls += 1
+            guard !refusesOpen, notchState != .open else { return false }
+            notchState = .open
+            return true
+        }
+
+        func close() {
+            closeCalls += 1
+            if !refusesClose { notchState = .closed }
+        }
     }
 
     @MainActor
@@ -96,6 +112,112 @@ final class IdentityCompatibilityTests: XCTestCase {
         XCTAssertNil(panel.observationSource)
         XCTAssertEqual(panel.accessibilityIdentifier(), "")
         XCTAssertNil(panel.accessibilityValue())
+    }
+
+    @MainActor
+    func testNotchActionsAdvertiseExactNamesOnlyWithLiveSource() {
+        let panel = observationPanel()
+        defer { panel.close() }
+        let nativeActions = panel.accessibilityActionNames()
+        let nativeRole = panel.accessibilityRole()
+        let source = ObservationSource()
+        panel.observationSource = source
+        XCTAssertEqual(panel.accessibilityActionNames().map(\.rawValue), nativeActions.map(\.rawValue) + [
+            "com.jdylanmc.notchpocket.notch.v1.open", "com.jdylanmc.notchpocket.notch.v1.close"
+        ])
+        XCTAssertEqual(panel.accessibilityRole(), nativeRole)
+        XCTAssertEqual(panel.accessibilityActionDescription(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.open")),
+                       String(localized: "Open Notch"))
+        XCTAssertEqual(panel.accessibilityActionDescription(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.close")),
+                       String(localized: "Close Notch"))
+        panel.close()
+        XCTAssertEqual(panel.accessibilityActionNames(), nativeActions)
+    }
+
+    @MainActor
+    func testNotchActionsRouteToOnlyTheBoundModelWithoutWindowTeardown() {
+        let panel = observationPanel()
+        let otherPanel = observationPanel()
+        defer { panel.close(); otherPanel.close() }
+        let source = ObservationSource()
+        let otherSource = ObservationSource()
+        panel.observationSource = source
+        otherPanel.observationSource = otherSource
+        let identifier = panel.accessibilityIdentifier()
+        let sharing = panel.sharingType
+        let style = panel.styleMask
+        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.open"))
+        XCTAssertEqual(source.openCalls, 1)
+        XCTAssertEqual(panel.accessibilityValue() as? String, "open")
+        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.close"))
+        XCTAssertEqual(source.closeCalls, 1)
+        XCTAssertEqual(panel.accessibilityValue() as? String, "closed")
+        XCTAssertEqual(otherSource.openCalls, 0)
+        XCTAssertEqual(otherSource.closeCalls, 0)
+        XCTAssertTrue(panel.observationSource === source)
+        XCTAssertEqual(panel.accessibilityIdentifier(), identifier)
+        XCTAssertEqual(panel.sharingType, sharing)
+        XCTAssertEqual(panel.styleMask, style)
+        XCTAssertEqual(panel.level, .mainMenu + 3)
+        XCTAssertFalse(panel.canBecomeKey)
+        XCTAssertFalse(panel.canBecomeMain)
+        XCTAssertFalse(panel.wantsKeyForTextInput)
+        XCTAssertFalse(panel.accessibilityIsAttributeSettable(.value))
+        XCTAssertFalse(panel.accessibilityIsAttributeSettable(.identifier))
+    }
+
+    @MainActor
+    func testNotchActionsAlreadyAtTargetAvoidModelSideEffects() {
+        let panel = observationPanel()
+        defer { panel.close() }
+        let source = ObservationSource()
+        panel.observationSource = source
+        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.close"))
+        XCTAssertEqual(source.closeCalls, 0)
+        source.notchState = .open
+        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.open"))
+        XCTAssertEqual(source.openCalls, 0)
+    }
+
+    @MainActor
+    func testNotchActionsLeaveRefusedTransitionsUnchanged() {
+        let panel = observationPanel()
+        defer { panel.close() }
+        let source = ObservationSource()
+        panel.observationSource = source
+        source.refusesOpen = true
+        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.open"))
+        XCTAssertEqual(source.openCalls, 1)
+        XCTAssertEqual(panel.accessibilityValue() as? String, "closed")
+        source.notchState = .open
+        source.refusesClose = true
+        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.close"))
+        XCTAssertEqual(source.closeCalls, 1)
+        XCTAssertEqual(panel.accessibilityValue() as? String, "open")
+    }
+
+    @MainActor
+    func testNotchActionsDoNotRetainOrReviveReleasedSources() {
+        let panel = observationPanel()
+        defer { panel.close() }
+        let nativeActions = panel.accessibilityActionNames()
+        var source: ObservationSource? = ObservationSource()
+        weak var weakSource = source
+        panel.observationSource = source
+        source = nil
+        XCTAssertNil(weakSource)
+        XCTAssertEqual(panel.accessibilityActionNames(), nativeActions)
+        for name in ["com.jdylanmc.notchpocket.notch.v1.open", "com.jdylanmc.notchpocket.notch.v1.close"] {
+            panel.accessibilityPerformAction(.init(rawValue: name))
+            XCTAssertNil(panel.observationSource)
+            XCTAssertNil(panel.accessibilityValue())
+        }
+        let replacement = ObservationSource()
+        panel.observationSource = replacement
+        panel.close()
+        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.open"))
+        XCTAssertEqual(replacement.openCalls, 0)
+        XCTAssertNil(panel.observationSource)
     }
 
     func testAppAndEmbeddedHelperIdentity() throws {

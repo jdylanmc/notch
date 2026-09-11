@@ -13,6 +13,7 @@ private struct Response: Encodable {
     var settingsDiagnostic: ControlFailure?
     var notch: NotchInspection?
     var notchDiagnostic: ControlFailure?
+    var notchAction: NotchActionResult?
     var usage: [String]?
 }
 
@@ -26,6 +27,7 @@ struct NotchControl {
                 emit(Response(ok: true, command: "help", usage: [
                     "inspect [--app-path /absolute/notch-pocket.app] [--timeout 5]",
                     "settings open|general|about [--app-path /absolute/notch-pocket.app] [--timeout 5]",
+                    "notch open|close --window ID [--app-path /absolute/notch-pocket.app] [--timeout 5]",
                     "capture --window ID --output /absolute/new.png [--app-path /absolute/notch-pocket.app] [--timeout 5]"
                 ]))
                 return
@@ -49,6 +51,11 @@ struct NotchControl {
                 try await capture(target: target, id: id, output: path)
                 response.output = path
                 response.permissions = Permissions.current()
+            case .notch:
+                guard let id = options.windowID, let action = options.notchAction else {
+                    throw ControlFailure(.invalidInput, "Missing notch action or selector.")
+                }
+                response.notchAction = try NotchObservationControl(target: target).change(action, windowID: id)
             case .help:
                 break
             }

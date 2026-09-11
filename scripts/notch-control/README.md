@@ -1,13 +1,13 @@
-# Local app control — issue #18, bounded observation and Settings slice
+# Local app control — issue #18, bounded notch actions and Settings slice
 
 Small Apple-toolchain-only Swift package. No daemon, network service,
 synthetic keyboard input, or dependencies. The app supplies minimal read-only
-panel Accessibility metadata. Requires macOS 14+
+panel Accessibility metadata and explicit native open/close actions. Requires macOS 14+
 APIs; use the repository's macOS 15.6+/Xcode 26+ build host.
 
-This slice covers discovery, read-only notch state, Settings → General/About,
-and a selected app-owned window screenshot. Notch open/close actions remain
-unsupported. It does **not** complete issue #18 or establish full notch control.
+This slice covers discovery, read-only notch state, per-panel notch open/close,
+Settings → General/About, and a selected app-owned window screenshot.
+It does **not** complete issue #18 or establish full notch control.
 Runtime behavior must be verified against the exact newly built app.
 
 ## Build and deterministic checks
@@ -62,7 +62,7 @@ bash scripts/notch-control/control.sh lint
 ```
 
 `lint` enumerates only `Package.swift` and Swift files under this package's
-`Sources` and `Tests` (eight files currently), excluding `.build`. It sets
+`Sources` and `Tests` (nine files currently), excluding `.build`. It sets
 `SCRIPT_INPUT_FILE_COUNT` and `SCRIPT_INPUT_FILE_0` through the final index, then
 runs `swiftlint lint --config .swiftlint.yml --no-cache --use-script-input-files`
 with the repository-root config path. No duplicate config or app-source scan.
@@ -77,7 +77,13 @@ codes against literal contracts, invalid-input executable stdout/status,
 immediate-menu-root selection/deduplication, missing/ambiguous English Settings
 items, traversal bounds, secure output creation/overwrite/symlink refusal, and
 notch state/version/ID validation, multi-panel sorting, duplicate/stale/foreign
-metadata rejection and explicit unsupported/unavailable output (29 tests).
+metadata rejection and explicit unsupported/unavailable output. Twelve action
+tests in `Tests/ControlCoreTests/NotchActionTests.swift` add exact command/name
+contracts, invalid selectors, selected-panel routing,
+explicit no-op, unsupported discovery, pre/post-action stale/foreign/refused
+paths, one-attempt semantics, late discovery/dispatch/observation deadlines and
+bounded polling/output (41 tests total across both test source files). The existing
+subprocess test also covers invalid notch verbs and IDs before discovery. All original cases remain.
 They do **not** exercise Accessibility, ScreenCaptureKit, permissions, Settings UI, or the
 actual app. Permission denial and native API failures need the runtime matrix
 below; tests are not evidence that those integrations work.
@@ -93,6 +99,11 @@ bash scripts/notch-control/control.sh run settings general \
   --app-path /Applications/notch-pocket.app
 bash scripts/notch-control/control.sh run settings about \
   --app-path /Applications/notch-pocket.app
+# Substitute a freshly observed notch.panels[].windowID:
+bash scripts/notch-control/control.sh run notch open --window WINDOW_ID \
+  --app-path /Applications/notch-pocket.app
+bash scripts/notch-control/control.sh run notch close --window WINDOW_ID \
+  --app-path /Applications/notch-pocket.app
 # Substitute a freshly observed windows[].id or settings.windowID, not a saved ID:
 bash scripts/notch-control/control.sh run capture --window WINDOW_ID \
   --output /absolute/private/new-image.png \
@@ -102,7 +113,9 @@ bash scripts/notch-control/control.sh run capture --window WINDOW_ID \
 Use `--app-path` pointing to the **actual built product**, not this installed-app
 example, for build verification. Paths must be absolute and normalized, without
 dot components, duplicate separators, or control characters. Flags cannot
-repeat. Capture IDs must be positive UInt32 decimal values. Commands accept
+repeat. Capture IDs must be positive UInt32 decimal values. Notch IDs additionally
+require canonical decimal spelling (no leading zeros, signs or whitespace);
+`--window` is mandatory and `--output` is invalid for notch actions. Commands accept
 `--timeout 0.5` through `--timeout 15` seconds (default 5); this is a shared
 observation/API budget, not a hard OS process-kill timer or disk-write deadline.
 
@@ -166,6 +179,59 @@ recreation and actual model transitions still require the parent's authorized
 runtime checks. App XCTest uses small fake sources without creating media
 models; helper tests validate pure policy, not live accessibility integration.
 
+### Explicit per-panel notch actions
+
+The same marked `AXWindow` advertises these exact, locale-independent native
+action names through `accessibilityActionNames()`:
+
+- `com.jdylanmc.notchpocket.notch.v1.open`
+- `com.jdylanmc.notchpocket.notch.v1.close`
+
+`accessibilityActionDescription` provides catalog-localized “Open Notch” and
+“Close Notch” descriptions. `accessibilityPerformAction` routes only to the
+weakly bound existing model, never `NSPanel.close()` (window teardown).
+The narrow legacy action transport is deliberate: it exposes stable names to
+`AXUIElementCopyActionNames` rather than assuming a localized
+`NSAccessibilityCustomAction` name is the native dispatch name. Its deprecation
+warnings are not suppressed; native discovery/dispatch and VoiceOver still need
+runtime verification. No new service, forwarding hierarchy, state cache or publisher.
+Read-only identifier/value setters and native focus/sharing/window policy remain.
+
+Opening uses the same `StandardAnimations.interactive` transaction as normal
+opening; closing leaves the existing ContentView state-driven animation in
+charge. Existing `open()` refuses onboarding/already-open and refreshes music
+on a real transition. Existing `close()` refuses active sharing and restores the
+configured tab. Neither model method nor normal hover/timers is changed.
+Native actions avoid calling either method when already at target.
+
+The helper first observes the exact selected owned marked panel, discovers its
+advertised action using the existing bounded read retry helper, and freshly
+observes again before dispatch/no-op. It pins the Accessibility element identity
+through post-observation and rechecks current process/path/launch identity and
+Accessibility. It neither guesses a panel nor searches descendants for actions.
+Missing/unknown action names fail even if state already matches.
+Only one `AXUIElementPerformAction` attempt is allowed. Native action errors,
+including `cannotComplete`, fail immediately without retry. Dispatch acceptance
+alone is not success: bounded fresh observations must find the selected model
+at target before the original deadline. Reads that finish too late cannot succeed.
+
+Success adds this `notchAction` object (contract example, not runtime evidence):
+
+```json
+{"notchAction":{"windowID":123,"action":"open","state":"open","outcome":"changed"}}
+```
+
+`outcome: already_at_target` explicitly means no action was attempted. Unsupported
+control, stale/foreign/missing selection, permission loss and native failures are
+nonzero errors. The legacy action API has no model refusal result payload:
+onboarding/sharing refusal leaves state unchanged and ends as `timeout`, not
+success. Timeout or dispatch error may mean an action was delivered; never retry
+automatically. Reinspect current state before planning restoration.
+An observed target is not animation completion, persistent visibility, or proof
+the requested action caused a concurrent state change. Normal interactions can
+change it immediately. Off-screen/sharing-excluded panels can be controlled but
+this never grants capture permission or relaxes sharing policy.
+
 | Error code | Exit |
 | --- | --- |
 | `invalid_input` | 2 |
@@ -182,12 +248,12 @@ All running `com.jdylanmc.notchpocket` instances count toward ambiguity.
 `--app-path` is an assertion, not a way to select one duplicate. PID/path/launch
 time are rechecked at use. Accessibility operations check element ownership,
 bound message calls and searches, and propagate failures. Only attribute reads
-returning native `cannotComplete` (AX -25204) retry, with at most 0.1-second pauses
+and action-name reads returning native `cannotComplete` (AX -25204) retry, with at most 0.1-second pauses
 inside the original shared budget; each attempt rechecks target, permission,
 element ownership, and deadline. Exhaustion reports `timeout` with the last busy
 AX code. Other failures propagate immediately; optional `noValue` and
 `attributeUnsupported` still mean absent, not busy. Menu presses and attribute
-mutations are never retried. Settings enumerates
+mutations and notch actions are never retried. Settings enumerates
 only immediate app-owned `AXMenuBar` roots (including the secondary menu bar),
 deduplicates identical roots, and searches at most 600 nodes across those roots,
 with depth at most 24. It never searches window descendants for menu commands.
@@ -198,7 +264,7 @@ explicitly; there is no guessed fallback or global command-comma.
 
 ## Privacy and human permissions
 
-Settings requires **Accessibility**. Capture requires **Screen Recording**
+Settings and notch actions require **Accessibility**. Capture requires **Screen Recording**
 (named **Screen & System Audio Recording** on some macOS versions).
 `inspect` reports current preflight results without prompting. A human may grant
 the relevant terminal/agent host or helper in System Settings → Privacy &
@@ -227,7 +293,7 @@ After semantic reconciliation and build/test/lint review:
 
 1. Preserve app identity, permissions, preferences, container and shelf. Follow
    the repository's existing data compatibility guidance. Record the current
-   app path and lifecycle, Settings visibility and pane; do not read or dump
+   app path and lifecycle, Settings visibility/pane and per-panel notch state; do not read or dump
    private preference/shelf contents through this tool.
 2. Parent/human launches the exact built `notch-pocket.app`, ensuring there is
    exactly one instance. This tool neither installs nor launches it. Run
@@ -254,10 +320,18 @@ After semantic reconciliation and build/test/lint review:
    duplicate, kill a user's app, or change sharing exclusions just to make
    negative tests pass. Use deterministic policy tests and explicitly mark
    unavailable runtime cases unverified.
-7. Retain/delete only the agreed local images; list ignored residue. No commits,
+7. On the exact signed candidate, freshly select one marked panel and verify
+   closed → open → closed through `notch open|close --window ID`. Check literal
+   state/outcome, no-op behavior and current identity. Capture/view each selected
+   state locally only if already shareable; never change sharing exclusions or
+   fall back to desktop capture. Restore its original state (including open if
+   originally open), Settings and app lifecycle. Normal hover may change state;
+   a refused restoration or recreated panel is a reported blocker, not permission
+   to bypass guards or use stale IDs.
+8. Retain/delete only the agreed local images; list ignored residue. No commits,
    remote publication, issue closure, or release is implied by these checks.
 
 Existing notch windows may be captured **only if** discoverable, selected and
-shareable already. Notch opening/closing, playback, shelf actions, notification
-reads/replies, new control interfaces and distribution are outside this slice.
+shareable already. Playback, shelf actions, notification reads/replies, broader
+notch controls, new control interfaces and distribution are outside this slice.
 All media and shelf behavior remains untouched; Spotify support is unchanged.
