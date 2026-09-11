@@ -98,8 +98,10 @@ an authoring-only phase.
 After reconciliation, helper checks are
 `bash scripts/notch-control/control.sh build` and
 `bash scripts/notch-control/control.sh test`, in addition to the app gates.
-The helper guide provides explicit package lint commands because these sources
-are outside the app lint configuration's included paths.
+Use `bash scripts/notch-control/control.sh lint` for the package's eight Swift
+files: it supplies script-input files to the root config, avoiding an app scan.
+The package test command builds the helper for a permission-free invalid-input
+subprocess contract check; it does not launch the app.
 Runtime verification must assert the exact built app using `--app-path`, inspect
 the before/after images locally, restore Settings state, and preserve app
 identity, permissions, preferences and shelf. Discovery success is not proof of

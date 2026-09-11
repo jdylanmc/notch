@@ -125,8 +125,8 @@ final class SettingsControl {
         }
         let rows = try elements(outline(window), kAXSelectedRowsAttribute)
         var labels: [String] = []
-        for label in ["General", "About"] {
-            if try rows.contains(where: { try rowHasLabel($0, label) }) { labels.append(label.lowercased()) }
+        for label in ["General", "About"] where try rows.contains(where: { try rowHasLabel($0, label) }) {
+            labels.append(label.lowercased())
         }
         return SettingsState(status: "open", selectedPane: labels.count == 1 ? labels.first : nil,
                              windowID: try captureID(window))
@@ -134,15 +134,12 @@ final class SettingsControl {
 
     func navigate(_ pane: String) throws -> SettingsState {
         if try settingsWindow() == nil {
-            guard let rawMenu = try read(application, kAXMenuBarAttribute),
-                  CFGetTypeID(rawMenu) == AXUIElementGetTypeID() else {
-                throw ControlFailure(.unsupportedControl, "App menu bar is unavailable.")
-            }
-            let menu = unsafeBitCast(rawMenu, to: AXUIElement.self)
-            let item = try unique(matching(menu) { element in
-                guard try self.string(element, kAXRoleAttribute) == kAXMenuItemRole else { return false }
-                return ["Settings", "Settings…", "Settings..."].contains(try self.string(element, kAXTitleAttribute) ?? "")
-            }, description: "English Settings menu item")
+            let item = try selectSettingsMenuItem(
+                immediateChildren: elements(application, kAXChildrenAttribute),
+                role: { try self.string($0, kAXRoleAttribute) },
+                children: { try self.elements($0, kAXChildrenAttribute, optional: true) },
+                title: { try self.string($0, kAXTitleAttribute) }
+            )
             try prepare(item)
             let result = AXUIElementPerformAction(item, kAXPressAction as CFString)
             guard result == .success else {

@@ -15,11 +15,14 @@ From the repository root:
 ```bash
 bash scripts/notch-control/control.sh build
 bash scripts/notch-control/control.sh test
+bash scripts/notch-control/control.sh lint
 bash scripts/notch-control/control.sh run help
 ```
 
-`build` builds only the helper. `test` runs the isolated package's XCTest cases;
-neither launches Notch Pocket. `run` uses the existing Debug helper and never
+`build` builds only the helper. `test` builds the helper and runs the isolated
+package's XCTest cases, including an invalid-input helper subprocess that exits
+before app discovery or permission checks; missing test setup fails, not skips.
+Neither launches Notch Pocket. `run` uses the existing Debug helper and never
 rebuilds it or starts/restarts the app. Rebuild after helper edits.
 The launcher respects `DEVELOPER_DIR` or selects full Xcode. It does not source
 `scripts/local.env`, read signing credentials, or configure privacy grants.
@@ -53,18 +56,24 @@ lint this isolated package explicitly:
 scripts/build.sh
 scripts/test.sh
 scripts/lint.sh
-swiftlint lint --config .swiftlint.yml --no-cache --force-exclude \
-  scripts/notch-control/Package.swift \
-  scripts/notch-control/Sources/ControlCore \
-  scripts/notch-control/Sources/NotchControl \
-  scripts/notch-control/Tests/ControlCoreTests
+bash scripts/notch-control/control.sh lint
 ```
+
+`lint` enumerates only `Package.swift` and Swift files under this package's
+`Sources` and `Tests` (eight files currently), excluding `.build`. It sets
+`SCRIPT_INPUT_FILE_COUNT` and `SCRIPT_INPUT_FILE_0` through the final index, then
+runs `swiftlint lint --config .swiftlint.yml --no-cache --use-script-input-files`
+with the repository-root config path. No duplicate config or app-source scan.
+Positional package paths alone do not override that config's app `included`
+paths; use the launcher command above.
 
 The package tests cover argument rejection, exact path and unique process
 selection, changed process identity, window ownership/sharing/on-screen policy,
 bounded observed polling, read-error propagation, error serialization and exit
-codes, and secure output creation/overwrite/symlink refusal. They do **not**
-exercise Accessibility, ScreenCaptureKit, permissions, Settings UI, or the
+codes against literal contracts, invalid-input executable stdout/status,
+immediate-menu-root selection/deduplication, missing/ambiguous English Settings
+items, traversal bounds, and secure output creation/overwrite/symlink refusal.
+They do **not** exercise Accessibility, ScreenCaptureKit, permissions, Settings UI, or the
 actual app. Permission denial and native API failures need the runtime matrix
 below; tests are not evidence that those integrations work.
 
@@ -125,9 +134,12 @@ mapping is **not** permission to guess an ID.
 All running `com.jdylanmc.notchpocket` instances count toward ambiguity.
 `--app-path` is an assertion, not a way to select one duplicate. PID/path/launch
 time are rechecked at use. Accessibility operations check element ownership,
-bound message calls and searches, and propagate failures. Settings uses its
-app menu's English Settings item, then verifies
-`NotchPocketSettingsWindow`; navigation requires one matching row and observes
+bound message calls and searches, and propagate failures. Settings enumerates
+only immediate app-owned `AXMenuBar` roots (including the secondary menu bar),
+deduplicates identical roots, and searches at most 600 nodes across those roots,
+with depth at most 24. It never searches window descendants for menu commands.
+Exactly one distinct English Settings item is required before pressing; it then
+verifies `NotchPocketSettingsWindow`; navigation requires one matching row and observes
 both selected row and window title. Localized or changed structures can fail
 explicitly; there is no guessed fallback or global command-comma.
 
@@ -169,7 +181,9 @@ After semantic reconciliation and build/test/lint review:
    `inspect --app-path /absolute/built/notch-pocket.app`; verify path, process,
    permissions and window ownership. If privacy is denied, stop for a human
    grant/restart; never silently switch to the installed app.
-3. Record original Settings visibility/pane. Run `settings open`, then
+3. Record original Settings visibility/pane. Verify `settings open` with Settings
+   initially closed, using this helper alone (no prototype or manual menu opening),
+   and observe `NotchPocketSettingsWindow`. Then run
    `settings general` with the exact path. Verify JSON postconditions, obtain
    its fresh `settings.windowID`, and capture to a new local `before.png`.
    **View the PNG locally** and confirm it contains only the selected Settings

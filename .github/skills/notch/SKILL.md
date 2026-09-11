@@ -28,6 +28,8 @@ From the repository root, after build/run authorization:
 
 ```bash
 bash scripts/notch-control/control.sh build
+bash scripts/notch-control/control.sh test
+bash scripts/notch-control/control.sh lint
 bash scripts/notch-control/control.sh run help
 bash scripts/notch-control/control.sh run inspect --app-path /absolute/built/notch-pocket.app
 bash scripts/notch-control/control.sh run settings open --app-path /absolute/built/notch-pocket.app
@@ -36,6 +38,9 @@ bash scripts/notch-control/control.sh run settings about --app-path /absolute/bu
 ```
 
 Record original Settings visibility and pane **before** navigation.
+For cold-open validation, start with Settings closed and use this helper alone,
+without manually opening menus or using a separate prototype. The helper searches
+only immediate app-owned menu bars and refuses missing or ambiguous English items.
 Inspect JSON permission booleans and `settingsDiagnostic`; do not equate
 discovery success with control permission. For permission denial, explain the
 human Accessibility/Screen Recording grant and full terminal/agent-host restart

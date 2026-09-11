@@ -76,6 +76,7 @@ app-owned window. This is the first slice of #18, not full notch control.
 ```bash
 bash scripts/notch-control/control.sh build
 bash scripts/notch-control/control.sh test
+bash scripts/notch-control/control.sh lint
 bash scripts/notch-control/control.sh run inspect --app-path /Applications/notch-pocket.app
 ```
 

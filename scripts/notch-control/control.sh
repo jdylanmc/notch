@@ -42,8 +42,24 @@ case "$mode" in
     test)
         [[ $# -eq 0 ]] || fail "test takes no arguments."
         export NOTCH_CONTROL_TEST_ROOT="$cache"
+        xcrun swift build "${common[@]}" --product notch-control >&2 || fail "Native tool build failed."
+        export NOTCH_CONTROL_TEST_EXECUTABLE="$cache/products/debug/notch-control"
         xcrun swift test "${common[@]}" >&2 || fail "Native tool tests failed."
         printf '{"ok":true,"command":"test"}\n'
+        ;;
+    lint)
+        [[ $# -eq 0 ]] || fail "lint takes no arguments."
+        files=("$root/Package.swift")
+        while IFS= read -r -d '' file; do
+            files+=("$file")
+        done < <(find "$root/Sources" "$root/Tests" -type d -name .build -prune -o -type f -name '*.swift' -print0)
+        export SCRIPT_INPUT_FILE_COUNT="${#files[@]}"
+        for index in "${!files[@]}"; do
+            export "SCRIPT_INPUT_FILE_$index=${files[$index]}"
+        done
+        swiftlint lint --config "$root/../../.swiftlint.yml" --no-cache --use-script-input-files >&2 ||
+            fail "Native tool lint failed."
+        printf '{"ok":true,"command":"lint"}\n'
         ;;
     run)
         # Build once explicitly; running never rebuilds or changes the app lifecycle.
@@ -54,5 +70,5 @@ case "$mode" in
         [[ ! -L "$binary" && -x "$binary" ]] || fail "Run control.sh build first."
         exec "$binary" "$@"
         ;;
-    *) fail "Use control.sh build, test, or run COMMAND." ;;
+    *) fail "Use control.sh build, test, lint, or run COMMAND." ;;
 esac
