@@ -20,6 +20,7 @@ downloads, and do not run publication workflows without explicit release approva
   - [Setting Up Your Environment](#setting-up-your-environment)
   - [Making Changes](#making-changes)
   - [Pull Requests](#pull-requests)
+- [CI and Packaging Inventory](#ci-and-packaging-inventory)
 <!-- - [Code Style Guidelines](#code-style-guidelines) -->
 - [Reporting Bugs](#reporting-bugs)
 - [Feature Requests](#feature-requests)
@@ -108,6 +109,93 @@ rather than assuming external changes reach this product.
 3. **Respond to feedback**: Maintainers may request changes.
 
 4. **Be patient**: Reviews take time. Maintainers will get to your PR as soon as they can.
+
+## CI and Packaging Inventory
+
+This is the bounded product-CI slice of [#51](https://github.com/jdylanmc/notch/issues/51),
+not release readiness or closure of the broader issue. The checked-in sources
+below are the authority for triggers and behavior; they are not evidence that a
+hosted run or distribution succeeded.
+
+| Surface / source | Product branch behavior and retained limits |
+| --- | --- |
+| [App build/test](.github/workflows/cicd.yml) | Pushes to `pocket` and PRs **targeting** `pocket`. Retains all three matrix legs: `macos-15` / `~26.0`, `macos-26` / `^26`, `xcode-27` / `^27`; scheme `notchPocket`, Release build and Debug tests. App tests start the normal app test host on CI. Runner/Xcode availability still needs hosted confirmation. |
+| [SwiftLint](.github/workflows/swiftlint.yml) | `pocket` push/PR, unchanged `SwiftLint` check name and root `.swiftlint.yml`. Non-strict inherited app baseline; do not add strict mode, suppress warnings, or clean up unrelated source to make CI appear clean. |
+| [CodeQL Advanced](.github/workflows/codeql.yml) | `pocket` push/PR; retains Actions, Python, and manual Swift scans, existing permissions, and Monday `31 15 * * 1` UTC schedule. Scheduled runs use GitHub's default-branch semantics, not the push branch filter. Swift still builds the app without signing; a **separate** canonical helper build follows initialization and app extraction, before analysis. |
+| [Native helper](.github/workflows/notch_control.yml) | Unfiltered `pocket` push/PR on `macos-26`, read-only contents, non-persisted checkout credentials, 20-minute timeout. Canonical build, all 21 package tests, and exactly eight Swift lint inputs. No app launch, screenshots, privacy grants, signing secrets, or publication. |
+| [CI contracts](.github/workflows/ci_contract_tests.yml), [tests/package](.github/scripts/ci-contract/) | Unfiltered `pocket` push/PR, read-only contents, non-persisted credentials, five-minute timeout. Node's built-in test runner and one exact-pinned YAML parser inspect actual workflow structure, reject malformed/duplicate YAML, and test deliberately mutated configurations. Workflow `run` blocks are data, never executed by these structural tests. Also runs the existing 22 PR-policy tests. |
+| [PR target check](.github/workflows/base_ref_check.yml), [guidance](.github/workflows/base_ref_check_comment.yml) | Existing `pull_request_target` events and check identities remain unchanged: `Fork PR target check` and `Sync PR target guidance comment`. Only `pocket` is an allowed base. Guidance uses its existing comment permissions; product-CI changes do not broaden them. |
+| [Existing PR-policy test workflow](.github/workflows/pr_target_policy_tests.yml) | Retains `Test PR target policy`, its four-file path filter, all-branch PR event, and `pocket` push event. The new contract workflow runs the same suite independently without changing that scope. Policy tests evaluate the existing inline policy script with mocked APIs, not workflow shell blocks or live writes. |
+| [Dependabot](.github/dependabot.yml) | All three existing weekly entries now target `pocket`: GitHub Actions at `/`, pip at `/Configuration/dmg`, Swift at `/`. Ecosystems and cadence unchanged. The isolated contract-test npm dependency is manually maintained; adding a fourth update entry is separate scope. |
+| [Manual build](.github/workflows/manual_build.yml) — **deferred** | Dispatch only, `head_ref` default/fallback `main`, Xcode `16.4` default/fallback, signed reusable build. Not a safe product-validation entry point; no retargeting or activation. |
+| [Reusable packaging](.github/workflows/build_reusable.yml) — **deferred** | `workflow_call`, Xcode `16.4` default, certificate import, version commits/pushes, archive/export using `development`, and app/DMG uploads. Project and product names are already distinct (below). Not notarized distribution or release authorization. |
+| [Release](.github/workflows/release.yml) — **deferred** | Comment-triggered `/release`, eligible same-repository `dev` → `main` PRs, Xcode `16.4`. Includes branch/version pushes, signed build, release upload, and automatic stable-release merge behavior. Do not invoke, retarget, or grant credentials as part of product CI. |
+| [Crowdin](.github/workflows/crowdin.yml) — **deferred** | `dev` push/manual dispatch, translation PRs targeting `dev`, repository writes and external project credentials. Independent Crowdin project/credential ownership is not established; no `pocket` synchronization is promised. |
+| [Issue-form version dropdown](.github/workflows/update-version-dropdown.yml) — **deferred** | Tag pushes, published releases, or manual dispatch; checks out the repository default branch and commits/pushes issue-form changes. Not enabled or redirected by the CI slice. |
+
+The old app trigger `'*'` was not a recursive branch wildcard: slash-containing
+feature branch pushes were not reliably covered by that pattern. Product CI now
+explicitly selects `pocket` pushes and PR **base** `pocket`, so a PR from
+`feature/example` runs regardless of the head branch name. No path filter is
+added to the product/helper/contract checks, avoiding skipped required-check
+contexts for documentation-only PRs. Required-check configuration on GitHub is
+separate from these source files; passing CI never authorizes a merge.
+
+### Safe validation boundaries
+
+Run from the repository root **after any required author/parent reconciliation**.
+The helper checks need macOS with full Xcode (the hosted runner uses `macos-26`)
+and SwiftLint. They exercise policy/output and invalid-input subprocess
+contracts, not Accessibility or capture integration:
+
+```bash
+bash scripts/notch-control/control.sh build
+bash scripts/notch-control/control.sh test
+bash scripts/notch-control/control.sh lint
+```
+
+The contract package needs Node.js 22+ and npm, including on the hosted Ubuntu
+runner. Its install has lifecycle scripts disabled; it does not run tests:
+
+```bash
+npm ci --prefix .github/scripts/ci-contract --ignore-scripts --no-audit --no-fund
+npm test --prefix .github/scripts/ci-contract
+node --test .github/scripts/pr-target-policy.test.cjs
+```
+
+The package-local `.gitignore` excludes only its generated `/node_modules/`.
+Use the ordinary package install above; keep the manifest and lockfile tracked.
+Do not add a root Node manifest, change root ignore rules, or redirect imports.
+The helper keeps its generated output in ignored `scripts/notch-control/.build/`.
+
+App gates remain `scripts/build.sh`, `scripts/test.sh`, and `scripts/lint.sh`;
+app tests start their normal test host, unlike the helper checks. Respect local
+signing, scratch-directory, and user-data restrictions before running them.
+Report inherited lint warnings rather than changing the baseline. In an
+orchestrated delivery, the parent reconciles authored changes, runs the declared
+local gates and independent review, then observes actual hosted PR checks and
+shepherds the PR. These are separate evidence gates, not claims supplied by
+documentation or static tests. No app runtime validation or release is implied
+by this CI-only slice.
+
+### Project versus distribution artifact
+
+[`notchPocket.xcodeproj/project.pbxproj`](notchPocket.xcodeproj/project.pbxproj)
+sets the app's Debug/Release `PRODUCT_NAME` to `notch-pocket`, references
+`notch-pocket.app`, and points `TEST_HOST` at that product. Build/test and CodeQL
+use project/scheme **`notchPocket`**. Reusable packaging uses
+`PROJECT_NAME: notchPocket` for the project, scheme and archive, but
+`APP_PRODUCT_NAME: notch-pocket` for `Release/notch-pocket.app` and
+`Release/notch-pocket.dmg`. Release artifact download and publication agree on
+the DMG name. [`Configuration/dmg/create_dmg.sh`](Configuration/dmg/create_dmg.sh)
+takes explicit app/output paths; it does not derive the app name from the scheme.
+
+Structural tests protect those source-level identities without executing
+packaging. Archive/export success, independent distribution signing,
+notarization, credentials, translation ownership, and release/merge policy
+remain separately approved work. Inherited Xcode 16.4 defaults are not aligned
+with the product's Xcode 26+ build-host requirement. Do not run the deferred
+workflows to discover whether they work.
 
 ## Code Style Guidelines
 
