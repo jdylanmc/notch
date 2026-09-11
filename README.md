@@ -66,6 +66,27 @@ Do not run the inherited public-release workflows as part of local setup:
 they perform remote writes/uploads and do not establish distribution readiness.
 Only the user approves merges and releases.
 
+## Local UI debugging
+
+The repository-local [notch skill](.github/skills/notch/SKILL.md) uses a small
+native [control helper](scripts/notch-control/README.md) for running-app
+discovery, Settings → General/About, and local capture of one selected
+app-owned window. This is the first slice of #18, not full notch control.
+
+```bash
+bash scripts/notch-control/control.sh build
+bash scripts/notch-control/control.sh test
+bash scripts/notch-control/control.sh run inspect --app-path /Applications/notch-pocket.app
+```
+
+For validation, replace that installed-app example with the exact built product
+path. The helper never launches the app, prompts for privacy grants, changes
+preferences, or captures the whole desktop. Settings needs Accessibility;
+screenshots need Screen Recording. Human grant/restart, private local PNG
+handling, restoration, isolated lint commands, and honest runtime limitations
+are covered in the [helper guide](scripts/notch-control/README.md).
+Generated helper output stays under ignored `scripts/notch-control/.build/`.
+
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
