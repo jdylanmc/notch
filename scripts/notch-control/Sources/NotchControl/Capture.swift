@@ -5,7 +5,7 @@ import ScreenCaptureKit
 import UniformTypeIdentifiers
 
 /// A framework callback may arrive after our deadline; it must not resume twice.
-// After initialization, every continuation access is locked; only its remover resumes it, outside the lock.
+/// After initialization, every continuation access is locked; only its remover resumes it, outside the lock.
 private final class CompletionGate<Value>: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Value, Error>?
