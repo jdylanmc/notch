@@ -29,7 +29,7 @@ jobs:
         id: tags
         run: |
           TAGS=$(git tag --sort=-v:refname | head -n 5 | jq -R -s -c 'split("\n")[:-1]')
-          VERSIONS=$(echo '["Select a version"]' | jq -c --argjson tags "$TAGS" '. + $tags')
+          VERSIONS=$(echo '["Select a version","Local source build"]' | jq -c --argjson tags "$TAGS" '. + $tags')
           echo "versions=$VERSIONS" >> $GITHUB_OUTPUT
 
       - name: Issue Forms Dropdown Options

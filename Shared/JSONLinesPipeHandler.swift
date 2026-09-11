@@ -1,6 +1,6 @@
 //
 //  JSONLinesPipeHandler.swift
-//  boringNotch
+//  notchPocket
 //
 //  SPDX-License-Identifier: GPL-3.0-only
 //

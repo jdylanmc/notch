@@ -10,7 +10,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export REPO_ROOT
 
-SCHEME="${SCHEME:-boringNotch}"
+SCHEME="${SCHEME:-notchPocket}"
 CONFIGURATION="${CONFIGURATION:-Debug}"
 DESTINATION="${DESTINATION:-platform=macOS}"
 export SCHEME CONFIGURATION DESTINATION

@@ -2,7 +2,7 @@
 # Run the test suite. Prints the per-test results and the verdict.
 #
 #   scripts/test.sh
-#   scripts/test.sh -only-testing:boringNotchTests/MeetingLinkDetectorTests
+#   scripts/test.sh -only-testing:notchPocketTests/MeetingLinkDetectorTests
 
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 

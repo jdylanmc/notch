@@ -632,3 +632,154 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
    warranty or additional liability or indemnity.
 
 END OF TERMS AND CONDITIONS
+
+-----------------------------------------------------------------------------
+              Historical application and artwork attribution
+-----------------------------------------------------------------------------
+Notch Pocket is derived from Boring Notch (boring.notch), by The Bored Team
+and its contributors: https://github.com/TheBoredTeam/boring.notch
+The inherited application is licensed under GNU GPL v3; see LICENSE. Existing
+source-file author/copyright notices are retained. This fork is independent,
+not an endorsement by the upstream authors.
+
+Origin references formerly presented in README.md, AGENTS.md, CONTRIBUTING.md,
+notchPocket/components/Settings/Views/AboutView.swift, and
+notchPocket/components/Onboarding/WelcomeView.swift are consolidated here.
+The inherited translation project's historical URL is
+https://crowdin.com/project/boring-notch (not this fork's translation service).
+
+Retained original icon artwork in notchPocket/Assets.xcassets is credited to
+@maxtron95: https://github.com/maxtron95. Renaming resource files does not
+transfer authorship. The upstream website was credited to @himanshhhhuv:
+https://github.com/himanshhhhuv. The upstream team wordmark, formerly
+TheBoringTeam.svg in the theboringteam asset, was removed from presentation and
+from the app's assets; its authorship remains with the original contributors.
+
+MediaRemoteAdapter (https://github.com/ungive/mediaremote-adapter) enables the
+Now Playing source on macOS 15.4+. NotchDrop
+(https://github.com/Lakr233/NotchDrop) contributed to the original shelf feature.
+Thanks to SwiftUI, dependency authors/maintainers, and contributors and users
+of the original application and this independent app.
+
+Historical localized credit from notchPocket/Localizable.xcstrings (no longer
+presented in the application; retained verbatim for attribution):
+{
+  "Made with 🫶🏻 by not so boring not.people": {
+    "localizations": {
+      "cs": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Vyrobeno s 🫶🏻 ne tak nudnými ne lidmi"
+        }
+      },
+      "de": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Gemacht mit 🫶🏻 durch nicht so boring not.people"
+        }
+      },
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Made with 🫶🏻 by not so boring not.people"
+        }
+      },
+      "en-GB": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Made with 🫶🏻 by not so boring not.people"
+        }
+      },
+      "es": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Hecho con 🫶🏻 por gente no tan aburrida"
+        }
+      },
+      "fr": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Fait avec 🫶🏻 par des personnes pas si ennuyeuses - boring not.people"
+        }
+      },
+      "he": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "נוצר עם 🫶 על ידי אנשים לא כל כך משעממים (not.people)"
+        }
+      },
+      "hu": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "🫶🏻-tel készítette a not so boring not.people"
+        }
+      },
+      "it": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Realizzato col 🫶🏻 da not so boring not.people"
+        }
+      },
+      "ja": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "not boring not.peopleによって🫶とともに作られました"
+        }
+      },
+      "ko": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "지루하지 않은 비사람들이 🫶🏻 마음을 담아 만들었습니다"
+        }
+      },
+      "nl": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Met 🫶🏻 gemaakt door not so boring not.people"
+        }
+      },
+      "pl": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Zrobione z 🫶🏻 przez niezbyt nudnych ludzi"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Feito com 🫶🏻 por pessoas não tão chatas"
+        }
+      },
+      "ru": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Сделано с 🫶 командой not so boring not.people"
+        }
+      },
+      "tr": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "O kadar da sıkıcı olmayan insanlar tarafından 🫶🏻 ile yapılmıştır"
+        }
+      },
+      "uk": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Створено з 🫶🏻 від not so boring not.people"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "不那么无趣的 not.people 团队 用🫶🏻出品"
+        }
+      },
+      "zh-Hant-HK": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "由不那麼無聊的 not.people 團隊用 🫶🏻 製作"
+        }
+      }
+    }
+  }
+}
