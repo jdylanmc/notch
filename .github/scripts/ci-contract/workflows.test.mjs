@@ -5,9 +5,9 @@ import { parseDocument } from 'yaml';
 
 const root = new URL('../../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
-const checkout = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
-const xcodebuild = 'mxcl/xcodebuild@d3ee9b419c1be9a988086c58fe0988f32d99cfc5';
-const codeql = 'ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd';
+const checkout = 'actions/checkout';
+const xcodebuild = 'mxcl/xcodebuild';
+const codeql = 'github/codeql-action';
 const helper = 'bash scripts/notch-control/control.sh';
 const install = 'npm ci --prefix .github/scripts/ci-contract --ignore-scripts --no-audit --no-fund';
 
@@ -25,6 +25,16 @@ const step = (job, name) => {
   assert.equal(matches.length, 1, `Expected exactly one ${name} step`);
   return matches[0];
 };
+
+function pinnedAction(job, name, repository) {
+  const { uses } = step(job, name);
+  assert.equal(typeof uses, 'string', `${name}: expected an action`);
+  const [identity, commit] = uses.split('@');
+  assert.equal(identity, repository, `${name}: expected action repository/subpath`);
+  assert.match(commit ?? '', /^[a-fA-F0-9]{40}$/, `${name}: expected an immutable full SHA`);
+  assert.equal(uses, `${repository}@${commit}`);
+  return uses;
+}
 
 function productTriggers(config, scheduled = false) {
   assert.deepEqual(Object.keys(config.on).sort(), scheduled
@@ -62,9 +72,9 @@ function appContract(config) {
   assert.equal(job.if, undefined);
   assert.equal(job['continue-on-error'], undefined);
   assert.deepEqual(job.steps, [
-    { name: 'Checkout', uses: checkout },
+    { name: 'Checkout', uses: pinnedAction(job, 'Checkout', checkout) },
     ...[['Build', 'build', 'release'], ['Test', 'test', 'debug']].map(([name, action, configuration]) => ({
-      name, uses: xcodebuild, with: {
+      name, uses: pinnedAction(job, name, xcodebuild), with: {
         xcode: '${{ matrix.xcode }}', platform: 'macOS', scheme: 'notchPocket',
         action, verbosity: 'xcpretty', 'upload-logs': 'always', configuration,
       },
@@ -83,7 +93,7 @@ function lintContract(config) {
   assert.deepEqual(config.jobs, { swiftlint: {
     name: 'SwiftLint', 'runs-on': 'macos-26',
     steps: [
-      { name: 'Checkout', uses: checkout, with: { 'persist-credentials': false } },
+      { name: 'Checkout', uses: pinnedAction(config.jobs.swiftlint, 'Checkout', checkout), with: { 'persist-credentials': false } },
       { name: 'Install SwiftLint', run: 'which swiftlint || brew install swiftlint' },
       { name: 'Run SwiftLint', run: 'swiftlint --config .swiftlint.yml' },
     ],
@@ -113,14 +123,17 @@ function codeqlContract(config) {
     'Build Notch Pocket', 'Build notch-control', 'Perform CodeQL Analysis',
   ]);
   assert.deepEqual(step(job, 'Checkout repository'), {
-    name: 'Checkout repository', uses: checkout, with: { 'persist-credentials': false },
+    name: 'Checkout repository', uses: pinnedAction(job, 'Checkout repository', checkout), with: { 'persist-credentials': false },
   });
+  const init = pinnedAction(job, 'Initialize CodeQL', `${codeql}/init`);
+  const analyze = pinnedAction(job, 'Perform CodeQL Analysis', `${codeql}/analyze`);
+  assert.equal(init.split('@')[1], analyze.split('@')[1], 'CodeQL init/analyze must use the same SHA');
   assert.deepEqual(step(job, 'Initialize CodeQL'), {
-    name: 'Initialize CodeQL', uses: `github/codeql-action/init@${codeql}`,
+    name: 'Initialize CodeQL', uses: init,
     with: { languages: '${{ matrix.language }}', 'build-mode': '${{ matrix.build-mode }}' },
   });
   assert.deepEqual(step(job, 'Perform CodeQL Analysis'), {
-    name: 'Perform CodeQL Analysis', uses: `github/codeql-action/analyze@${codeql}`,
+    name: 'Perform CodeQL Analysis', uses: analyze,
     with: { category: '/language:${{matrix.language}}' },
   });
   const app = step(job, 'Build Notch Pocket');
@@ -150,7 +163,11 @@ function hostedContract(config, kind) {
       'runs-on': isHelper ? 'macos-26' : 'ubuntu-latest',
       'timeout-minutes': isHelper ? 20 : 5,
       steps: [
-        { name: 'Checkout', uses: checkout, with: { 'persist-credentials': false } },
+        {
+          name: 'Checkout',
+          uses: pinnedAction(config.jobs[isHelper ? 'validate' : 'test'], 'Checkout', checkout),
+          with: { 'persist-credentials': false },
+        },
         ...(isHelper ? [
           { name: 'Install SwiftLint', run: 'which swiftlint || brew install swiftlint' },
           { name: 'Build helper', run: `${helper} build` },
@@ -190,6 +207,15 @@ function packagingContract(reusable, release) {
   assert.ok(step(release.jobs.publish, 'Create GitHub release').run.includes('Release/notch-pocket.dmg'));
 }
 
+const swiftTestInvocation = 'xcrun swift test "${common[@]}" >&2 || fail "Native tool tests failed."';
+
+function launcherTestContract(source) {
+  const invocations = source.split('\n').map((line) => line.trim())
+    .filter((line) => /^xcrun swift test\b/.test(line));
+  assert.deepEqual(invocations, [swiftTestInvocation], 'Launcher retains the complete unfiltered Swift test line');
+  assert.ok(source.includes('[[ $# -eq 0 ]] || fail "test takes no arguments."'));
+}
+
 for (const name of readdirSync(new URL('.github/workflows/', root)).filter((name) => /\.ya?ml$/.test(name))) {
   test(`${name}: parses as strict YAML (run blocks remain data)`, () => parse(read(`.github/workflows/${name}`)));
 }
@@ -208,6 +234,42 @@ test('product SwiftLint remains non-strict and uses the existing config', () => 
 test('CodeQL retains all scans and separately extracts app and helper after init', () => codeqlContract(workflow('codeql')));
 test('hosted helper uses only canonical permission-free checks', () => hostedContract(workflow('notch_control'), 'helper'));
 test('hosted contracts also execute the existing PR policy suite without path filtering', () => hostedContract(workflow('ci_contract_tests'), 'contracts'));
+
+const actionFixtures = [
+  ['cicd', appContract, 'build', ['Checkout']],
+  ['cicd', appContract, 'build', ['Build']],
+  ['cicd', appContract, 'build', ['Test']],
+  ['swiftlint', lintContract, 'swiftlint', ['Checkout']],
+  ['codeql', codeqlContract, 'analyze', ['Checkout repository']],
+  ['codeql', codeqlContract, 'analyze', ['Initialize CodeQL', 'Perform CodeQL Analysis']],
+  ['notch_control', (c) => hostedContract(c, 'helper'), 'validate', ['Checkout']],
+  ['ci_contract_tests', (c) => hostedContract(c, 'contracts'), 'test', ['Checkout']],
+];
+const replacementCommit = (uses) => uses.endsWith(`@${'1'.repeat(40)}`) ? '2'.repeat(40) : '1'.repeat(40);
+
+for (const [file, check, jobId, names] of actionFixtures) {
+  test(`accept immutable action update: ${file} ${names.join(' + ')}`, () => {
+    const config = workflow(file);
+    const job = config.jobs[jobId];
+    const commit = replacementCommit(step(job, names[0]).uses);
+    for (const name of names) {
+      const action = step(job, name);
+      action.uses = `${action.uses.split('@')[0]}@${commit}`;
+    }
+    assert.doesNotThrow(() => check(config));
+  });
+  for (const name of names) {
+    for (const mutation of ['wrong identity', 'floating tag']) {
+      test(`reject action ${mutation}: ${file} ${name}`, () => {
+        const config = workflow(file);
+        const action = step(config.jobs[jobId], name);
+        const [identity, commit] = action.uses.split('@');
+        action.uses = mutation === 'wrong identity' ? `unexpected/action@${commit}` : `${identity}@v4`;
+        assert.throws(() => check(config), assert.AssertionError);
+      });
+    }
+  }
+}
 
 test('Dependabot retains all three weekly ecosystems and directories, targeting pocket', () => {
   assert.deepEqual(parse(read('.github/dependabot.yml')), { version: 2, updates: [
@@ -253,10 +315,10 @@ test('canonical helper launcher includes all 21 tests and exactly eight Swift li
     'Tests/ControlCoreTests/ControlCoreTests.swift',
   ]);
   const launcher = read('scripts/notch-control/control.sh');
+  launcherTestContract(launcher);
   for (const fragment of [
     'xcrun swift build "${common[@]}" --product notch-control',
     'export NOTCH_CONTROL_TEST_EXECUTABLE="$cache/products/debug/notch-control"',
-    'xcrun swift test "${common[@]}" >&2',
     'files=("$root/Package.swift")',
     'find "$root/Sources" "$root/Tests"',
     'export SCRIPT_INPUT_FILE_COUNT="${#files[@]}"',
@@ -265,6 +327,15 @@ test('canonical helper launcher includes all 21 tests and exactly eight Swift li
   ]) assert.ok(launcher.includes(fragment), `Launcher retains ${fragment}`);
   const tests = read('scripts/notch-control/Tests/ControlCoreTests/ControlCoreTests.swift');
   assert.equal([...tests.matchAll(/^\s+func test\w+\(/gm)].length, 21);
+});
+
+test('reject actual-source mutation: Swift test filter after redirection', () => {
+  const launcher = read('scripts/notch-control/control.sh');
+  launcherTestContract(launcher);
+  const filtered = launcher.replace(swiftTestInvocation,
+    'xcrun swift test "${common[@]}" >&2 --filter ControlCoreTests.testValidCommands || fail "Native tool tests failed."');
+  assert.notEqual(filtered, launcher, 'Fixture must mutate the effective Swift test invocation');
+  assert.throws(() => launcherTestContract(filtered), assert.AssertionError);
 });
 
 test('packaging uses project/scheme notchPocket, but notch-pocket.app and .dmg', () => {
@@ -308,6 +379,13 @@ const mutations = [
   ['changed CodeQL schedule', 'codeql', codeqlContract, (c) => { c.on.schedule = []; }],
   ['lost scan language', 'codeql', codeqlContract, (c) => { c.jobs.analyze.strategy.matrix.include.shift(); }],
   ['lost scan permission', 'codeql', codeqlContract, (c) => { delete c.jobs.analyze.permissions['security-events']; }],
+  ['mismatched CodeQL versions', 'codeql', codeqlContract, (c) => {
+    step(c.jobs.analyze, 'Perform CodeQL Analysis').uses =
+      `${codeql}/analyze@${replacementCommit(step(c.jobs.analyze, 'Initialize CodeQL').uses)}`;
+  }],
+  ['wrong CodeQL subpath', 'codeql', codeqlContract, (c) => {
+    step(c.jobs.analyze, 'Perform CodeQL Analysis').uses = step(c.jobs.analyze, 'Initialize CodeQL').uses;
+  }],
   ['helper replacing app extraction', 'codeql', codeqlContract, (c) => { step(c.jobs.analyze, 'Build Notch Pocket').run = `${helper} build`; }],
   ['helper before CodeQL init', 'codeql', codeqlContract, (c) => {
     const steps = c.jobs.analyze.steps;
