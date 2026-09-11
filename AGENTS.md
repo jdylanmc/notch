@@ -191,6 +191,18 @@ and exports using the `development` method (default identity:
 notarized-distribution setup or permission to run it. Distribution signing,
 hardened-runtime requirements, and notarization need separate approved work.
 
+## macOS expertise skills
+
+Use the vetted project-local [SwiftUI expertise](.github/skills/swiftui-expert-skill/SKILL.md)
+and [macOS patterns](.github/skills/macos-patterns/SKILL.md) when relevant.
+Read each entry point's notchPocket compatibility guard before its upstream
+examples. Preserve the existing AppKit/Defaults architecture and macOS 14
+deployment; newer host SDKs and iOS availability checks do not change that
+contract. These references grant no execution, tracing, privacy, updater,
+signing or release authority. The [vetting/update record](.github/skills/README.md)
+lists all six candidates, pinned provenance, deferred skills and coverage gaps.
+Do not replace these local adaptations through an unreviewed bulk update.
+
 ## Layout
 
 ```

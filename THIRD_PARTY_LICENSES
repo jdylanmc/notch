@@ -1,4 +1,24 @@
 -----------------------------------------------------------------------------
+                  Repository-local expertise skills
+-----------------------------------------------------------------------------
+
+SwiftUI Expert Skill
+Source: https://github.com/AvdLee/SwiftUI-Agent-Skill
+Revision: 4c6a97d15aa5e023538c3cb06b5192f241dd451d
+MIT License, Copyright (c) 2026 Antoine van der Lee.
+Complete notice: .github/skills/swiftui-expert-skill/LICENSE
+
+macos-patterns
+Source: https://github.com/fayazara/macos-app-skills
+Revision: a60365ae85bfc3d1f2f8b260b080d77bfb2f3ec0
+Upstream README declares MIT; no standalone license or full copyright notice
+is supplied at that revision. The actual declaration and provenance are
+preserved in .github/skills/macos-patterns/LICENSE.
+
+These packages are development references with local compatibility guards,
+not app runtime dependencies or permission to run their example workflows.
+
+-----------------------------------------------------------------------------
                         BSD 3-Clause License
         applies to:
         - AsyncXPCConnection, Copyright (c) 2023, Chime
