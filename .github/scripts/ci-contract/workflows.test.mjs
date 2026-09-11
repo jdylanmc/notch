@@ -125,6 +125,7 @@ function codeqlContract(config) {
   assert.deepEqual(step(job, 'Checkout repository'), {
     name: 'Checkout repository', uses: pinnedAction(job, 'Checkout repository', checkout), with: { 'persist-credentials': false },
   });
+  assert.equal(step(job, 'Resolve Swift package dependencies').if, "matrix.language == 'swift'");
   const init = pinnedAction(job, 'Initialize CodeQL', `${codeql}/init`);
   const analyze = pinnedAction(job, 'Perform CodeQL Analysis', `${codeql}/analyze`);
   assert.equal(init.split('@')[1], analyze.split('@')[1], 'CodeQL init/analyze must use the same SHA');
@@ -208,12 +209,54 @@ function packagingContract(reusable, release) {
 }
 
 const swiftTestInvocation = 'xcrun swift test "${common[@]}" >&2 || fail "Native tool tests failed."';
+const swiftBuildInvocation = 'xcrun swift build "${common[@]}" --product notch-control >&2 || fail "Native tool build failed."';
+const testExecutableExport = 'export NOTCH_CONTROL_TEST_EXECUTABLE="$cache/products/debug/notch-control"';
+const commonDefinition = [
+  'common=(--package-path "$root" --scratch-path "$cache/products"',
+  '--cache-path "$cache/cache" --config-path "$cache/config" --security-path "$cache/security")',
+];
+const shellLines = (source) => source.split('\n').map((line) => line.trim()).filter(Boolean);
+const launcherArm = (source, mode) =>
+  shellLines(source.match(new RegExp(`^\\s*${mode}\\)\\s*\\n([\\s\\S]*?)^\\s*;;`, 'm'))?.[1] ?? '');
 
 function launcherTestContract(source) {
-  const invocations = source.split('\n').map((line) => line.trim())
-    .filter((line) => /^xcrun swift test\b/.test(line));
+  const lines = shellLines(source);
+  // Target the declared launcher shape, not arbitrary Bash semantics; ignore indentation/blank lines.
+  const definitionIndex = lines.indexOf(commonDefinition[0]);
+  assert.ok(definitionIndex >= 0 && definitionIndex < lines.indexOf('case "$mode" in'));
+  assert.deepEqual(lines.slice(definitionIndex, definitionIndex + 2), commonDefinition,
+    'Shared Swift arguments remain fixed and unfiltered');
+  assert.deepEqual(lines.filter((line) => /\bcommon\b/.test(line)),
+    [commonDefinition[0], swiftBuildInvocation, swiftBuildInvocation, swiftTestInvocation],
+    'Shared arguments have only the canonical definition and build/test uses, with no mutations');
+  const invocations = lines.filter((line) => /^xcrun swift test\b/.test(line));
   assert.deepEqual(invocations, [swiftTestInvocation], 'Launcher retains the complete unfiltered Swift test line');
-  assert.ok(source.includes('[[ $# -eq 0 ]] || fail "test takes no arguments."'));
+  assert.deepEqual(launcherArm(source, 'test'), [
+    '[[ $# -eq 0 ]] || fail "test takes no arguments."',
+    'export NOTCH_CONTROL_TEST_ROOT="$cache"',
+    swiftBuildInvocation,
+    testExecutableExport,
+    swiftTestInvocation,
+    String.raw`printf '{"ok":true,"command":"test"}\n'`,
+  ], 'Test arm builds the executable and runs the full suite without intervening argument changes');
+}
+
+function launcherLintContract(source) {
+  // Keep collection and export together: an inventory alone cannot prove every file reaches lint.
+  assert.deepEqual(launcherArm(source, 'lint'), [
+    '[[ $# -eq 0 ]] || fail "lint takes no arguments."',
+    'files=("$root/Package.swift")',
+    "while IFS= read -r -d '' file; do",
+    'files+=("$file")',
+    'done < <(find "$root/Sources" "$root/Tests" -type d -name .build -prune -o -type f -name \'*.swift\' -print0)',
+    'export SCRIPT_INPUT_FILE_COUNT="${#files[@]}"',
+    'for index in "${!files[@]}"; do',
+    'export "SCRIPT_INPUT_FILE_$index=${files[$index]}"',
+    'done',
+    'swiftlint lint --config "$root/../../.swiftlint.yml" --no-cache --use-script-input-files >&2 ||',
+    'fail "Native tool lint failed."',
+    String.raw`printf '{"ok":true,"command":"lint"}\n'`,
+  ], 'Lint initializes, appends, enumerates and exports every input before the canonical lint command');
 }
 
 for (const name of readdirSync(new URL('.github/workflows/', root)).filter((name) => /\.ya?ml$/.test(name))) {
@@ -316,15 +359,7 @@ test('canonical helper launcher includes all 21 tests and exactly eight Swift li
   ]);
   const launcher = read('scripts/notch-control/control.sh');
   launcherTestContract(launcher);
-  for (const fragment of [
-    'xcrun swift build "${common[@]}" --product notch-control',
-    'export NOTCH_CONTROL_TEST_EXECUTABLE="$cache/products/debug/notch-control"',
-    'files=("$root/Package.swift")',
-    'find "$root/Sources" "$root/Tests"',
-    'export SCRIPT_INPUT_FILE_COUNT="${#files[@]}"',
-    'export "SCRIPT_INPUT_FILE_$index=${files[$index]}"',
-    'swiftlint lint --config "$root/../../.swiftlint.yml" --no-cache --use-script-input-files',
-  ]) assert.ok(launcher.includes(fragment), `Launcher retains ${fragment}`);
+  launcherLintContract(launcher);
   const tests = read('scripts/notch-control/Tests/ControlCoreTests/ControlCoreTests.swift');
   assert.equal([...tests.matchAll(/^\s+func test\w+\(/gm)].length, 21);
 });
@@ -337,6 +372,39 @@ test('reject actual-source mutation: Swift test filter after redirection', () =>
   assert.notEqual(filtered, launcher, 'Fixture must mutate the effective Swift test invocation');
   assert.throws(() => launcherTestContract(filtered), assert.AssertionError);
 });
+
+for (const [name, before, after] of [
+  ['filter in shared definition', commonDefinition[0], `${commonDefinition[0]} --filter ControlCoreTests.testValidCommands`],
+  ['shared append before dispatch', 'case "$mode" in', 'common+=(--filter ControlCoreTests.testValidCommands)\ncase "$mode" in'],
+  ['indirect filter after preliminary build/export', testExecutableExport,
+    `${testExecutableExport}\n        common+=(--filter ControlCoreTests.testValidCommands)`],
+  ['test-arm argument reassignment', testExecutableExport,
+    `${testExecutableExport}\n        common=(--package-path "$root" --filter ControlCoreTests.testValidCommands)`],
+]) {
+  test(`reject actual-source mutation: ${name}`, () => {
+    const launcher = read('scripts/notch-control/control.sh');
+    const mutated = launcher.replace(before, after);
+    assert.notEqual(mutated, launcher, 'Fixture must change the shared Swift test arguments');
+    assert.throws(() => launcherTestContract(mutated), assert.AssertionError);
+  });
+}
+
+for (const [name, before, after] of [
+  ['lost lint initialization', 'files=("$root/Package.swift")', 'files=()'],
+  ['lint collector reset instead of append', 'files+=("$file")', 'files=("$file")'],
+  ['lint inputs reassigned before export', 'export SCRIPT_INPUT_FILE_COUNT="${#files[@]}"',
+    'files=("$root/Package.swift")\n        export SCRIPT_INPUT_FILE_COUNT="${#files[@]}"'],
+  ['lost lint enumeration', 'for index in "${!files[@]}"; do', 'for index in 0; do'],
+  ['lost lint count export', 'export SCRIPT_INPUT_FILE_COUNT="${#files[@]}"', ''],
+  ['lost lint file export', 'export "SCRIPT_INPUT_FILE_$index=${files[$index]}"', ''],
+]) {
+  test(`reject actual-source mutation: ${name}`, () => {
+    const launcher = read('scripts/notch-control/control.sh');
+    const mutated = launcher.replace(before, after);
+    assert.notEqual(mutated, launcher, 'Fixture must change the lint input collection/export');
+    assert.throws(() => launcherLintContract(mutated), assert.AssertionError);
+  });
+}
 
 test('packaging uses project/scheme notchPocket, but notch-pocket.app and .dmg', () => {
   packagingContract(workflow('build_reusable'), workflow('release'));
@@ -379,6 +447,9 @@ const mutations = [
   ['changed CodeQL schedule', 'codeql', codeqlContract, (c) => { c.on.schedule = []; }],
   ['lost scan language', 'codeql', codeqlContract, (c) => { c.jobs.analyze.strategy.matrix.include.shift(); }],
   ['lost scan permission', 'codeql', codeqlContract, (c) => { delete c.jobs.analyze.permissions['security-events']; }],
+  ['lost Swift-only dependency resolution', 'codeql', codeqlContract, (c) => {
+    delete step(c.jobs.analyze, 'Resolve Swift package dependencies').if;
+  }],
   ['mismatched CodeQL versions', 'codeql', codeqlContract, (c) => {
     step(c.jobs.analyze, 'Perform CodeQL Analysis').uses =
       `${codeql}/analyze@${replacementCommit(step(c.jobs.analyze, 'Initialize CodeQL').uses)}`;
