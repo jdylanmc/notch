@@ -25,3 +25,5 @@ jobs:
         run: npm test --prefix .github/scripts/ci-contract
       - name: Test PR target policy
         run: node --test .github/scripts/pr-target-policy.test.cjs
+      - name: Test local packaging policy
+        run: python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'
