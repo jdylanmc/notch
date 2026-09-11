@@ -181,21 +181,39 @@ models; helper tests validate pure policy, not live accessibility integration.
 
 ### Explicit per-panel notch actions
 
-The same marked `AXWindow` advertises these exact, locale-independent native
-action names through `accessibilityActionNames()`:
+The same versioned marked `AXWindow` exposes these exact, locale-independent
+AppKit action names through the native protocol selectors:
 
-- `com.jdylanmc.notchpocket.notch.v1.open`
-- `com.jdylanmc.notchpocket.notch.v1.close`
+- `AXShowAlternateUI` → `accessibilityPerformShowAlternateUI()` → open
+- `AXShowDefaultUI` → `accessibilityPerformShowDefaultUI()` → close
 
 `accessibilityActionDescription` provides catalog-localized “Open Notch” and
-“Close Notch” descriptions. `accessibilityPerformAction` routes only to the
-weakly bound existing model, never `NSPanel.close()` (window teardown).
-The narrow legacy action transport is deliberate: it exposes stable names to
-`AXUIElementCopyActionNames` rather than assuming a localized
-`NSAccessibilityCustomAction` name is the native dispatch name. Its deprecation
-warnings are not suppressed; native discovery/dispatch and VoiceOver still need
-runtime verification. No new service, forwarding hierarchy, state cache or publisher.
+“Close Notch” descriptions. The protocol methods route only to the weakly bound
+existing model, never `NSPanel.close()` (window teardown).
+Apple defines these actions for alternate/default hover UI; the selectors are
+available since macOS 10.10, within the macOS 14 deployment target.
+`isAccessibilitySelectorAllowed` enables them only for a live bound panel.
+The accompanying `isAccessibilityAlternateUIVisible` getter reads the same
+model's open state; its inherited setter is denied/no-op, like `AXValue`.
+There is no second state or writable visibility control.
+The versioned panel marker, not a localized action label, qualifies their meaning.
+Older custom `com.jdylanmc.notchpocket.notch.v1.open|close` names are not accepted:
+legacy enumeration advertised those names but real dispatch failed with AX
+`-25205`. Direct calls to the legacy method did not test AppKit's native bridge.
+Standard protocol selectors supply a documented dispatch binding without
+assuming that `NSAccessibilityCustomAction`'s localized name is a machine ID.
+The remaining legacy description/read-only attribute hooks' deprecation warnings
+are not suppressed. No new service, forwarding hierarchy, state cache or publisher.
 Read-only identifier/value setters and native focus/sharing/window policy remain.
+App tests check Objective-C selector overrides, BOOL signatures and lifetime
+permission, alongside all model-routing/guard tests; helper tests compare action
+names to SDK constants and retain single-attempt error behavior, including
+`-25205`. These are not cross-process dispatch tests. Native discovery,
+dispatch, localized descriptions and VoiceOver still need runtime verification.
+
+API references: Apple's [hover-UI action](https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol/accessibilityperformshowalternateui())
+and [selector permission](https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol/isaccessibilityselectorallowed(_:))
+contracts.
 
 Opening uses the same `StandardAnimations.interactive` transaction as normal
 opening; closing leaves the existing ContentView state-driven animation in
@@ -223,9 +241,10 @@ Success adds this `notchAction` object (contract example, not runtime evidence):
 
 `outcome: already_at_target` explicitly means no action was attempted. Unsupported
 control, stale/foreign/missing selection, permission loss and native failures are
-nonzero errors. The legacy action API has no model refusal result payload:
-onboarding/sharing refusal leaves state unchanged and ends as `timeout`, not
-success. Timeout or dispatch error may mean an action was delivered; never retry
+nonzero errors. The protocol methods' Boolean reports that a request was
+triggered, not that the model changed: onboarding/sharing refusal leaves state
+unchanged and ends as `timeout`, not success. A missing source returns false.
+Timeout or dispatch error may mean an action was delivered; never retry
 automatically. Reinspect current state before planning restoration.
 An observed target is not animation completion, persistent visibility, or proof
 the requested action caused a concurrent state change. Normal interactions can

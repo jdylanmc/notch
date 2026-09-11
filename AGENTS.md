@@ -121,8 +121,9 @@ local and report ignored `scripts/notch-control/.build/` residue.
 or titles. Older apps without markers are `unsupported`; missing Accessibility
 is `accessibility_unavailable`, never an empty success or an assumed closed
 state. `notch open|close --window ID` requires a fresh exact owned marked-panel
-mapping, current app identity, Accessibility and the advertised versioned native
-action. One action attempt, then bounded observed model state; already-at-target
+mapping, current app identity, Accessibility and the advertised native hover-UI
+action (`AXShowAlternateUI` to open, `AXShowDefaultUI` to close), scoped by the
+versioned panel marker. One action attempt, then bounded observed model state; already-at-target
 is an explicit `already_at_target` no-op. Unsupported/stale/failed/timed-out
 requests never report success. Refused model transitions time out; do not retry
 actions or bypass onboarding/sharing guards. Only the existing per-screen model
@@ -135,8 +136,11 @@ Parent-owned runtime checks must exercise closed → open → closed on the exac
 signed candidate, inspect selected-window images locally only when shareable,
 and restore recorded notch state as well as Settings and app lifecycle.
 Normal hover/timers remain active; observed state is not animation completion
-or a persistent visibility lock. Retain the narrow legacy AX transport hooks
-and report their deprecation warnings, rather than suppressing them.
+or a persistent visibility lock. Use AppKit's protocol action selectors, not
+arbitrary names added to legacy action discovery: advertised names alone did
+not establish working native dispatch. Retain only the narrow legacy
+description/read-only attribute hooks and report their deprecation warnings,
+rather than suppressing them.
 
 ### App build environment
 

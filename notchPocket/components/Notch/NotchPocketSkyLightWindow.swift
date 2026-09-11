@@ -42,8 +42,8 @@ protocol NotchObservationSource: AnyObject {
 extension NotchPocketViewModel: NotchObservationSource {}
 
 class NotchPocketSkyLightWindow: NSPanel {
-    static let openNotchAction = NSAccessibility.Action(rawValue: "com.jdylanmc.notchpocket.notch.v1.open")
-    static let closeNotchAction = NSAccessibility.Action(rawValue: "com.jdylanmc.notchpocket.notch.v1.close")
+    static let openNotchAction = NSAccessibility.Action.showAlternateUI
+    static let closeNotchAction = NSAccessibility.Action.showDefaultUI
     private var isSkyLightEnabled: Bool = false
     weak var observationSource: (any NotchObservationSource)?
 
@@ -66,13 +66,11 @@ class NotchPocketSkyLightWindow: NSPanel {
 
     override func setAccessibilityValue(_ accessibilityValue: Any?) {}
 
-    // Explicit AX action names keep discovery locale-independent. The legacy transport
-    // has no result payload: clients must observe AXValue, not equate dispatch with success.
-    override func accessibilityActionNames() -> [NSAccessibility.Action] {
-        let native = super.accessibilityActionNames()
-        guard observationSource != nil, windowNumber > 0 else { return native }
-        return native + [Self.openNotchAction, Self.closeNotchAction]
+    override func isAccessibilityAlternateUIVisible() -> Bool {
+        observationSource?.notchState == .open
     }
+
+    override func setAccessibilityAlternateUIVisible(_ accessibilityAlternateUIVisible: Bool) {}
 
     override func accessibilityActionDescription(_ action: NSAccessibility.Action) -> String? {
         switch action {
@@ -85,25 +83,35 @@ class NotchPocketSkyLightWindow: NSPanel {
         }
     }
 
-    override func accessibilityPerformAction(_ action: NSAccessibility.Action) {
-        switch action {
-        case Self.openNotchAction:
-            guard let source = observationSource, windowNumber > 0, source.notchState != .open else { return }
-            withAnimation(StandardAnimations.interactive) {
-                _ = source.open()
-            }
-        case Self.closeNotchAction:
-            guard let source = observationSource, windowNumber > 0, source.notchState != .closed else { return }
-            // Match ordinary closing: ContentView owns the state-driven close animation.
-            source.close()
-        default:
-            super.accessibilityPerformAction(action)
+    // AppKit binds these protocol selectors to AXShowAlternateUI/AXShowDefaultUI,
+    // the native actions for hover UI. Advertising arbitrary legacy names alone
+    // did not establish a working AXUIElementPerformAction dispatch path.
+    override func accessibilityPerformShowAlternateUI() -> Bool {
+        guard let source = observationSource, windowNumber > 0 else { return false }
+        guard source.notchState != .open else { return true }
+        withAnimation(StandardAnimations.interactive) {
+            _ = source.open()
         }
+        // NSAccessibility's result means triggered, not model/animation completion.
+        return true
+    }
+
+    override func accessibilityPerformShowDefaultUI() -> Bool {
+        guard let source = observationSource, windowNumber > 0 else { return false }
+        guard source.notchState != .closed else { return true }
+        // Match ordinary closing: ContentView owns the state-driven close animation.
+        source.close()
+        return true
     }
 
     override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+        if selector == #selector(accessibilityPerformShowAlternateUI) ||
+            selector == #selector(accessibilityPerformShowDefaultUI) {
+            return observationSource != nil && windowNumber > 0
+        }
         if selector == #selector(setAccessibilityValue(_:)) ||
-            selector == #selector(setAccessibilityIdentifier(_:)) {
+            selector == #selector(setAccessibilityIdentifier(_:)) ||
+            selector == #selector(setAccessibilityAlternateUIVisible(_:)) {
             return false
         }
         return super.isAccessibilitySelectorAllowed(selector)
@@ -112,7 +120,7 @@ class NotchPocketSkyLightWindow: NSPanel {
     // NSPanel's AX transport can advertise AXValue as writable despite selector denial.
     // Keep this compatibility hook narrow; other native attributes retain AppKit policy.
     override func accessibilityIsAttributeSettable(_ attribute: NSAccessibility.Attribute) -> Bool {
-        if attribute == .value || attribute == .identifier {
+        if attribute == .value || attribute == .identifier || attribute == .alternateUIVisible {
             return false
         }
         return super.accessibilityIsAttributeSettable(attribute)

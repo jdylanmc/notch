@@ -310,7 +310,7 @@ public enum AttributeRead<Value> {
 public enum NotchAction: String, Codable, CaseIterable {
     case open, close
 
-    public var nativeName: String { "com.jdylanmc.notchpocket.notch.v1." + rawValue }
+    public var nativeName: String { self == .open ? "AXShowAlternateUI" : "AXShowDefaultUI" }
     public var targetState: NotchPanelState.State { self == .open ? .open : .closed }
 }
 

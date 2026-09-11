@@ -65,7 +65,8 @@ bash scripts/notch-control/control.sh run notch close --window WINDOW_ID \
   --app-path /absolute/built/notch-pocket.app
 ```
 
-Each command verifies the owned marker and exact advertised native action, then
+Each command verifies the versioned owned marker and exact advertised native
+hover-UI action (`AXShowAlternateUI` for open, `AXShowDefaultUI` for close), then
 returns `notchAction` with `windowID`, `action`, `state` and `outcome`:
 `changed` or `already_at_target` (no action attempted). No dispatch-only success.
 Unsupported/stale/action failure/timeout is an error. The existing onboarding

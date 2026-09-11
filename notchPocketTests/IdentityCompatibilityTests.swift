@@ -7,6 +7,7 @@ import Foundation
 import AppKit
 import Defaults
 import MachO
+import ObjectiveC
 import XCTest
 
 @testable import notchPocket
@@ -51,6 +52,7 @@ final class IdentityCompatibilityTests: XCTestCase {
         let baselineStyle = panel.styleMask
         XCTAssertEqual(panel.accessibilityIdentifier(), "")
         XCTAssertNil(panel.accessibilityValue())
+        XCTAssertFalse(panel.isAccessibilityAlternateUIVisible())
         XCTAssertEqual(panel.level, .mainMenu + 3)
         XCTAssertEqual(panel.sharingType, baselineSharing)
         XCTAssertTrue(panel.isFloatingPanel)
@@ -69,6 +71,7 @@ final class IdentityCompatibilityTests: XCTestCase {
             XCTAssertEqual(panel.accessibilityIdentifier(),
                            "com.jdylanmc.notchpocket.notch.v1.window.\(panel.windowNumber)")
             XCTAssertEqual(panel.accessibilityValue() as? String, state == .open ? "open" : "closed")
+            XCTAssertEqual(panel.isAccessibilityAlternateUIVisible(), state == .open)
             XCTAssertEqual(panel.sharingType, baselineSharing)
             XCTAssertEqual(panel.styleMask, baselineStyle)
         }
@@ -88,17 +91,24 @@ final class IdentityCompatibilityTests: XCTestCase {
         XCTAssertEqual(panel.accessibilityValue() as? String, "open")
         panel.setAccessibilityValue("closed")
         panel.setAccessibilityIdentifier("foreign")
+        panel.setAccessibilityAlternateUIVisible(false)
         XCTAssertEqual(panel.accessibilityValue() as? String, "open")
+        XCTAssertTrue(panel.isAccessibilityAlternateUIVisible())
         XCTAssertEqual(panel.accessibilityIdentifier(), identifier)
         XCTAssertFalse(panel.isAccessibilitySelectorAllowed(#selector(NotchPocketSkyLightWindow.setAccessibilityValue(_:))))
         XCTAssertFalse(panel.isAccessibilitySelectorAllowed(#selector(NotchPocketSkyLightWindow.setAccessibilityIdentifier(_:))))
+        XCTAssertFalse(panel.isAccessibilitySelectorAllowed(
+            #selector(NotchPocketSkyLightWindow.setAccessibilityAlternateUIVisible(_:))
+        ))
         XCTAssertFalse(panel.accessibilityIsAttributeSettable(.value))
         XCTAssertFalse(panel.accessibilityIsAttributeSettable(.identifier))
+        XCTAssertFalse(panel.accessibilityIsAttributeSettable(.alternateUIVisible))
         source.notchState = .closed
         XCTAssertEqual(panel.accessibilityValue() as? String, "closed")
         panel.close()
         XCTAssertEqual(panel.accessibilityIdentifier(), "")
         XCTAssertNil(panel.accessibilityValue())
+        XCTAssertFalse(panel.isAccessibilityAlternateUIVisible())
     }
 
     @MainActor
@@ -112,26 +122,48 @@ final class IdentityCompatibilityTests: XCTestCase {
         XCTAssertNil(panel.observationSource)
         XCTAssertEqual(panel.accessibilityIdentifier(), "")
         XCTAssertNil(panel.accessibilityValue())
+        XCTAssertFalse(panel.isAccessibilityAlternateUIVisible())
     }
 
     @MainActor
-    func testNotchActionsAdvertiseExactNamesOnlyWithLiveSource() {
+    func testNotchActionsBindExactNativeSelectorsOnlyWithLiveSource() throws {
         let panel = observationPanel()
         defer { panel.close() }
-        let nativeActions = panel.accessibilityActionNames()
         let nativeRole = panel.accessibilityRole()
+        let bindings: [(NSAccessibility.Action, String, Selector)] = [
+            (.showAlternateUI, "AXShowAlternateUI",
+             #selector(NotchPocketSkyLightWindow.accessibilityPerformShowAlternateUI)),
+            (.showDefaultUI, "AXShowDefaultUI",
+             #selector(NotchPocketSkyLightWindow.accessibilityPerformShowDefaultUI))
+        ]
+        // This verifies the Objective-C bridge contract, not cross-process AX dispatch.
+        for (action, name, selector) in bindings {
+            XCTAssertEqual(action.rawValue, name)
+            XCTAssertTrue(panel.responds(to: selector))
+            XCTAssertFalse(panel.isAccessibilitySelectorAllowed(selector))
+            let method = try XCTUnwrap(class_getInstanceMethod(NotchPocketSkyLightWindow.self, selector))
+            let inherited = try XCTUnwrap(class_getInstanceMethod(NSPanel.self, selector))
+            XCTAssertNotEqual(method, inherited, "The panel must override AppKit's native action selector")
+            XCTAssertEqual(method_getNumberOfArguments(method), 2)
+            let encoding = String(cString: try XCTUnwrap(method_getTypeEncoding(method)))
+            XCTAssertTrue(encoding.hasPrefix("B") || encoding.hasPrefix("c"), "Objective-C BOOL return required")
+        }
         let source = ObservationSource()
         panel.observationSource = source
-        XCTAssertEqual(panel.accessibilityActionNames().map(\.rawValue), nativeActions.map(\.rawValue) + [
-            "com.jdylanmc.notchpocket.notch.v1.open", "com.jdylanmc.notchpocket.notch.v1.close"
-        ])
+        for (_, _, selector) in bindings {
+            XCTAssertTrue(panel.isAccessibilitySelectorAllowed(selector))
+        }
         XCTAssertEqual(panel.accessibilityRole(), nativeRole)
-        XCTAssertEqual(panel.accessibilityActionDescription(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.open")),
+        XCTAssertEqual(panel.accessibilityActionDescription(.showAlternateUI),
                        String(localized: "Open Notch"))
-        XCTAssertEqual(panel.accessibilityActionDescription(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.close")),
+        XCTAssertEqual(panel.accessibilityActionDescription(.showDefaultUI),
                        String(localized: "Close Notch"))
         panel.close()
-        XCTAssertEqual(panel.accessibilityActionNames(), nativeActions)
+        for (_, _, selector) in bindings {
+            XCTAssertFalse(panel.isAccessibilitySelectorAllowed(selector))
+        }
+        XCTAssertFalse(panel.accessibilityPerformShowAlternateUI())
+        XCTAssertFalse(panel.accessibilityPerformShowDefaultUI())
     }
 
     @MainActor
@@ -146,10 +178,10 @@ final class IdentityCompatibilityTests: XCTestCase {
         let identifier = panel.accessibilityIdentifier()
         let sharing = panel.sharingType
         let style = panel.styleMask
-        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.open"))
+        XCTAssertTrue(panel.accessibilityPerformShowAlternateUI())
         XCTAssertEqual(source.openCalls, 1)
         XCTAssertEqual(panel.accessibilityValue() as? String, "open")
-        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.close"))
+        XCTAssertTrue(panel.accessibilityPerformShowDefaultUI())
         XCTAssertEqual(source.closeCalls, 1)
         XCTAssertEqual(panel.accessibilityValue() as? String, "closed")
         XCTAssertEqual(otherSource.openCalls, 0)
@@ -172,10 +204,10 @@ final class IdentityCompatibilityTests: XCTestCase {
         defer { panel.close() }
         let source = ObservationSource()
         panel.observationSource = source
-        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.close"))
+        XCTAssertTrue(panel.accessibilityPerformShowDefaultUI())
         XCTAssertEqual(source.closeCalls, 0)
         source.notchState = .open
-        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.open"))
+        XCTAssertTrue(panel.accessibilityPerformShowAlternateUI())
         XCTAssertEqual(source.openCalls, 0)
     }
 
@@ -186,12 +218,12 @@ final class IdentityCompatibilityTests: XCTestCase {
         let source = ObservationSource()
         panel.observationSource = source
         source.refusesOpen = true
-        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.open"))
+        XCTAssertTrue(panel.accessibilityPerformShowAlternateUI())
         XCTAssertEqual(source.openCalls, 1)
         XCTAssertEqual(panel.accessibilityValue() as? String, "closed")
         source.notchState = .open
         source.refusesClose = true
-        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.close"))
+        XCTAssertTrue(panel.accessibilityPerformShowDefaultUI())
         XCTAssertEqual(source.closeCalls, 1)
         XCTAssertEqual(panel.accessibilityValue() as? String, "open")
     }
@@ -200,22 +232,25 @@ final class IdentityCompatibilityTests: XCTestCase {
     func testNotchActionsDoNotRetainOrReviveReleasedSources() {
         let panel = observationPanel()
         defer { panel.close() }
-        let nativeActions = panel.accessibilityActionNames()
         var source: ObservationSource? = ObservationSource()
         weak var weakSource = source
         panel.observationSource = source
         source = nil
         XCTAssertNil(weakSource)
-        XCTAssertEqual(panel.accessibilityActionNames(), nativeActions)
-        for name in ["com.jdylanmc.notchpocket.notch.v1.open", "com.jdylanmc.notchpocket.notch.v1.close"] {
-            panel.accessibilityPerformAction(.init(rawValue: name))
-            XCTAssertNil(panel.observationSource)
-            XCTAssertNil(panel.accessibilityValue())
+        for selector in [
+            #selector(NotchPocketSkyLightWindow.accessibilityPerformShowAlternateUI),
+            #selector(NotchPocketSkyLightWindow.accessibilityPerformShowDefaultUI)
+        ] {
+            XCTAssertFalse(panel.isAccessibilitySelectorAllowed(selector))
         }
+        XCTAssertFalse(panel.accessibilityPerformShowAlternateUI())
+        XCTAssertFalse(panel.accessibilityPerformShowDefaultUI())
+        XCTAssertNil(panel.observationSource)
+        XCTAssertNil(panel.accessibilityValue())
         let replacement = ObservationSource()
         panel.observationSource = replacement
         panel.close()
-        panel.accessibilityPerformAction(.init(rawValue: "com.jdylanmc.notchpocket.notch.v1.open"))
+        XCTAssertFalse(panel.accessibilityPerformShowAlternateUI())
         XCTAssertEqual(replacement.openCalls, 0)
         XCTAssertNil(panel.observationSource)
     }

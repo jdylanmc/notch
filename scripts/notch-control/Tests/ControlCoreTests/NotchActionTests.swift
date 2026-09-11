@@ -1,3 +1,4 @@
+import ApplicationServices
 import ControlCore
 import Foundation
 import XCTest
@@ -7,7 +8,7 @@ extension ControlCoreTests {
         var now: TimeInterval = 0
         var metadata = [NotchPanelMetadata(identifier: "com.jdylanmc.notchpocket.notch.v1.window.15", value: "closed")]
         var windows = [WindowInfo(id: 15, ownerPID: 42, onScreen: false, sharingAllowed: false, layer: 27)]
-        var names = ["com.jdylanmc.notchpocket.notch.v1.open", "com.jdylanmc.notchpocket.notch.v1.close"]
+        var names = [kAXShowAlternateUIAction, kAXShowDefaultUIAction]
         var attempts: [String] = []
         var reads = 0
         var beforeRead: ((Int) throws -> Void)?
@@ -40,8 +41,8 @@ extension ControlCoreTests {
 
     func testNotchActionParsingAndNativeNames() throws {
         for (verb, target, name) in [
-            ("open", "open", "com.jdylanmc.notchpocket.notch.v1.open"),
-            ("close", "closed", "com.jdylanmc.notchpocket.notch.v1.close")
+            ("open", "open", kAXShowAlternateUIAction),
+            ("close", "closed", kAXShowDefaultUIAction)
         ] {
             let options = try Options.parse(["notch", verb, "--window", "15", "--app-path", app.path, "--timeout", "0.5"])
             XCTAssertEqual(options.command, .notch)
@@ -86,7 +87,7 @@ extension ControlCoreTests {
             XCTAssertEqual(result.windowID, 15)
             XCTAssertEqual(result.state.rawValue, expected)
             XCTAssertEqual(result.outcome.rawValue, "changed")
-            XCTAssertEqual(fixture.attempts, ["com.jdylanmc.notchpocket.notch.v1." + action.rawValue])
+            XCTAssertEqual(fixture.attempts, [action == .open ? kAXShowAlternateUIAction : kAXShowDefaultUIAction])
             XCTAssertEqual(fixture.reads, 3)
         }
     }
@@ -106,7 +107,8 @@ extension ControlCoreTests {
     func testNotchActionRequiresAdvertisedExactNameEvenForNoOp() {
         for names in [
             [], ["AXPress"], ["Open Notch"], ["com.jdylanmc.notchpocket.notch.v2.open"],
-            Array(repeating: "com.jdylanmc.notchpocket.notch.v1.open", count: 2),
+            ["com.jdylanmc.notchpocket.notch.v1.open"], [kAXShowDefaultUIAction],
+            Array(repeating: kAXShowAlternateUIAction, count: 2),
             Array(repeating: "other", count: 601)
         ] {
             let fixture = NotchActionFixture()
@@ -152,15 +154,18 @@ extension ControlCoreTests {
     }
 
     func testNotchActionNativeFailureDoesNotRetryOrObserveSuccess() {
-        let fixture = NotchActionFixture()
-        fixture.onPerform = {
-            fixture.metadata = [self.notchMetadata("15", "open")]
-            throw ControlFailure(.accessibilityFailed, "Notch action dispatch failed (AX -25204); not retried.")
+        for nativeError in [AXError.cannotComplete, .attributeUnsupported, .actionUnsupported] {
+            let fixture = NotchActionFixture()
+            fixture.onPerform = {
+                fixture.metadata = [self.notchMetadata("15", "open")]
+                throw ControlFailure(.accessibilityFailed,
+                                     "Notch action dispatch failed (AX \(nativeError.rawValue)); not retried.")
+            }
+            assertFailure(.accessibilityFailed) { _ = try fixture.run() }
+            XCTAssertEqual(fixture.attempts.count, 1)
+            XCTAssertEqual(fixture.reads, 2)
+            XCTAssertEqual(fixture.now, 0)
         }
-        assertFailure(.accessibilityFailed) { _ = try fixture.run() }
-        XCTAssertEqual(fixture.attempts.count, 1)
-        XCTAssertEqual(fixture.reads, 2)
-        XCTAssertEqual(fixture.now, 0)
     }
 
     func testNotchActionLateReadsDiscoveryAndDispatchCannotSucceed() {
