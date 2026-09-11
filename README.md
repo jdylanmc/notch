@@ -66,6 +66,23 @@ Do not run the inherited public-release workflows as part of local setup:
 they perform remote writes/uploads and do not establish distribution readiness.
 Only the user approves merges and releases.
 
+### Product CI
+
+App build/test, SwiftLint, CodeQL, native-helper validation, and CI contract
+tests run for pushes to `pocket` and PRs targeting `pocket`. The app retains its
+three-leg Xcode matrix. Helper CI runs its canonical build, all 21 package tests,
+and eight-file lint without launching the app or requesting privacy grants.
+Contract checks use Node.js 22+ with an isolated, pinned YAML parser and also run
+the existing 22 PR-policy tests.
+
+See the [CI and packaging inventory](CONTRIBUTING.md#ci-and-packaging-inventory)
+for source evidence, safe commands, generated dependency handling, and deferred
+workflows. `notchPocket` is the project/scheme; packaging consumes
+`notch-pocket.app` and `notch-pocket.dmg`. Static agreement on those names is
+not distribution proof: inherited manual/release Xcode 16.4 defaults,
+`dev` → `main` release merges, signing/publication, and Crowdin ownership remain
+outside product-CI validation. Do not activate those workflows.
+
 ## Local UI debugging
 
 The repository-local [notch skill](.github/skills/notch/SKILL.md) uses a small

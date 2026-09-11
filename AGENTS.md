@@ -61,9 +61,12 @@ Upstream-bound work requires an explicit request and a separate branch based on
 `upstream/dev`, not `pocket`; check upstream's current contribution policy for
 that request. Do not mix it with fork-local work.
 
-`CODEOWNERS` names `@jdylanmc`. Some inherited workflow branch/release policies
-still need reconciliation (#51); inspect their current configuration. Report conflicts rather than
-retargeting a fork-local PR or weakening checks.
+`CODEOWNERS` names `@jdylanmc`. Product build/test, SwiftLint, CodeQL, helper
+validation, contract tests, and Dependabot target `pocket`. The existing PR
+policy check identities remain unchanged. See the source-linked
+[CI and packaging inventory](CONTRIBUTING.md#ci-and-packaging-inventory) for
+deferred manual build, release, translation, and issue-form automation.
+Report conflicts rather than retargeting a fork-local PR or weakening checks.
 
 ## Build, test, lint
 
@@ -127,9 +130,31 @@ The test script forwards arguments.
 `CONFIGURATION=Release scripts/build.sh` selects a Release build, not packaging,
 notarization, or publication.
 
-The lint script uses `.swiftlint.yml`, as does the inherited SwiftLint workflow;
-that workflow currently targets `dev` and `stack/**`, not `pocket`. Install
-SwiftLint with `brew install swiftlint` if missing.
+The lint script and `pocket` push/PR SwiftLint workflow use `.swiftlint.yml`.
+Install SwiftLint with `brew install swiftlint` if missing. Preserve the
+non-strict inherited app baseline; report existing warnings without suppressing
+them or bundling unrelated cleanup.
+
+### CI configuration contracts
+
+After reconciliation, validate CI changes with Node.js 22+ and npm:
+
+```bash
+npm ci --prefix .github/scripts/ci-contract --ignore-scripts --no-audit --no-fund
+npm test --prefix .github/scripts/ci-contract
+node --test .github/scripts/pr-target-policy.test.cjs
+```
+
+The isolated package parses real YAML and tests structural drift without
+executing workflow shell blocks. Its package-local `.gitignore` excludes only
+generated `/node_modules/`; use ordinary npm installation and imports. The existing
+policy suite uses mocked APIs; neither suite requires live repository writes.
+Hosted helper checks run canonical build/test/eight-file lint without app
+launch, screenshots, or privacy grants. Swift CodeQL extraction must retain
+the app build and a separate helper build after initialization.
+Static contracts are not proof of runner availability, passing hosted checks,
+runtime integrations, or distribution readiness. Preserve all app matrix
+legs, scan languages/schedule, and policy check identities.
 
 ### Local signing identity (one-time, per machine)
 
@@ -283,8 +308,8 @@ and migration requirements:
   path for `pocket`.
 - **Unfinished distribution work:** release scripts consume
   `notch-pocket.app`/`.dmg`, but no independent binaries are published or
-  implied. Branch policy, distribution signing, and future owned update
-  infrastructure still require separate work. Do not run public release
+  implied. Release branch/merge policy, distribution signing, and future owned
+  update infrastructure still require separate work. Do not run public release
   automation as part of naming or local setup.
 
 ### Test what is testable, and say what is not

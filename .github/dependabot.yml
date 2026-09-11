@@ -9,17 +9,17 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    target-branch: "dev"
+    target-branch: "pocket"
 
   - package-ecosystem: "pip"
     directory: "/Configuration/dmg"
     schedule:
       interval: "weekly"
-    target-branch: "dev"
+    target-branch: "pocket"
 
   - package-ecosystem: "swift"
     directory: "/"
     schedule:
       interval: "weekly"
-    target-branch: "dev"
+    target-branch: "pocket"
 
