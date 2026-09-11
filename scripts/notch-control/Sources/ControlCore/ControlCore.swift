@@ -222,6 +222,67 @@ public func captureWindow(_ windows: [WindowInfo], id: UInt32, pid: Int32) throw
     return window
 }
 
+public struct NotchPanelMetadata: Equatable {
+    public static let identifierPrefix = "com.jdylanmc.notchpocket.notch."
+    public static let versionPrefix = identifierPrefix + "v1.window."
+    public let identifier: String
+    public let value: String?
+
+    public init(identifier: String, value: String?) {
+        self.identifier = identifier
+        self.value = value
+    }
+}
+
+public struct NotchPanelState: Codable, Equatable {
+    public enum State: String, Codable {
+        case open, closed
+    }
+    public let windowID: UInt32
+    public let state: State
+}
+
+public struct NotchInspection: Codable, Equatable {
+    public enum Status: String, Codable {
+        case observed, unsupported
+        case accessibilityUnavailable = "accessibility_unavailable"
+    }
+    public let status: Status
+    public let panels: [NotchPanelState]?
+
+    public static let unsupported = NotchInspection(status: .unsupported, panels: nil)
+    public static let accessibilityUnavailable = NotchInspection(status: .accessibilityUnavailable, panels: nil)
+}
+
+public func observeNotchPanels(
+    _ metadata: [NotchPanelMetadata], windows: [WindowInfo], pid: Int32
+) throws -> NotchInspection {
+    guard !metadata.isEmpty else { return .unsupported }
+    guard metadata.count <= 600 else {
+        throw ControlFailure(.unsupportedControl, "Notch panel collection exceeds the observation limit.")
+    }
+    var seen: Set<UInt32> = []
+    let panels = try metadata.map { item -> NotchPanelState in
+        guard item.identifier.hasPrefix(NotchPanelMetadata.versionPrefix) else {
+            throw ControlFailure(.unsupportedControl, "Unsupported notch observation contract.")
+        }
+        let rawID = String(item.identifier.dropFirst(NotchPanelMetadata.versionPrefix.count))
+        guard let id = UInt32(rawID), id > 0, String(id) == rawID,
+              let rawState = item.value, let state = NotchPanelState.State(rawValue: rawState) else {
+            throw ControlFailure(.unsupportedControl, "Malformed notch observation metadata.")
+        }
+        guard seen.insert(id).inserted else {
+            throw ControlFailure(.unsupportedControl, "Duplicate notch panel identity; no guessed state.")
+        }
+        let matching = windows.filter { $0.id == id }
+        guard matching.count == 1, matching.first?.ownerPID == pid else {
+            throw ControlFailure(.staleTarget, "Notch panel is not uniquely owned by the current app.")
+        }
+        return NotchPanelState(windowID: id, state: state)
+    }
+    return NotchInspection(status: .observed, panels: panels.sorted { $0.windowID < $1.windowID })
+}
+
 public enum AttributeRead<Value> {
     case value(Value)
     case cannotComplete(Int32)

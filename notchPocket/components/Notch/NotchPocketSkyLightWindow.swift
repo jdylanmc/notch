@@ -31,8 +31,57 @@ extension SkyLightOperator {
     }
 }
 
+@MainActor
+protocol NotchObservationSource: AnyObject {
+    var notchState: NotchState { get }
+}
+
+extension NotchPocketViewModel: NotchObservationSource {}
+
 class NotchPocketSkyLightWindow: NSPanel {
     private var isSkyLightEnabled: Bool = false
+    weak var observationSource: (any NotchObservationSource)?
+
+    // The identifier is machine-only; VoiceOver retains the native window role/title.
+    // Read directly from the existing model, rather than caching a second state.
+    override func accessibilityIdentifier() -> String {
+        guard observationSource != nil, windowNumber > 0 else { return "" }
+        return "com.jdylanmc.notchpocket.notch.v1.window.\(windowNumber)"
+    }
+
+    override func accessibilityValue() -> Any? {
+        guard let source = observationSource else { return nil }
+        switch source.notchState {
+        case .open: return "open"
+        case .closed: return "closed"
+        }
+    }
+
+    override func setAccessibilityIdentifier(_ accessibilityIdentifier: String?) {}
+
+    override func setAccessibilityValue(_ accessibilityValue: Any?) {}
+
+    override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+        if selector == #selector(setAccessibilityValue(_:)) ||
+            selector == #selector(setAccessibilityIdentifier(_:)) {
+            return false
+        }
+        return super.isAccessibilitySelectorAllowed(selector)
+    }
+
+    // NSPanel's AX transport can advertise AXValue as writable despite selector denial.
+    // Keep this compatibility hook narrow; other native attributes retain AppKit policy.
+    override func accessibilityIsAttributeSettable(_ attribute: NSAccessibility.Attribute) -> Bool {
+        if attribute == .value || attribute == .identifier {
+            return false
+        }
+        return super.accessibilityIsAttributeSettable(attribute)
+    }
+
+    override func close() {
+        observationSource = nil
+        super.close()
+    }
     
     override init(
         contentRect: NSRect,

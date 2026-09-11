@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import AppKit
 import Defaults
 import MachO
 import XCTest
@@ -11,6 +12,92 @@ import XCTest
 @testable import notchPocket
 
 final class IdentityCompatibilityTests: XCTestCase {
+    @MainActor
+    private final class ObservationSource: NotchObservationSource {
+        var notchState: NotchState = .closed
+    }
+
+    @MainActor
+    private func observationPanel() -> NotchPocketSkyLightWindow {
+        NotchPocketSkyLightWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 40),
+            styleMask: [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow],
+            backing: .buffered, defer: false
+        )
+    }
+
+    @MainActor
+    func testNotchPanelObservationPreservesNativeDefaults() {
+        let panel = observationPanel()
+        defer { panel.close() }
+        // AppKit normalizes requested sharing/style flags; observation must preserve its result.
+        let baselineSharing = panel.sharingType
+        let baselineStyle = panel.styleMask
+        XCTAssertEqual(panel.accessibilityIdentifier(), "")
+        XCTAssertNil(panel.accessibilityValue())
+        XCTAssertEqual(panel.level, .mainMenu + 3)
+        XCTAssertEqual(panel.sharingType, baselineSharing)
+        XCTAssertTrue(panel.isFloatingPanel)
+        XCTAssertFalse(panel.canBecomeKey)
+        XCTAssertFalse(panel.canBecomeMain)
+        XCTAssertFalse(panel.hasShadow)
+        XCTAssertFalse(panel.isOpaque)
+        XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel))
+        XCTAssertTrue(panel.styleMask.contains(.hudWindow))
+        XCTAssertFalse(panel.styleMask.contains(.titled))
+        XCTAssertEqual(panel.styleMask, baselineStyle)
+        let source = ObservationSource()
+        panel.observationSource = source
+        for state in [NotchState.open, .closed] {
+            source.notchState = state
+            XCTAssertEqual(panel.accessibilityIdentifier(),
+                           "com.jdylanmc.notchpocket.notch.v1.window.\(panel.windowNumber)")
+            XCTAssertEqual(panel.accessibilityValue() as? String, state == .open ? "open" : "closed")
+            XCTAssertEqual(panel.sharingType, baselineSharing)
+            XCTAssertEqual(panel.styleMask, baselineStyle)
+        }
+    }
+
+    @MainActor
+    func testNotchPanelReadOnlyMetadataTracksSourceWithoutMediaHooks() {
+        let source = ObservationSource()
+        let panel = observationPanel()
+        defer { panel.close() }
+        panel.observationSource = source
+        XCTAssertGreaterThan(panel.windowNumber, 0)
+        let identifier = "com.jdylanmc.notchpocket.notch.v1.window.\(panel.windowNumber)"
+        XCTAssertEqual(panel.accessibilityIdentifier(), identifier)
+        XCTAssertEqual(panel.accessibilityValue() as? String, "closed")
+        source.notchState = .open
+        XCTAssertEqual(panel.accessibilityValue() as? String, "open")
+        panel.setAccessibilityValue("closed")
+        panel.setAccessibilityIdentifier("foreign")
+        XCTAssertEqual(panel.accessibilityValue() as? String, "open")
+        XCTAssertEqual(panel.accessibilityIdentifier(), identifier)
+        XCTAssertFalse(panel.isAccessibilitySelectorAllowed(#selector(NotchPocketSkyLightWindow.setAccessibilityValue(_:))))
+        XCTAssertFalse(panel.isAccessibilitySelectorAllowed(#selector(NotchPocketSkyLightWindow.setAccessibilityIdentifier(_:))))
+        XCTAssertFalse(panel.accessibilityIsAttributeSettable(.value))
+        XCTAssertFalse(panel.accessibilityIsAttributeSettable(.identifier))
+        source.notchState = .closed
+        XCTAssertEqual(panel.accessibilityValue() as? String, "closed")
+        panel.close()
+        XCTAssertEqual(panel.accessibilityIdentifier(), "")
+        XCTAssertNil(panel.accessibilityValue())
+    }
+
+    @MainActor
+    func testNotchPanelDoesNotRetainObservationSource() {
+        let panel = observationPanel()
+        defer { panel.close() }
+        var source: ObservationSource? = ObservationSource()
+        panel.observationSource = source
+        XCTAssertEqual(panel.accessibilityValue() as? String, "closed")
+        source = nil
+        XCTAssertNil(panel.observationSource)
+        XCTAssertEqual(panel.accessibilityIdentifier(), "")
+        XCTAssertNil(panel.accessibilityValue())
+    }
+
     func testAppAndEmbeddedHelperIdentity() throws {
         let app = Bundle.main
         XCTAssertEqual(app.bundleIdentifier, "com.jdylanmc.notchpocket")

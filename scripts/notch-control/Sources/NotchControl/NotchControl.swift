@@ -11,6 +11,8 @@ private struct Response: Encodable {
     var output: String?
     var error: ControlFailure?
     var settingsDiagnostic: ControlFailure?
+    var notch: NotchInspection?
+    var notchDiagnostic: ControlFailure?
     var usage: [String]?
 }
 
@@ -32,21 +34,7 @@ struct NotchControl {
             var response = Response(ok: true, command: options.command.rawValue, app: target.identity)
             switch options.command {
             case .inspect:
-                let permissions = Permissions.current()
-                response.permissions = permissions
-                response.windows = try target.windows()
-                if permissions.accessibility {
-                    do {
-                        response.settings = try SettingsControl(target: target).state()
-                    } catch let error as ControlFailure where [
-                        FailureCode.unsupportedControl, .accessibilityFailed, .unsupportedWindow
-                    ].contains(error.code) {
-                        response.settings = SettingsState(status: "unsupported", selectedPane: nil)
-                        response.settingsDiagnostic = error
-                    }
-                } else {
-                    response.settings = SettingsState(status: "accessibility_unavailable", selectedPane: nil)
-                }
+                response = try inspect(target: target)
             case .settings:
                 guard let pane = options.pane else {
                     throw ControlFailure(.invalidInput, "Missing Settings destination.")
@@ -72,6 +60,37 @@ struct NotchControl {
             emit(Response(ok: false, error: ControlFailure(.internalError, "Unexpected control tool failure.")))
             exit(FailureCode.internalError.exitStatus)
         }
+    }
+
+    @MainActor
+    private static func inspect(target: AppTarget) throws -> Response {
+        let permissions = Permissions.current()
+        var response = Response(ok: true, command: "inspect", app: target.identity, permissions: permissions)
+        response.windows = try target.windows()
+        guard permissions.accessibility else {
+            response.settings = SettingsState(status: "accessibility_unavailable", selectedPane: nil)
+            response.notch = .accessibilityUnavailable
+            return response
+        }
+        do {
+            response.settings = try SettingsControl(target: target).state()
+        } catch let error as ControlFailure where [
+            FailureCode.unsupportedControl, .accessibilityFailed, .unsupportedWindow
+        ].contains(error.code) {
+            response.settings = SettingsState(status: "unsupported", selectedPane: nil)
+            response.settingsDiagnostic = error
+        }
+        do {
+            let observation = try NotchObservationControl(target: target).state()
+            response.notch = observation.notch
+            response.windows = observation.windows
+        } catch let error as ControlFailure where [
+            FailureCode.unsupportedControl, .accessibilityFailed, .unsupportedWindow
+        ].contains(error.code) {
+            response.notch = .unsupported
+            response.notchDiagnostic = error
+        }
+        return response
     }
 
     private static func emit(_ response: Response) {

@@ -124,6 +124,7 @@ final class NotchWindowManager {
         let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel, .utilityWindow, .hudWindow]
 
         let window = NotchPocketSkyLightWindow(contentRect: rect, styleMask: styleMask, backing: .buffered, defer: false)
+        window.observationSource = viewModel
 
         // Enable SkyLight only when screen is locked
         if isScreenLocked {
