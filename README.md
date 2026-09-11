@@ -70,8 +70,8 @@ Only the user approves merges and releases.
 
 App build/test, SwiftLint, CodeQL, native-helper validation, and CI contract
 tests run for pushes to `pocket` and PRs targeting `pocket`. The app retains its
-three-leg Xcode matrix. Helper CI runs its canonical build, all 29 package tests,
-and eight-file lint without launching the app or requesting privacy grants.
+three-leg Xcode matrix. Helper CI runs its canonical build, all 41 package tests,
+and nine-file lint without launching the app or requesting privacy grants.
 Contract checks use Node.js 22+ with an isolated, pinned YAML parser and also run
 the existing 22 PR-policy tests.
 
@@ -87,20 +87,23 @@ outside product-CI validation. Do not activate those workflows.
 
 The repository-local [notch skill](.github/skills/notch/SKILL.md) uses a small
 native [control helper](scripts/notch-control/README.md) for running-app
-discovery, read-only per-panel notch state, Settings → General/About, and local
-capture of one selected app-owned window. This is a bounded slice of #18, not
-full notch control: opening/closing the notch remains unsupported.
+discovery, read-only per-panel notch state, explicit notch open/close,
+Settings → General/About, and local capture of one selected app-owned window.
+This is a bounded slice of #18, not full notch control or issue completion.
 
 ```bash
 bash scripts/notch-control/control.sh build
 bash scripts/notch-control/control.sh test
 bash scripts/notch-control/control.sh lint
 bash scripts/notch-control/control.sh run inspect --app-path /Applications/notch-pocket.app
+# Use a fresh inspect.notch.panels[].windowID, never a saved or guessed ID:
+bash scripts/notch-control/control.sh run notch open --window WINDOW_ID --app-path /Applications/notch-pocket.app
+bash scripts/notch-control/control.sh run notch close --window WINDOW_ID --app-path /Applications/notch-pocket.app
 ```
 
 For validation, replace that installed-app example with the exact built product
 path. The helper never launches the app, prompts for privacy grants, changes
-preferences, or captures the whole desktop. Notch observation and Settings need Accessibility;
+preferences, or captures the whole desktop. Notch observation/actions and Settings need Accessibility;
 screenshots need Screen Recording. Human grant/restart, private local PNG
 handling, restoration, isolated lint commands, and honest runtime limitations
 are covered in the [helper guide](scripts/notch-control/README.md).
@@ -108,6 +111,11 @@ Generated helper output stays under ignored `scripts/notch-control/.build/`.
 `inspect.notch` reports `observed` with exact window IDs and `open`/`closed`
 states, or explicit `unsupported`/`accessibility_unavailable`. Older apps
 without the versioned panel marker are unsupported, never assumed closed.
+Actions require advertised native support even for an explicit
+`already_at_target` no-op. Otherwise the helper attempts one action and observes
+the selected model state within one deadline; unsupported/stale/failed requests
+and model refusals never succeed. Onboarding/sharing guards and normal hover
+behavior remain active. Restore prior notch state, Settings and app lifecycle.
 Native accessibility transport and visual behavior require runtime verification
 against the built app; deterministic helper tests alone are not that proof.
 

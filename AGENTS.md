@@ -94,15 +94,15 @@ scripts/test.sh -only-testing:notchPocketTests/MeetingLinkDetectorTests
 
 Use the ordinary [notch skill](.github/skills/notch/SKILL.md) and
 [native helper guide](scripts/notch-control/README.md) for issue #18's initial
-discovery, read-only notch observation, Settings General/About, and
-selected-window screenshot slice.
+discovery, read-only notch observation, explicit per-panel notch open/close,
+Settings General/About, and selected-window screenshot slice.
 Follow orchestration ownership: do not build, test, or exercise runtime during
 an authoring-only phase.
 
 After reconciliation, helper checks are
 `bash scripts/notch-control/control.sh build` and
 `bash scripts/notch-control/control.sh test`, in addition to the app gates.
-Use `bash scripts/notch-control/control.sh lint` for the package's eight Swift
+Use `bash scripts/notch-control/control.sh lint` for the package's nine Swift
 files: it supplies script-input files to the root config, avoiding an app scan.
 The package test command builds the helper for a permission-free invalid-input
 subprocess contract check; it does not launch the app.
@@ -114,17 +114,33 @@ potential terminal-host restart; never automate privacy changes.
 
 Capture only a freshly selected app-owned window. Honor sharing exclusion and
 report unsupported windows; no desktop fallback, raw private text/tree dumping,
-media/shelf/notification actions, or notch open/close controls. Keep images
+media/shelf/notification actions, or broader notch controls. Keep images
 local and report ignored `scripts/notch-control/.build/` residue.
 `inspect.notch` uses versioned per-panel Accessibility identifiers and literal
 `open`/`closed` values, joined to fresh app-owned native window IDs, not geometry
 or titles. Older apps without markers are `unsupported`; missing Accessibility
 is `accessibility_unavailable`, never an empty success or an assumed closed
-state. Only the existing per-screen model supplies state; no new actions,
-transport service, media hooks, or screen/hardware identifiers. Panel window
+state. `notch open|close --window ID` requires a fresh exact owned marked-panel
+mapping, current app identity, Accessibility and the advertised native hover-UI
+action (`AXShowAlternateUI` to open, `AXShowDefaultUI` to close), scoped by the
+versioned panel marker. One action attempt, then bounded observed model state; already-at-target
+is an explicit `already_at_target` no-op. Unsupported/stale/failed/timed-out
+requests never report success. Refused model transitions time out; do not retry
+actions or bypass onboarding/sharing guards. Only the existing per-screen model
+supplies state and transitions; no transport service, media hooks, or
+screen/hardware identifiers. Panel window
 level, sharing exclusion, focus and visual behavior remain load-bearing.
 Package tests cover deterministic policy/output logic, not native runtime
 integration. Do not claim full notch control or issue closure from this slice.
+Parent-owned runtime checks must exercise closed → open → closed on the exact
+signed candidate, inspect selected-window images locally only when shareable,
+and restore recorded notch state as well as Settings and app lifecycle.
+Normal hover/timers remain active; observed state is not animation completion
+or a persistent visibility lock. Use AppKit's protocol action selectors, not
+arbitrary names added to legacy action discovery: advertised names alone did
+not establish working native dispatch. Retain only the narrow legacy
+description/read-only attribute hooks and report their deprecation warnings,
+rather than suppressing them.
 
 ### App build environment
 
@@ -157,7 +173,7 @@ The isolated package parses real YAML and tests structural drift without
 executing workflow shell blocks. Its package-local `.gitignore` excludes only
 generated `/node_modules/`; use ordinary npm installation and imports. The existing
 policy suite uses mocked APIs; neither suite requires live repository writes.
-Hosted helper checks run canonical build/test/eight-file lint without app
+Hosted helper checks run canonical build/test/nine-file lint without app
 launch, screenshots, or privacy grants. Swift CodeQL extraction must retain
 the app build and a separate helper build after initialization.
 Static contracts are not proof of runner availability, passing hosted checks,

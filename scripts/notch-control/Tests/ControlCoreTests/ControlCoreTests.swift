@@ -3,10 +3,10 @@ import Foundation
 import XCTest
 
 final class ControlCoreTests: XCTestCase {
-    private let app = AppIdentity(pid: 42, path: "/Applications/notch-pocket.app",
-                                  launchedAt: Date(timeIntervalSince1970: 100))
+    let app = AppIdentity(pid: 42, path: "/Applications/notch-pocket.app",
+                          launchedAt: Date(timeIntervalSince1970: 100))
 
-    private func assertFailure(
+    func assertFailure(
         _ expected: FailureCode,
         file: StaticString = #filePath,
         line: UInt = #line,
@@ -84,11 +84,11 @@ final class ControlCoreTests: XCTestCase {
 }
 
 extension ControlCoreTests {
-    private func notchMetadata(_ id: String, _ state: String? = "closed") -> NotchPanelMetadata {
+    func notchMetadata(_ id: String, _ state: String? = "closed") -> NotchPanelMetadata {
         NotchPanelMetadata(identifier: "com.jdylanmc.notchpocket.notch.v1.window." + id, value: state)
     }
 
-    private func notchWindow(_ id: UInt32, pid: Int32 = 42) -> WindowInfo {
+    func notchWindow(_ id: UInt32, pid: Int32 = 42) -> WindowInfo {
         WindowInfo(id: id, ownerPID: pid, onScreen: false, sharingAllowed: false, layer: 27)
     }
 
@@ -424,11 +424,18 @@ extension ControlCoreTests {
     }
 
     func testInvalidInputExecutableWireContract() throws {
+        try assertInvalidExecutable(["settings", "close"], message: "settings requires open, general, or about.")
+        try assertInvalidExecutable(["notch", "toggle"], message: "notch requires open or close.")
+        try assertInvalidExecutable(["notch", "open", "--window", "015"],
+                                    message: "notch requires a canonical positive --window ID and no --output.")
+    }
+
+    private func assertInvalidExecutable(_ arguments: [String], message: String) throws {
         let executable = try XCTUnwrap(ProcessInfo.processInfo.environment["NOTCH_CONTROL_TEST_EXECUTABLE"],
                                        "Use bash scripts/notch-control/control.sh test.")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = ["settings", "close"]
+        process.arguments = arguments
         let output = Pipe()
         let errors = Pipe()
         process.standardOutput = output
@@ -447,7 +454,7 @@ extension ControlCoreTests {
         let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary)
         XCTAssertEqual(decoded, [
             "ok": false,
-            "error": ["code": "invalid_input", "message": "settings requires open, general, or about."]
+            "error": ["code": "invalid_input", "message": message]
         ] as NSDictionary)
         XCTAssertTrue(errors.fileHandleForReading.readDataToEndOfFile().isEmpty)
     }

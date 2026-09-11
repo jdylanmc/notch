@@ -46,10 +46,11 @@ public struct ControlFailure: Error, Codable {
 
 public struct Options: Equatable {
     public enum Command: String {
-        case inspect, settings, capture, help
+        case inspect, settings, notch, capture, help
     }
     public let command: Command
     public let pane: String?
+    public let notchAction: NotchAction?
     public let appPath: String?
     public let windowID: UInt32?
     public let output: String?
@@ -57,7 +58,7 @@ public struct Options: Equatable {
 
     public static func parse(_ arguments: [String]) throws -> Options {
         guard let first = arguments.first, let command = Command(rawValue: first) else {
-            throw ControlFailure(.invalidInput, "Use inspect, settings, capture, or help.")
+            throw ControlFailure(.invalidInput, "Use inspect, settings, notch, capture, or help.")
         }
         var tail = Array(arguments.dropFirst())
         var pane: String?
@@ -66,6 +67,14 @@ public struct Options: Equatable {
                 throw ControlFailure(.invalidInput, "settings requires open, general, or about.")
             }
             pane = tail.removeFirst()
+        }
+        var notchAction: NotchAction?
+        if command == .notch {
+            guard let value = tail.first, let action = NotchAction(rawValue: value) else {
+                throw ControlFailure(.invalidInput, "notch requires open or close.")
+            }
+            notchAction = action
+            tail.removeFirst()
         }
         var flags: [String: String] = [:]
         while !tail.isEmpty {
@@ -94,23 +103,33 @@ public struct Options: Equatable {
                 throw ControlFailure(.invalidInput, "--app-path must name an absolute .app path.")
             }
         }
-        var windowID: UInt32?
+        let windowID = try parseWindowID(command: command, flags: flags)
+        return Options(command: command, pane: pane, notchAction: notchAction, appPath: flags["--app-path"],
+                       windowID: windowID, output: flags["--output"], timeout: timeout)
+    }
+
+    private static func parseWindowID(command: Command, flags: [String: String]) throws -> UInt32? {
         if command == .capture {
             guard let raw = flags["--window"], !raw.isEmpty,
                   raw.utf8.allSatisfy({ (48...57).contains($0) }),
                   let value = UInt32(raw), value > 0, let output = flags["--output"] else {
                 throw ControlFailure(.invalidInput, "capture requires a positive --window and absolute --output PNG path.")
             }
-            windowID = value
             try validateAbsolutePath(output)
             guard output.hasSuffix(".png") else {
                 throw ControlFailure(.invalidInput, "--output must end in .png.")
             }
+            return value
+        } else if command == .notch {
+            guard let raw = flags["--window"], let value = UInt32(raw), value > 0,
+                  String(value) == raw, flags["--output"] == nil else {
+                throw ControlFailure(.invalidInput, "notch requires a canonical positive --window ID and no --output.")
+            }
+            return value
         } else if flags["--window"] != nil || flags["--output"] != nil {
-            throw ControlFailure(.invalidInput, "--window and --output are only valid for capture.")
+            throw ControlFailure(.invalidInput, "--window is only valid for capture or notch; --output is only valid for capture.")
         }
-        return Options(command: command, pane: pane, appPath: flags["--app-path"],
-                       windowID: windowID, output: flags["--output"], timeout: timeout)
+        return nil
     }
 }
 
@@ -286,6 +305,78 @@ public func observeNotchPanels(
 public enum AttributeRead<Value> {
     case value(Value)
     case cannotComplete(Int32)
+}
+
+public enum NotchAction: String, Codable, CaseIterable {
+    case open, close
+
+    public var nativeName: String { self == .open ? "AXShowAlternateUI" : "AXShowDefaultUI" }
+    public var targetState: NotchPanelState.State { self == .open ? .open : .closed }
+}
+
+public struct NotchActionResult: Codable, Equatable {
+    public enum Outcome: String, Codable {
+        case changed
+        case alreadyAtTarget = "already_at_target"
+    }
+    public let windowID: UInt32
+    public let action: NotchAction
+    public let state: NotchPanelState.State
+    public let outcome: Outcome
+}
+
+public func selectedNotchPanel(_ inspection: NotchInspection, windowID: UInt32) throws -> NotchPanelState {
+    guard inspection.status == .observed, let panels = inspection.panels else {
+        throw ControlFailure(.unsupportedControl, "No supported notch observation for the selected panel.")
+    }
+    let matching = panels.filter { $0.windowID == windowID }
+    guard matching.count == 1, let panel = matching.first else {
+        throw ControlFailure(.staleTarget, "Selected notch panel is missing or ambiguous; inspect again.")
+    }
+    return panel
+}
+
+public struct NotchActionTransport {
+    public let observe: () throws -> NotchInspection
+    public let actionNames: () throws -> [String]
+    public let perform: (String) throws -> Void
+
+    public init(
+        observe: @escaping () throws -> NotchInspection,
+        actionNames: @escaping () throws -> [String],
+        perform: @escaping (String) throws -> Void
+    ) {
+        self.observe = observe
+        self.actionNames = actionNames
+        self.perform = perform
+    }
+}
+
+public func changeNotchState(
+    windowID: UInt32, action: NotchAction, budget: PollBudget,
+    pause: (TimeInterval) -> Void, transport: NotchActionTransport
+) throws -> NotchActionResult {
+    _ = try budget.remaining()
+    _ = try selectedNotchPanel(transport.observe(), windowID: windowID)
+    _ = try budget.remaining()
+    let names = try transport.actionNames()
+    _ = try budget.remaining()
+    guard names.count <= 600, names.filter({ $0 == action.nativeName }).count == 1 else {
+        throw ControlFailure(.unsupportedControl, "Selected panel does not advertise the exact notch action.")
+    }
+    let before = try selectedNotchPanel(transport.observe(), windowID: windowID)
+    _ = try budget.remaining()
+    if before.state == action.targetState {
+        return NotchActionResult(windowID: windowID, action: action, state: before.state, outcome: .alreadyAtTarget)
+    }
+    try transport.perform(action.nativeName)
+    _ = try budget.remaining()
+    try budget.until(pause: pause) {
+        let current = try selectedNotchPanel(transport.observe(), windowID: windowID)
+        _ = try budget.remaining()
+        return current.state == action.targetState
+    }
+    return NotchActionResult(windowID: windowID, action: action, state: action.targetState, outcome: .changed)
 }
 
 public struct PollBudget {
