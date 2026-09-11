@@ -94,7 +94,8 @@ scripts/test.sh -only-testing:notchPocketTests/MeetingLinkDetectorTests
 
 Use the ordinary [notch skill](.github/skills/notch/SKILL.md) and
 [native helper guide](scripts/notch-control/README.md) for issue #18's initial
-discovery, Settings General/About, and selected-window screenshot slice.
+discovery, read-only notch observation, Settings General/About, and
+selected-window screenshot slice.
 Follow orchestration ownership: do not build, test, or exercise runtime during
 an authoring-only phase.
 
@@ -115,6 +116,13 @@ Capture only a freshly selected app-owned window. Honor sharing exclusion and
 report unsupported windows; no desktop fallback, raw private text/tree dumping,
 media/shelf/notification actions, or notch open/close controls. Keep images
 local and report ignored `scripts/notch-control/.build/` residue.
+`inspect.notch` uses versioned per-panel Accessibility identifiers and literal
+`open`/`closed` values, joined to fresh app-owned native window IDs, not geometry
+or titles. Older apps without markers are `unsupported`; missing Accessibility
+is `accessibility_unavailable`, never an empty success or an assumed closed
+state. Only the existing per-screen model supplies state; no new actions,
+transport service, media hooks, or screen/hardware identifiers. Panel window
+level, sharing exclusion, focus and visual behavior remain load-bearing.
 Package tests cover deterministic policy/output logic, not native runtime
 integration. Do not claim full notch control or issue closure from this slice.
 

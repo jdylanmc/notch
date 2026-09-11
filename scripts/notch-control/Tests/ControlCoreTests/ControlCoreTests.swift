@@ -81,7 +81,108 @@ final class ControlCoreTests: XCTestCase {
         let hidden = WindowInfo(id: 5, ownerPID: app.pid, onScreen: false, sharingAllowed: true, layer: 0)
         assertFailure(.unsupportedWindow) { _ = try captureWindow([hidden], id: 5, pid: app.pid) }
     }
+}
 
+extension ControlCoreTests {
+    private func notchMetadata(_ id: String, _ state: String? = "closed") -> NotchPanelMetadata {
+        NotchPanelMetadata(identifier: "com.jdylanmc.notchpocket.notch.v1.window." + id, value: state)
+    }
+
+    private func notchWindow(_ id: UInt32, pid: Int32 = 42) -> WindowInfo {
+        WindowInfo(id: id, ownerPID: pid, onScreen: false, sharingAllowed: false, layer: 27)
+    }
+
+    func testNotchStatesUseExactWindowIdentityWithoutCapturePermission() throws {
+        for state in ["open", "closed"] {
+            let result = try observeNotchPanels([notchMetadata("15", state)], windows: [notchWindow(15)], pid: app.pid)
+            XCTAssertEqual(result.status, .observed)
+            XCTAssertEqual(result.panels?.map(\.windowID), [15])
+            XCTAssertEqual(result.panels?.map(\.state.rawValue), [state])
+        }
+    }
+
+    func testNotchMultipleDisplaysAreSortedByWindowID() throws {
+        let result = try observeNotchPanels(
+            [notchMetadata("80", "open"), notchMetadata("3")],
+            windows: [notchWindow(3), notchWindow(80)], pid: app.pid
+        )
+        XCTAssertEqual(result.panels?.map(\.windowID), [3, 80])
+        XCTAssertEqual(result.panels?.map(\.state.rawValue), ["closed", "open"])
+    }
+
+    func testNotchMalformedIDsAndStateNeverBecomeClosed() {
+        for id in ["", "0", "-1", "+15", "015", "15.0", " 15", "15 ", "4294967296", "15.extra"] {
+            assertFailure(.unsupportedControl) {
+                _ = try observeNotchPanels([notchMetadata(id)], windows: [notchWindow(15)], pid: app.pid)
+            }
+        }
+        for state: String? in [nil, "", "OPEN", "Closed", "expanded", "fermé", "{\"state\":\"open\"}"] {
+            assertFailure(.unsupportedControl) {
+                _ = try observeNotchPanels([notchMetadata("15", state)], windows: [notchWindow(15)], pid: app.pid)
+            }
+        }
+    }
+
+    func testNotchUnknownContractAndCollectionBoundsAreUnsupported() {
+        for identifier in [
+            "com.jdylanmc.notchpocket.notch.v2.window.15", "NotchPocketSettingsWindow",
+            "com.other.notch.v1.window.15", "com.jdylanmc.notchpocket.notch.v1.window."
+        ] {
+            assertFailure(.unsupportedControl) {
+                _ = try observeNotchPanels([NotchPanelMetadata(identifier: identifier, value: "closed")],
+                                          windows: [notchWindow(15)], pid: app.pid)
+            }
+        }
+        assertFailure(.unsupportedControl) {
+            _ = try observeNotchPanels(Array(repeating: notchMetadata("15"), count: 601),
+                                      windows: [notchWindow(15)], pid: app.pid)
+        }
+    }
+
+    func testNotchDuplicatePanelIdentitiesAreRefused() {
+        assertFailure(.unsupportedControl) {
+            _ = try observeNotchPanels([notchMetadata("15"), notchMetadata("15", "open")],
+                                      windows: [notchWindow(15)], pid: app.pid)
+        }
+    }
+
+    func testNotchStaleForeignAndAmbiguousWindowMetadataAreRefused() {
+        for windows in [
+            [], [notchWindow(16)], [notchWindow(15, pid: 43)],
+            [notchWindow(15), notchWindow(15)],
+            [notchWindow(15), notchWindow(15, pid: 43)]
+        ] {
+            assertFailure(.staleTarget) {
+                _ = try observeNotchPanels([notchMetadata("15")], windows: windows, pid: app.pid)
+            }
+        }
+    }
+
+    func testNotchMissingOlderAppMarkerIsUnsupportedNotClosed() throws {
+        let result = try observeNotchPanels([], windows: [notchWindow(15)], pid: app.pid)
+        XCTAssertEqual(result, .unsupported)
+        XCTAssertNil(result.panels)
+    }
+
+    func testNotchUnavailableAndObservedWireContracts() throws {
+        for (result, status) in [
+            (NotchInspection.accessibilityUnavailable, "accessibility_unavailable"),
+            (NotchInspection.unsupported, "unsupported")
+        ] {
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(result)
+            ) as? [String: String])
+            XCTAssertEqual(object, ["status": status])
+        }
+        let result = try observeNotchPanels([notchMetadata("15", "open")], windows: [notchWindow(15)], pid: app.pid)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        XCTAssertEqual(String(data: try encoder.encode(result), encoding: .utf8),
+                       "{\"panels\":[{\"state\":\"open\",\"windowID\":15}],\"status\":\"observed\"}")
+    }
+}
+
+extension ControlCoreTests {
     private func menuItem(
         roots: [String],
         descendants: [String: [String]] = [:],

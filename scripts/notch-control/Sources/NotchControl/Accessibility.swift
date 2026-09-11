@@ -2,10 +2,9 @@ import AppKit
 import ApplicationServices
 import ControlCore
 
-final class SettingsControl {
-    private let target: AppTarget
-    private let application: AXUIElement
-    private let settingsID = "NotchPocketSettingsWindow"
+class BoundedAccessibilityReader {
+    let target: AppTarget
+    let application: AXUIElement
 
     init(target: AppTarget) throws {
         try target.requireAccessibility()
@@ -13,7 +12,7 @@ final class SettingsControl {
         application = AXUIElementCreateApplication(target.identity.pid)
     }
 
-    private func prepare(_ element: AXUIElement) throws {
+    func prepare(_ element: AXUIElement) throws {
         try target.requireAccessibility()
         var pid: pid_t = 0
         guard AXUIElementGetPid(element, &pid) == .success, pid == target.identity.pid else {
@@ -25,7 +24,7 @@ final class SettingsControl {
         }
     }
 
-    private func read(_ element: AXUIElement, _ attribute: String, optional: Bool = false) throws -> CFTypeRef? {
+    func read(_ element: AXUIElement, _ attribute: String, optional: Bool = false) throws -> CFTypeRef? {
         try target.budget.read(pause: Thread.sleep(forTimeInterval:), prepare: { try self.prepare(element) }, attempt: {
             var value: CFTypeRef?
             let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
@@ -38,7 +37,7 @@ final class SettingsControl {
         })
     }
 
-    private func elements(_ element: AXUIElement, _ attribute: String, optional: Bool = false) throws -> [AXUIElement] {
+    func elements(_ element: AXUIElement, _ attribute: String, optional: Bool = false) throws -> [AXUIElement] {
         guard let value = try read(element, attribute, optional: optional) else { return [] }
         guard let array = value as? [AXUIElement] else {
             throw ControlFailure(.unsupportedControl, "Accessibility collection has an unsupported shape.")
@@ -46,13 +45,53 @@ final class SettingsControl {
         return array
     }
 
-    private func string(_ element: AXUIElement, _ attribute: String) throws -> String? {
+    func string(_ element: AXUIElement, _ attribute: String) throws -> String? {
         guard let value = try read(element, attribute, optional: true) else { return nil }
         guard let text = value as? String else {
             throw ControlFailure(.unsupportedControl, "Accessibility text has an unsupported shape.")
         }
         return text
     }
+}
+
+final class NotchObservationControl: BoundedAccessibilityReader {
+    private func panels() throws -> [(AXUIElement, String)] {
+        let windows = try elements(application, kAXWindowsAttribute)
+        guard windows.count <= 600 else {
+            throw ControlFailure(.unsupportedControl, "App windows exceed the observation limit.")
+        }
+        var result: [(AXUIElement, String)] = []
+        for window in windows {
+            if let identifier = try string(window, kAXIdentifierAttribute),
+               identifier.hasPrefix(NotchPanelMetadata.identifierPrefix) {
+                guard try string(window, kAXRoleAttribute) == kAXWindowRole else {
+                    throw ControlFailure(.unsupportedControl, "Notch marker is not on a window.")
+                }
+                result.append((window, identifier))
+            }
+        }
+        return result
+    }
+
+    func state() throws -> (notch: NotchInspection, windows: [WindowInfo]) {
+        let before = try panels()
+        let metadata = try before.map { window, identifier in
+            NotchPanelMetadata(identifier: identifier, value: try string(window, kAXValueAttribute))
+        }
+        let after = try panels()
+        guard before.count == after.count,
+              zip(before, after).allSatisfy({ CFEqual($0.0, $1.0) && $0.1 == $1.1 }) else {
+            throw ControlFailure(.staleTarget, "Notch windows changed during observation; inspect again.")
+        }
+        let windows = try target.windows()
+        let result = try observeNotchPanels(metadata, windows: windows, pid: target.identity.pid)
+        try target.requireAccessibility()
+        return (result, windows)
+    }
+}
+
+final class SettingsControl: BoundedAccessibilityReader {
+    private let settingsID = "NotchPocketSettingsWindow"
 
     private func matching(
         _ root: AXUIElement,

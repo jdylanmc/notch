@@ -1,6 +1,6 @@
 ---
 name: notch
-description: Inspect the running Notch Pocket app, open Settings or select General/About using app-scoped Accessibility, and capture one selected app-owned window locally for UI debugging. Does not control playback, shelf, notifications, or notch visibility.
+description: Inspect the running Notch Pocket app and read-only per-panel notch state, open Settings or select General/About using app-scoped Accessibility, and capture one selected app-owned window locally for UI debugging. Does not control playback, shelf, notifications, or notch visibility.
 ---
 
 # Notch Pocket local UI debugging
@@ -47,6 +47,15 @@ human Accessibility/Screen Recording grant and full terminal/agent-host restart
 procedure in the helper documentation. Recheck live; never auto-prompt, reset
 privacy grants, or modify app signing/identity.
 
+For notch state, read `notch.status` and `notchDiagnostic`. Only `observed`
+contains `panels`, sorted by exact native `windowID`, with machine states
+`open`/`closed`. `unsupported` (including older apps missing the versioned
+marker) and `accessibility_unavailable` are not closed. This is model state,
+not proof of visible pixels or animation completion. Never guess panel identity
+from window title/size/level; window recreation requires fresh inspection.
+There is still **no notch open/close action**. Read-only state does not grant
+capture permission or override sharing exclusion.
+
 To capture, select one **freshly reported app-owned** `windows[].id`, preferably
 the uniquely mapped `settings.windowID` for Settings. If mapping is missing or
 ambiguous, stop rather than guessing. Use a new absolute PNG destination in an
@@ -71,5 +80,6 @@ persistent preferences, app identity and existing privacy grants.
 
 Report exact commands, observed JSON/pixel postconditions, restoration,
 limitations and ignored residue (`scripts/notch-control/.build/`). A successful
-build/unit suite is not runtime proof. This is issue #18's initial Settings and
-window-capture slice, not full notch control or issue closure.
+build/unit suite is not runtime proof. This is issue #18's bounded read-only
+notch observation, Settings and window-capture slice, not full notch control
+or issue closure.

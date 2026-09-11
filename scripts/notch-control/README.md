@@ -1,12 +1,14 @@
-# Local app control — issue #18, first slice
+# Local app control — issue #18, bounded observation and Settings slice
 
-Small Apple-toolchain-only Swift package. No daemon, network service, app
-modifications, synthetic keyboard input, or dependencies. Requires macOS 14+
+Small Apple-toolchain-only Swift package. No daemon, network service,
+synthetic keyboard input, or dependencies. The app supplies minimal read-only
+panel Accessibility metadata. Requires macOS 14+
 APIs; use the repository's macOS 15.6+/Xcode 26+ build host.
 
-This slice covers discovery, Settings → General/About, and a selected app-owned
-window screenshot. It does **not** complete issue #18 or establish full notch
-control. Runtime behavior must be verified against the exact newly built app.
+This slice covers discovery, read-only notch state, Settings → General/About,
+and a selected app-owned window screenshot. Notch open/close actions remain
+unsupported. It does **not** complete issue #18 or establish full notch control.
+Runtime behavior must be verified against the exact newly built app.
 
 ## Build and deterministic checks
 
@@ -73,7 +75,9 @@ bounded observed polling, transient-read retry/deadline/preparation callbacks,
 optional missing reads, nontransient read-error propagation, error serialization and exit
 codes against literal contracts, invalid-input executable stdout/status,
 immediate-menu-root selection/deduplication, missing/ambiguous English Settings
-items, traversal bounds, and secure output creation/overwrite/symlink refusal.
+items, traversal bounds, secure output creation/overwrite/symlink refusal, and
+notch state/version/ID validation, multi-panel sorting, duplicate/stale/foreign
+metadata rejection and explicit unsupported/unavailable output (29 tests).
 They do **not** exercise Accessibility, ScreenCaptureKit, permissions, Settings UI, or the
 actual app. Permission denial and native API failures need the runtime matrix
 below; tests are not evidence that those integrations work.
@@ -105,8 +109,8 @@ observation/API budget, not a hard OS process-kill timer or disk-write deadline.
 Each invocation emits one concise JSON object on stdout, with `ok` and command
 results or `error: {code, message}`. Errors are not raw framework logs.
 Discovery exposes only bundle path, PID, launch time, permission booleans,
-owned window IDs/layer/on-screen/sharing metadata, and allowlisted Settings
-state. It never emits arbitrary window titles, raw Accessibility trees,
+owned window IDs/layer/on-screen/sharing metadata, allowlisted Settings state,
+and versioned notch state. It never emits arbitrary window titles, raw Accessibility trees,
 notification text, media metadata, or preference values.
 
 `inspect` is read-only and can succeed when permission is absent: the boolean
@@ -119,6 +123,48 @@ absence means unknown/another pane, not General by default.
 `settings.windowID` is returned only when the identified Settings Accessibility
 window's geometry matches one on-screen window owned by that app. Missing
 mapping is **not** permission to guess an ID.
+
+### Read-only notch observation
+
+`inspect` adds a `notch` section without changing existing Settings fields:
+
+```json
+{"notch":{"status":"observed","panels":[{"windowID":123,"state":"closed"}]}}
+```
+
+This is a contract example, not a recorded runtime result. `panels` is present
+only for an observed nonempty set, sorted by native window ID across displays.
+Missing markers (including older app builds or no exposed panels) yield
+`{"status":"unsupported"}`. Missing Accessibility yields
+`{"status":"accessibility_unavailable"}`. Malformed/unknown-version metadata or
+native read failures yield unsupported with `notchDiagnostic`; stale app,
+panel identity/ownership or expired deadline fails the command. Never interpret
+unsupported/unavailable as closed.
+
+The production `NotchPocketSkyLightWindow` exposes modern NSAccessibility
+`AXIdentifier = com.jdylanmc.notchpocket.notch.v1.window.<windowNumber>` and
+`AXValue = open|closed`. The native window number lives in the identifier
+(machine metadata, not the spoken title); the value is a short state, not
+machine JSON in a VoiceOver utterance. Both setters are denied/no-ops. Native
+role, title, content, focus, level and sharing policy are unchanged.
+A weak source reads the existing per-screen model directly, so state changes
+need no second publisher, cached state, or new media lifecycle. Closing the
+panel clears the source. This reports model state, not animation completion or
+pixel visibility; an off-screen or sharing-excluded panel can still be observed.
+It grants no permission to capture that panel.
+
+The helper reads only immediate app `AXWindows` identifiers, roles and marked
+panel values (at most 600 windows), re-enumerates identity after reading, then
+joins each explicit window number one-to-one to fresh current-app Core Graphics
+metadata. It rechecks process/path/launch identity, element ownership, permission
+and the shared deadline through the same bounded reader as Settings.
+No title, dimension or layer heuristic; no hardware/display identifiers.
+Window recreation invalidates IDs: always inspect again, never persist them.
+This is a bounded sequential observation, not an atomic multi-display snapshot;
+state can change after a read. Native transport, VoiceOver behavior, display
+recreation and actual model transitions still require the parent's authorized
+runtime checks. App XCTest uses small fake sources without creating media
+models; helper tests validate pure policy, not live accessibility integration.
 
 | Error code | Exit |
 | --- | --- |
