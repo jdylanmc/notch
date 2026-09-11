@@ -1,0 +1,21 @@
+Upstream license declaration
+
+Source: https://github.com/fayazara/macos-app-skills
+Revision: a60365ae85bfc3d1f2f8b260b080d77bfb2f3ec0
+Skill: macos-patterns/SKILL.md
+
+The upstream README.md declares:
+
+## License
+
+MIT
+
+Declaration source:
+https://github.com/fayazara/macos-app-skills/blob/a60365ae85bfc3d1f2f8b260b080d77bfb2f3ec0/README.md#license
+
+The pinned repository supplies no standalone LICENSE file or full MIT
+copyright notice. This file preserves its actual declaration and provenance;
+it does not invent an upstream copyright holder or claim that a complete
+upstream notice was supplied.
+
+MIT license text: https://opensource.org/license/mit

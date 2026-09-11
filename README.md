@@ -105,6 +105,14 @@ handling, restoration, isolated lint commands, and honest runtime limitations
 are covered in the [helper guide](scripts/notch-control/README.md).
 Generated helper output stays under ignored `scripts/notch-control/.build/`.
 
+## macOS expertise
+
+Vetted, pinned [SwiftUI and AppKit expertise skills](.github/skills/README.md)
+are included at repository scope. Their local guards preserve this app's
+architecture, macOS 14 deployment and privacy/release boundaries. Four other
+suggested skills were deferred after comparison with the current code; the
+record explains each decision and the remaining coverage gaps.
+
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
