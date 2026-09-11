@@ -26,14 +26,16 @@ final class SettingsControl {
     }
 
     private func read(_ element: AXUIElement, _ attribute: String, optional: Bool = false) throws -> CFTypeRef? {
-        try prepare(element)
-        var value: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
-        if optional && (result == .noValue || result == .attributeUnsupported) { return nil }
-        guard result == .success else {
-            throw ControlFailure(.accessibilityFailed, "Accessibility attribute read failed (AX \(result.rawValue)).")
-        }
-        return value
+        try target.budget.read(pause: Thread.sleep(forTimeInterval:), prepare: { try self.prepare(element) }, attempt: {
+            var value: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+            if result == .cannotComplete { return .cannotComplete(result.rawValue) }
+            if optional && (result == .noValue || result == .attributeUnsupported) { return .value(nil) }
+            guard result == .success else {
+                throw ControlFailure(.accessibilityFailed, "Accessibility attribute read failed (AX \(result.rawValue)).")
+            }
+            return .value(value)
+        })
     }
 
     private func elements(_ element: AXUIElement, _ attribute: String, optional: Bool = false) throws -> [AXUIElement] {

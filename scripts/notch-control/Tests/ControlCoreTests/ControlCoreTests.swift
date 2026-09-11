@@ -224,6 +224,104 @@ final class ControlCoreTests: XCTestCase {
         }
     }
 
+    func testBusyReadThenSuccessRechecksPreparation() throws {
+        var now: TimeInterval = 0
+        var events: [String] = []
+        let budget = PollBudget(timeout: 1, now: { now })
+        let value: String = try budget.read(pause: { now += $0 }, prepare: { events.append("prepare") }, attempt: {
+            events.append("read")
+            return events.count == 2 ? .cannotComplete(-25204) : .value("observed")
+        })
+        XCTAssertEqual(value, "observed")
+        XCTAssertEqual(events, ["prepare", "read", "prepare", "read"])
+        XCTAssertEqual(now, 0.1, accuracy: 0.001)
+    }
+
+    func testBusyReadExhaustsOriginalBudgetWithLastAXCode() {
+        var now: TimeInterval = 0
+        var reads = 0
+        let budget = PollBudget(timeout: 1, now: { now })
+        now = 0.75
+        XCTAssertThrowsError(try budget.read(pause: { now += $0 }, prepare: {}, attempt: { () -> AttributeRead<String> in
+            reads += 1
+            return .cannotComplete(-25204)
+        })) { error in
+            XCTAssertEqual((error as? ControlFailure)?.code, .timeout)
+            XCTAssertEqual((error as? ControlFailure)?.message,
+                           "Timed out waiting for a busy Accessibility attribute read (last AX -25204).")
+        }
+        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(now, 1, accuracy: 0.001)
+    }
+
+    func testReadPropagatesNontransientFailuresWithoutRetry() {
+        let budget = PollBudget(timeout: 1, now: { 0 })
+        for code in [-25211, -25212, -25205, -25202] {
+            let message = "Accessibility attribute read failed (AX \(code))."
+            var reads = 0
+            XCTAssertThrowsError(try budget.read(pause: { _ in XCTFail("Must not retry") }, prepare: {}, attempt: {
+                () -> AttributeRead<String> in
+                reads += 1
+                throw ControlFailure(.accessibilityFailed, message)
+            })) { error in
+                XCTAssertEqual((error as? ControlFailure)?.code, .accessibilityFailed)
+                XCTAssertEqual((error as? ControlFailure)?.message, message)
+            }
+            XCTAssertEqual(reads, 1)
+        }
+    }
+
+    func testOptionalMissingReadIsNotBusy() throws {
+        let budget = PollBudget(timeout: 1, now: { 0 })
+        var reads = 0
+        let value: String? = try budget.read(pause: { _ in XCTFail("Missing is not busy") }, prepare: {}, attempt: {
+            reads += 1
+            return .value(nil)
+        })
+        XCTAssertNil(value)
+        XCTAssertEqual(reads, 1)
+    }
+
+    func testBusyReadStopsWhenPreparationLosesOwnershipOrPermission() {
+        for failure in [FailureCode.staleTarget, .permissionDenied] {
+            var now: TimeInterval = 0
+            var preparations = 0
+            var reads = 0
+            let budget = PollBudget(timeout: 1, now: { now })
+            assertFailure(failure) {
+                let _: String = try budget.read(pause: { now += $0 }, prepare: {
+                    preparations += 1
+                    if preparations == 2 { throw ControlFailure(failure, "Target recheck failed.") }
+                }, attempt: {
+                    reads += 1
+                    return .cannotComplete(-25204)
+                })
+            }
+            XCTAssertEqual(preparations, 2)
+            XCTAssertEqual(reads, 1)
+        }
+    }
+
+    func testReadRechecksDeadlineBeforeAndAfterPreparationAndRead() {
+        for expiry in ["before", "prepare", "read"] {
+            var now: TimeInterval = 0
+            var reads = 0
+            let budget = PollBudget(timeout: 1, now: { now })
+            if expiry == "before" { now = 1 }
+            assertFailure(.timeout) {
+                let _: String = try budget.read(pause: { _ in XCTFail("Must not pause") }, prepare: {
+                    XCTAssertNotEqual(expiry, "before")
+                    if expiry == "prepare" { now = 1 }
+                }, attempt: {
+                    reads += 1
+                    now = 1
+                    return .value("too late")
+                })
+            }
+            XCTAssertEqual(reads, expiry == "read" ? 1 : 0)
+        }
+    }
+
     func testInvalidInputExecutableWireContract() throws {
         let executable = try XCTUnwrap(ProcessInfo.processInfo.environment["NOTCH_CONTROL_TEST_EXECUTABLE"],
                                        "Use bash scripts/notch-control/control.sh test.")

@@ -69,7 +69,8 @@ paths; use the launcher command above.
 
 The package tests cover argument rejection, exact path and unique process
 selection, changed process identity, window ownership/sharing/on-screen policy,
-bounded observed polling, read-error propagation, error serialization and exit
+bounded observed polling, transient-read retry/deadline/preparation callbacks,
+optional missing reads, nontransient read-error propagation, error serialization and exit
 codes against literal contracts, invalid-input executable stdout/status,
 immediate-menu-root selection/deduplication, missing/ambiguous English Settings
 items, traversal bounds, and secure output creation/overwrite/symlink refusal.
@@ -134,7 +135,13 @@ mapping is **not** permission to guess an ID.
 All running `com.jdylanmc.notchpocket` instances count toward ambiguity.
 `--app-path` is an assertion, not a way to select one duplicate. PID/path/launch
 time are rechecked at use. Accessibility operations check element ownership,
-bound message calls and searches, and propagate failures. Settings enumerates
+bound message calls and searches, and propagate failures. Only attribute reads
+returning native `cannotComplete` (AX -25204) retry, with at most 0.1-second pauses
+inside the original shared budget; each attempt rechecks target, permission,
+element ownership, and deadline. Exhaustion reports `timeout` with the last busy
+AX code. Other failures propagate immediately; optional `noValue` and
+`attributeUnsupported` still mean absent, not busy. Menu presses and attribute
+mutations are never retried. Settings enumerates
 only immediate app-owned `AXMenuBar` roots (including the secondary menu bar),
 deduplicates identical roots, and searches at most 600 nodes across those roots,
 with depth at most 24. It never searches window descendants for menu commands.

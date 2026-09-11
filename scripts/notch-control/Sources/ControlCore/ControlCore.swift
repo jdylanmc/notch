@@ -222,6 +222,11 @@ public func captureWindow(_ windows: [WindowInfo], id: UInt32, pid: Int32) throw
     return window
 }
 
+public enum AttributeRead<Value> {
+    case value(Value)
+    case cannotComplete(Int32)
+}
+
 public struct PollBudget {
     private let end: TimeInterval
     private let now: () -> TimeInterval
@@ -234,11 +239,36 @@ public struct PollBudget {
     }
 
     public func remaining() throws -> TimeInterval {
+        try remaining(timeoutMessage: "Timed out waiting for an observed app postcondition.")
+    }
+
+    private func remaining(timeoutMessage: String) throws -> TimeInterval {
         let left = end - now()
         guard left > 0 else {
-            throw ControlFailure(.timeout, "Timed out waiting for an observed app postcondition.")
+            throw ControlFailure(.timeout, timeoutMessage)
         }
         return left
+    }
+
+    public func read<Value>(
+        pause: (TimeInterval) -> Void,
+        prepare: () throws -> Void,
+        attempt: () throws -> AttributeRead<Value>
+    ) throws -> Value {
+        var timeoutMessage = "Timed out waiting for an Accessibility attribute read."
+        while true {
+            _ = try remaining(timeoutMessage: timeoutMessage)
+            try prepare()
+            _ = try remaining(timeoutMessage: timeoutMessage)
+            switch try attempt() {
+            case .value(let value):
+                _ = try remaining(timeoutMessage: timeoutMessage)
+                return value
+            case .cannotComplete(let code):
+                timeoutMessage = "Timed out waiting for a busy Accessibility attribute read (last AX \(code))."
+                pause(min(0.1, try remaining(timeoutMessage: timeoutMessage)))
+            }
+        }
     }
 
     public func until(pause: (TimeInterval) -> Void, condition: () throws -> Bool) throws {
