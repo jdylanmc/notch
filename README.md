@@ -4,6 +4,10 @@ An independent macOS notch app maintained at
 [jdylanmc/notch](https://github.com/jdylanmc/notch).
 Historical source and artwork attribution: [Third-party notices](THIRD_PARTY_LICENSES).
 
+The independent development version is **0.1**. Settings and the macOS app menu
+use **Notch Pocket**; the existing bundle identities, build counter, and
+`notch-pocket.app` filename are unchanged.
+
 The foundation milestone preserves existing media features, shared media code,
 and the file shelf. **Spotify is the only committed player support.** Other
 inherited integrations remain in the source; their presence is not a broader
