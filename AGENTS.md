@@ -369,6 +369,23 @@ hardened-runtime requirements, and notarization are not supplied by these local
 test scripts. The separately approved [local Developer ID slice](#local-developer-id-preparation-9-bounded-slice)
 does not authorize that inherited workflow or notarization.
 
+## Agent skills
+
+Imported skills supplement, not override, this repository's scope, verification
+and approval rules. They do not authorize merges, releases or bypassing #54.
+
+### Issue tracker
+GitHub Issues in `jdylanmc/notch`, using `gh`.
+See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+Use the five default triage roles.
+See `docs/agents/triage-labels.md`.
+
+### Domain docs
+Single-context: root `CONTEXT.md` and `docs/adr/`.
+See `docs/agents/domain.md`.
+
 ## macOS expertise skills
 
 Use the vetted project-local [SwiftUI expertise](.github/skills/swiftui-expert-skill/SKILL.md)
