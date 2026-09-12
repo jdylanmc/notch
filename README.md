@@ -219,12 +219,24 @@ Xcode signs the app, helper and embedded frameworks. The existing
 `MediaRemoteAdapterTestClient` is copied as a **resource**, not a
 CodeSignOnCopy item: the command first verifies the Xcode-signed code, then
 explicitly signs that one built resource and re-seals its enclosing **new app**.
-It preserves the resource identifier and requires empty resource entitlements;
-app/helper entitlements must exactly match their checked-in declarations.
+Its checked-in source (`mediaremote-adapter/MediaRemoteAdapterTestClient`) and
+built copy must both be user-owned regular executables, without symlinks,
+hard links or group/world write, matching the approved SHA-256
+`f9784aae0e569e670702b5cd2fe66ba33c3647839bc35d2365c0cac291c0ea3c`.
+That exact input has an **unsigned x86_64** slice and a **linker-ad-hoc-signed
+arm64** slice. The pin establishes the intentionally unsigned slice; no failed
+native command is treated as proof of unsigned code. The command requires
+exactly those two architectures, strictly verifies the existing arm64 signature,
+and checks its `MediaRemoteAdapterTestClient` identifier, linker-ad-hoc flags
+(`0x20002`) and empty entitlements. Both file hashes are rechecked before signing.
+The resource is then signed with the explicit `MediaRemoteAdapterTestClient`
+identifier, without entitlement input or metadata preservation; final checks
+require empty entitlements on **both** slices. App/helper entitlements must
+exactly match their checked-in declarations.
 No source binary or input/installed app is re-signed, no recursive `--deep`
 signing is used, and failures never trigger a repair/ad-hoc fallback.
-An unexpected vendored signature/entitlement is a blocker, not permission to
-change the dependency or relax verification.
+Any source/copy drift or unexpected vendored signature/entitlement is a blocker,
+not permission to update the pin, change the dependency or relax verification.
 
 Final strict verification covers the app/helper resource seals and **every
 Mach-O file in the app**, including resource executables and physical framework
@@ -262,9 +274,12 @@ python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'
 ```
 
 These tests do not use Keychain, mounts, a developer app or DMG dependencies.
-They do not verify runtime behavior. The parent owns actual-diff reconciliation,
-all repository gates, native signing/packaging evidence, independent review,
-and the PR targeting `pocket`; no execution belongs in an authoring-only phase.
+They copy the approved resource bytes into isolated fixtures without executing
+them and model the mixed unsigned/linker-signed input with mocked native tools.
+They do not verify native signing or runtime behavior. The parent owns
+actual-diff reconciliation, all repository gates, native signing/packaging
+evidence, independent review, and the PR targeting `pocket`; no execution
+belongs in an authoring-only phase.
 
 ### Product CI
 

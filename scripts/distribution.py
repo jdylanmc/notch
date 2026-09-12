@@ -22,6 +22,9 @@ APP_ID = "com.jdylanmc.notchpocket"
 HELPER_ID = APP_ID + ".XPCHelper"
 HELPER = Path("Contents/XPCServices/notchPocketXPCHelper.xpc")
 RESOURCE_CODE = Path("Contents/Resources/MediaRemoteAdapterTestClient")
+RESOURCE_SOURCE = Path("mediaremote-adapter/MediaRemoteAdapterTestClient")
+RESOURCE_IDENTIFIER = "MediaRemoteAdapterTestClient"
+RESOURCE_SHA256 = "f9784aae0e569e670702b5cd2fe66ba33c3647839bc35d2365c0cac291c0ea3c"
 ENTITLEMENTS = {
     APP_ID: Path("notchPocket/notchPocket.entitlements"),
     HELPER_ID: Path("notchPocketXPCHelper/notchPocketXPCHelper.entitlements"),
@@ -265,7 +268,7 @@ def verify_bundles(app, tools, env, team, run, *, deep=True):
             env=env, phase="signature_failed", timeout=120)
 
 
-def signature_details(binary, tools, env, run):
+def code_architectures(binary, tools, env, run):
     output, _ = run([tools["lipo"], "-archs", str(binary)],
                     env=env, phase="signature_failed", timeout=30)
     try:
@@ -275,6 +278,12 @@ def signature_details(binary, tools, env, run):
     if (not architectures or len(set(architectures)) != len(architectures)
             or any(not re.fullmatch(r"[A-Za-z0-9_]+", arch) for arch in architectures)):
         raise DistributionError("signature_failed", "Invalid Mach-O architecture inventory.")
+    return architectures
+
+
+def signature_details(binary, tools, env, run, *, architectures=None):
+    if architectures is None:
+        architectures = code_architectures(binary, tools, env, run)
     details = []
     for arch in architectures:
         _, metadata = run([tools["codesign"], "--display", "--arch", arch, "--verbose=4", str(binary)],
@@ -339,25 +348,43 @@ def verify_binary(binary, expected, identity, team, tools, env, run):
     return evidence
 
 
+def verify_resource_input(binary):
+    for path in (ROOT / RESOURCE_SOURCE, binary):
+        info = path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or path.resolve(strict=True) != path
+                or info.st_uid != os.getuid() or info.st_nlink != 1
+                or info.st_mode & (stat.S_IWGRP | stat.S_IWOTH) or not info.st_mode & 0o111):
+            raise DistributionError("invalid_output", "Resource source/copy must be owned regular executables "
+                                    "without symlinks, hard links or shared write.")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != RESOURCE_SHA256:
+            raise DistributionError("signature_failed", "Resource source/copy differs from the approved SHA-256.")
+
+
 def sign_resource(app, identity, tools, env, run):
     binary = app / RESOURCE_CODE
-    # Xcode copies this vendored executable as a resource, not CodeSignOnCopy.
-    # This is a planned leaf-sign + outer-seal step, never a repair fallback.
-    run([tools["codesign"], "--verify", "--strict", "--all-architectures", str(binary)],
+    # Only this pinned input has an intentionally unsigned x86_64 slice.
+    # No failing codesign command is interpreted as evidence of unsigned code.
+    verify_resource_input(binary)
+    if set(code_architectures(binary, tools, env, run)) != {"x86_64", "arm64"}:
+        raise DistributionError("signature_failed", "Unexpected approved resource architectures.")
+    run([tools["codesign"], "--verify", "--strict", "--arch", "arm64", str(binary)],
         env=env, phase="signature_failed", timeout=120)
-    identifiers = set()
-    for _, fields, entitlements in signature_details(binary, tools, env, run):
-        identifiers.add(single_field(fields, "Identifier"))
+    for _, fields, entitlements in signature_details(binary, tools, env, run, architectures=("arm64",)):
+        flags = re.search(r"\bflags=0x([0-9a-fA-F]+)\(", single_field(fields, "CodeDirectory v"))
+        if (single_field(fields, "Identifier") != RESOURCE_IDENTIFIER
+                or single_field(fields, "Signature") != "adhoc" or fields.get("Authority")
+                or not flags or int(flags.group(1), 16) != 0x20002):
+            raise DistributionError("signature_failed", "Unexpected preexisting arm64 resource signature.")
         check_entitlements(entitlements, {})
-    if len(identifiers) != 1:
-        raise DistributionError("signature_failed", "Resource identifiers differ across architectures.")
+    verify_resource_input(binary)
+    # No entitlement input or metadata preservation: the resource contract is empty.
     run([tools["codesign"], "--force", "--sign", identity, "--timestamp", "--options", "runtime",
-         "--preserve-metadata=identifier,entitlements", str(binary)],
+         "--identifier", RESOURCE_IDENTIFIER, str(binary)],
         env=env, phase="signature_failed", timeout=120)
     run([tools["codesign"], "--force", "--sign", identity, "--timestamp", "--options", "runtime",
          "--identifier", APP_ID, "--entitlements", str(ROOT / ENTITLEMENTS[APP_ID]), str(app)],
         env=env, phase="signature_failed", timeout=120)
-    return identifiers.pop()
+    return RESOURCE_IDENTIFIER
 
 
 def build_distribution(identity, team, build_value, run=run_command):

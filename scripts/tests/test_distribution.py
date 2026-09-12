@@ -1,4 +1,4 @@
-"""Portable distribution contracts: fake artifacts/tools only, never native signing."""
+"""Portable distribution contracts: mocked tools; the approved resource is never executed."""
 
 import contextlib
 import importlib.util
@@ -39,6 +39,10 @@ class FixtureTests(unittest.TestCase):
             target = self.root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes((ROOT / relative).read_bytes())
+        self.resource_source = self.root / distribution.RESOURCE_SOURCE
+        self.resource_source.parent.mkdir(parents=True)
+        self.resource_source.write_bytes((ROOT / distribution.RESOURCE_SOURCE).read_bytes())
+        self.resource_source.chmod(0o755)
         self.build = self.root / ".build/candidate"
         self.app = self.build / "Products/Release/notch-pocket.app"
         patches = [
@@ -69,7 +73,8 @@ class FixtureTests(unittest.TestCase):
         for relative in (APP_BINARY, HELPER_BINARY, FRAMEWORK_BINARY, distribution.RESOURCE_CODE):
             path = self.app / relative
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(b"\xcf\xfa\xed\xfe" + b"fixture, not executable code")
+            path.write_bytes(self.resource_source.read_bytes() if relative == distribution.RESOURCE_CODE
+                             else b"\xcf\xfa\xed\xfe" + b"fixture, not executable code")
             path.chmod(0o755)
         framework = self.app / "Contents/Frameworks/Fixture.framework"
         (framework / "Versions/Current").symlink_to("A", target_is_directory=True)
@@ -226,6 +231,10 @@ class SigningTests(FixtureTests):
         super().setUp()
         self.calls = []
         self.resource_signed = False
+        self.resource_input_changes = {}
+        self.resource_input_entitlements = {}
+        self.resource_architectures = b"x86_64 arm64\n"
+        self.invalid_final_resource_architectures = set()
         self.changes = {}
         self.entitlement_changes = {}
         self.fail = None
@@ -250,9 +259,18 @@ class SigningTests(FixtureTests):
         binary = Path(command[-1])
         relative = binary.relative_to(self.app)
         if command[0] == TOOLS["lipo"]:
-            return b"x86_64 arm64\n", b""
+            architectures = self.resource_architectures if relative == distribution.RESOURCE_CODE else b"x86_64 arm64\n"
+            return architectures, b""
         self.assertEqual(command[0], TOOLS["codesign"])
+        arch = command[command.index("--arch") + 1] if "--arch" in command else None
+        resource_input = relative == distribution.RESOURCE_CODE and not self.resource_signed
         if "--verify" in command:
+            if resource_input and (arch != "arm64" or "--all-architectures" in command):
+                raise distribution.DistributionError("signature_failed", "Unsigned x86_64 slice.", tool_exit=1)
+            verified_architectures = {arch} if arch and "--all-architectures" not in command else {"x86_64", "arm64"}
+            if (relative == distribution.RESOURCE_CODE and self.resource_signed
+                    and verified_architectures & self.invalid_final_resource_architectures):
+                raise distribution.DistributionError("signature_failed", "Invalid final resource signature.", tool_exit=17)
             return b"", b""
         if "--sign" in command:
             if relative == distribution.RESOURCE_CODE:
@@ -262,13 +280,17 @@ class SigningTests(FixtureTests):
                 self.assertTrue(self.resource_signed)
             return b"", b""
         self.assertIn("--display", command)
-        arch = command[command.index("--arch") + 1]
+        if resource_input and arch != "arm64":
+            raise distribution.DistributionError("signature_failed", "Unsigned x86_64 slice.", tool_exit=1)
         identifier = {
             APP_BINARY: distribution.APP_ID, HELPER_BINARY: distribution.HELPER_ID,
             FRAMEWORK_BINARY: "org.fixture.Framework",
-            distribution.RESOURCE_CODE: "org.fixture.MediaRemoteAdapterTestClient",
+            distribution.RESOURCE_CODE: "MediaRemoteAdapterTestClient",
         }.get(relative, "org.fixture.Extra")
         if "--entitlements" in command:
+            if resource_input:
+                output = plistlib.dumps(self.resource_input_entitlements) if self.resource_input_entitlements else b""
+                return output, b""
             declared = distribution.ENTITLEMENTS.get(identifier)
             entitlements = plistlib.loads((self.root / declared).read_bytes()) if declared else {}
             entitlements = self.entitlement_changes.get((relative, arch), entitlements)
@@ -278,16 +300,21 @@ class SigningTests(FixtureTests):
             "Timestamp": "Sep 12, 2026 at 12:00:00 PM",
             "CodeDirectory v": "20500 size=123 flags=0x10000(runtime) hashes=1+2 location=embedded",
         }
-        if relative == distribution.RESOURCE_CODE and not self.resource_signed:
-            fields.pop("Authority")
-            fields["Signature"] = "adhoc"
-        fields.update(self.changes.get((relative, arch), {}))
+        if resource_input:
+            fields = {
+                "Identifier": "MediaRemoteAdapterTestClient", "Signature": "adhoc", "TeamIdentifier": "not set",
+                "CodeDirectory v": "20400 size=775 flags=0x20002(adhoc,linker-signed) hashes=1+2 location=embedded",
+            }
+            fields.update(self.resource_input_changes)
+        else:
+            fields.update(self.changes.get((relative, arch), {}))
         return b"", "\n".join(key + "=" + value for key, value in fields.items() if value is not None).encode()
 
     def build_candidate(self):
         return distribution.build_distribution(IDENTITY, TEAM, str(self.build), run=self.fake_run)
 
     def test_complete_nested_multiarchitecture_build_then_planned_resource_sign_and_outer_seal(self):
+        source_bytes = self.resource_source.read_bytes()
         result = self.build_candidate()
         self.assertTrue(result["ok"])
         self.assertEqual(result["notarization"], "NOT YET NOTARIZED")
@@ -309,9 +336,24 @@ class SigningTests(FixtureTests):
             self.assertIn("--timestamp", command)
             self.assertIn("runtime", command)
             self.assertEqual(command[command.index("--sign") + 1], IDENTITY)
-        self.assertIn("--preserve-metadata=identifier,entitlements", signs[0])
+        self.assertEqual(signs[0][signs[0].index("--identifier") + 1], "MediaRemoteAdapterTestClient")
+        self.assertNotIn("--entitlements", signs[0])
+        self.assertFalse(any(part.startswith("--preserve-metadata") for part in signs[0]))
         self.assertEqual(signs[1][signs[1].index("--entitlements") + 1],
                          str(self.root / distribution.ENTITLEMENTS[distribution.APP_ID]))
+        commands = [call[0] for call in self.calls]
+        before_sign = commands[:commands.index(signs[0])]
+        resource_checks = [command for command in before_sign if command[-1] == str(self.app / distribution.RESOURCE_CODE)
+                           and command[0] == TOOLS["codesign"]]
+        self.assertEqual(len(resource_checks), 3)
+        for command in resource_checks:
+            self.assertEqual(command[command.index("--arch") + 1], "arm64")
+        self.assertIn("--verify", resource_checks[0])
+        self.assertIn("--strict", resource_checks[0])
+        self.assertEqual(self.resource_source.read_bytes(), source_bytes)
+        resource_evidence = next(item["signatures"] for item in result["code"]
+                                 if item["path"] == str(distribution.RESOURCE_CODE))
+        self.assertEqual({entry["identifier"] for entry in resource_evidence}, {"MediaRemoteAdapterTestClient"})
         for command, env, _, timeout in self.calls:
             self.assertEqual(env["TMPDIR"], str(self.build / "Scratch") + "/")
             self.assertGreater(timeout, 0)
@@ -355,10 +397,119 @@ class SigningTests(FixtureTests):
         self.assertFalse(self.resource_signed)
         self.assertFalse(any("--sign" in call[0] for call in self.calls))
 
-    def test_vendored_resource_debug_entitlement_blocks_planned_sign(self):
-        self.entitlement_changes[(distribution.RESOURCE_CODE, "arm64")] = {"get-task-allow": True}
+    def test_modified_resource_source_copy_or_both_block_planned_sign(self):
+        original = self.resource_source.read_bytes()
+        for index, changed in enumerate(("source", "copy", "both")):
+            with self.subTest(changed=changed):
+                self.resource_source.write_bytes(original)
+                self.build = self.root / ".build" / ("drift-" + str(index))
+                self.app = self.build / "Products/Release/notch-pocket.app"
+
+                def mutate():
+                    paths = [self.resource_source] if changed == "source" else [self.app / distribution.RESOURCE_CODE]
+                    if changed == "both":
+                        paths.append(self.resource_source)
+                    for path in paths:
+                        data = bytearray(path.read_bytes())
+                        data[-1] ^= 1
+                        path.write_bytes(data)
+
+                self.build_mutation = mutate
+                self.assert_error("signature_failed", self.build_candidate)
+                self.assertFalse(self.resource_signed)
+        self.assertFalse(any("--sign" in call[0] for call in self.calls))
+
+    def test_resource_drift_during_native_inspection_blocks_planned_sign(self):
+        def mutate(command):
+            if "--entitlements" in command and command[-1] == str(self.app / distribution.RESOURCE_CODE):
+                binary = self.app / distribution.RESOURCE_CODE
+                binary.write_bytes(binary.read_bytes() + b"changed during inspection")
+        self.fail = mutate
         self.assert_error("signature_failed", self.build_candidate)
         self.assertFalse(self.resource_signed)
+        self.assertFalse(any("--sign" in call[0] for call in self.calls))
+
+    def test_resource_source_and_copy_require_owned_regular_single_link_executables(self):
+        self.build.mkdir()
+        self.create_app()
+        binary = self.app / distribution.RESOURCE_CODE
+        for path in (self.resource_source, binary):
+            for mode in (0o644, 0o775, 0o757):
+                with self.subTest(path=path, mode=oct(mode)):
+                    path.chmod(mode)
+                    self.assert_error("invalid_output", distribution.verify_resource_input, binary)
+                    path.chmod(0o755)
+            alias = self.root / "resource-alias"
+            os.link(path, alias)
+            self.assert_error("invalid_output", distribution.verify_resource_input, binary)
+            alias.unlink()
+            original = path.read_bytes()
+            path.unlink()
+            path.symlink_to(self.app / APP_BINARY)
+            self.assert_error("invalid_output", distribution.verify_resource_input, binary)
+            path.unlink()
+            path.mkdir()
+            self.assert_error("invalid_output", distribution.verify_resource_input, binary)
+            path.rmdir()
+            path.write_bytes(original)
+            path.chmod(0o755)
+        with mock.patch.object(distribution.os, "getuid", return_value=os.getuid() + 1):
+            self.assert_error("invalid_output", distribution.verify_resource_input, binary)
+        self.assertEqual(self.calls, [])
+
+    def test_preexisting_arm64_verification_and_metadata_failures_are_not_treated_as_unsigned(self):
+        for index, operation in enumerate(("--verify", "--verbose=4", "--entitlements")):
+            with self.subTest(operation=operation):
+                self.build = self.root / ".build" / ("input-native-" + str(index))
+                self.app = self.build / "Products/Release/notch-pocket.app"
+
+                def fail(command):
+                    if operation in command and command[-1] == str(self.app / distribution.RESOURCE_CODE):
+                        raise distribution.DistributionError("signature_failed", "Invalid arm64 input.", tool_exit=19)
+
+                self.fail = fail
+                error = self.assert_error("signature_failed", self.build_candidate)
+                self.assertEqual(error.details["tool_exit"], 19)
+                self.assertEqual(error.details["retained_build_dir"], str(self.build))
+                self.assertFalse(self.resource_signed)
+        self.assertFalse(any("--sign" in call[0] for call in self.calls))
+
+    def test_unexpected_preexisting_arm64_identifier_signature_or_flags_block_planned_sign(self):
+        for index, fields in enumerate((
+            {"Identifier": "wrong"}, {"Identifier": None}, {"Signature": None},
+            {"Signature": "wrong"}, {"Authority": IDENTITY},
+            {"CodeDirectory v": "20400 flags=0x2(adhoc)"}, {"CodeDirectory v": None},
+        )):
+            with self.subTest(fields=fields):
+                self.build = self.root / ".build" / ("input-metadata-" + str(index))
+                self.app = self.build / "Products/Release/notch-pocket.app"
+                self.resource_input_changes = fields
+                self.assert_error("signature_failed", self.build_candidate)
+                self.assertFalse(self.resource_signed)
+        self.assertFalse(any("--sign" in call[0] for call in self.calls))
+
+    def test_vendored_resource_nonempty_entitlements_block_planned_sign(self):
+        for index, entitlements in enumerate((
+            {"get-task-allow": True}, {"com.apple.security.get-task-allow": False},
+            {"com.apple.security.cs.disable-library-validation": True},
+        )):
+            with self.subTest(entitlements=entitlements):
+                self.build = self.root / ".build" / ("input-entitlements-" + str(index))
+                self.app = self.build / "Products/Release/notch-pocket.app"
+                self.resource_input_entitlements = entitlements
+                self.assert_error("signature_failed", self.build_candidate)
+                self.assertFalse(self.resource_signed)
+        self.assertFalse(any("--sign" in call[0] for call in self.calls))
+
+    def test_unexpected_resource_architecture_inventory_blocks_planned_sign(self):
+        for index, architectures in enumerate((b"", b"arm64\n", b"x86_64 arm64 arm64e\n", b"x86_64 arm64 arm64\n")):
+            with self.subTest(architectures=architectures):
+                self.build = self.root / ".build" / ("input-architectures-" + str(index))
+                self.app = self.build / "Products/Release/notch-pocket.app"
+                self.resource_architectures = architectures
+                self.assert_error("signature_failed", self.build_candidate)
+                self.assertFalse(self.resource_signed)
+        self.assertFalse(any("--sign" in call[0] for call in self.calls))
 
     def test_invalid_native_signature_preserves_tool_exit_no_resign_fallback(self):
         def fail(command):
@@ -392,9 +543,44 @@ class SigningTests(FixtureTests):
         self.assertEqual(len([call for call in self.calls if "--sign" in call[0]]), 1)
 
     def test_final_resource_signature_must_really_gain_team_runtime_and_timestamp(self):
-        self.changes[(distribution.RESOURCE_CODE, "x86_64")] = {"Signature": "adhoc"}
-        self.assert_error("signature_failed", self.build_candidate)
-        self.assertTrue(self.resource_signed)
+        cases = [
+            ({"Signature": "adhoc"}, {}), ({"Authority": "Apple Development: Wrong"}, {}),
+            ({"TeamIdentifier": None}, {}), ({"TeamIdentifier": "ZZZZZ12345"}, {}),
+            ({"Timestamp": None}, {}), ({"Timestamp": "none"}, {}),
+            ({"CodeDirectory v": None}, {}), ({"CodeDirectory v": "20400 flags=0x20002(adhoc,linker-signed)"}, {}),
+            ({"Identifier": "wrong"}, {}), ({}, {"get-task-allow": False}),
+            ({}, {"com.apple.security.cs.disable-library-validation": True}),
+        ]
+        for arch in ("x86_64", "arm64"):
+            for index, (fields, entitlements) in enumerate(cases):
+                with self.subTest(arch=arch, fields=fields, entitlements=entitlements):
+                    self.build = self.root / ".build" / ("final-" + arch + "-" + str(index))
+                    self.app = self.build / "Products/Release/notch-pocket.app"
+                    self.calls.clear()
+                    self.resource_signed = False
+                    self.changes = {(distribution.RESOURCE_CODE, arch): fields}
+                    self.entitlement_changes = {(distribution.RESOURCE_CODE, arch): entitlements}
+                    self.assert_error("signature_failed", self.build_candidate)
+                    self.assertTrue(self.resource_signed)
+                    self.assertEqual(len([call for call in self.calls if "--sign" in call[0]]), 2)
+
+    def test_invalid_final_resource_signature_on_either_slice_blocks_success_without_retry(self):
+        for arch in ("x86_64", "arm64"):
+            with self.subTest(arch=arch):
+                self.build = self.root / ".build" / ("invalid-final-" + arch)
+                self.app = self.build / "Products/Release/notch-pocket.app"
+                self.calls.clear()
+                self.resource_signed = False
+                self.invalid_final_resource_architectures = {arch}
+                error = self.assert_error("signature_failed", self.build_candidate)
+                self.assertEqual(error.details["tool_exit"], 17)
+                self.assertEqual(error.details["retained_build_dir"], str(self.build))
+                self.assertTrue(self.resource_signed)
+                self.assertEqual(len([call for call in self.calls if "--sign" in call[0]]), 2)
+                verification = self.calls[-1][0]
+                self.assertIn("--all-architectures", verification)
+                self.assertIn("--strict", verification)
+                self.assertIn("-R", verification)
 
     def test_no_guess_for_missing_malformed_or_wrong_bundle_output(self):
         self.build_mutation = lambda: (self.app / "Contents/Info.plist").write_bytes(

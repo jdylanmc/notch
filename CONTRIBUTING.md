@@ -285,12 +285,29 @@ Signing is mostly Xcode-generated. One explicit exception is necessary:
 `MediaRemoteAdapterTestClient` is a vendored Mach-O copied in the project's
 Resources phase, without CodeSignOnCopy. After verifying the Xcode-signed
 app/helper and all other nested Mach-O signatures, the entrypoint validates and
-signs that **one newly built resource**, retaining its identifier and empty
-entitlements, then re-seals the new outer app using its declared entitlements.
+signs that **one newly built resource**, then re-seals the new outer app using
+its declared entitlements. Both `mediaremote-adapter/MediaRemoteAdapterTestClient`
+and the built copy must be user-owned regular executables, without symlinks,
+hard links or group/world write. Each must match the approved SHA-256
+`f9784aae0e569e670702b5cd2fe66ba33c3647839bc35d2365c0cac291c0ea3c`,
+including a recheck immediately before signing; matching a changed source alone
+is insufficient.
+
+The exact pinned input is **unsigned on x86_64**, with an existing
+**linker-ad-hoc signature on arm64**. The native architecture inventory must be
+exactly those two slices. The arm64 signature must pass strict verification,
+declare identifier `MediaRemoteAdapterTestClient`, have ad-hoc/linker-signed
+flags `0x20002` and empty entitlements. The pin, not a nonzero native exit,
+establishes the unsigned x86_64 state; all native command failures still stop.
+The planned resource signing supplies that explicit identifier, Developer ID,
+timestamp and runtime options, with no entitlement input or metadata
+preservation. Final verification requires empty entitlements on both slices;
+it does not assume readable preexisting metadata on the unsigned slice.
 It never recursively re-signs, changes vendored source bytes, or retries an
-invalid signature with ad-hoc signing. Nonempty resource entitlements,
-incorrectly signed frameworks or unexpected nested code are fail-closed
-blockers to report, not reasons to loosen the contract.
+invalid signature with ad-hoc signing. Source/copy drift, nonempty resource
+entitlements, incorrectly signed frameworks or unexpected nested code are
+fail-closed blockers to report, not permission to update the pin/dependency or
+loosen the contract.
 
 Final verification requires the Apple Developer ID Application certificate
 chain and supplied team using an inline `codesign -R` requirement; both app

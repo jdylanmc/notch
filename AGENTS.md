@@ -250,8 +250,18 @@ Xcode signs app/helper/frameworks. `MediaRemoteAdapterTestClient` is copied as
 a resource, not CodeSignOnCopy; the command verifies Xcode-signed code first,
 then signs that **one owned built resource** and re-seals the new outer app
 with its declared entitlements. No `--deep` signing or fallback repairs.
-Resource identifier and empty entitlements are retained; unexpected vendor
-entitlements/signatures block, never permit a dependency edit or exception.
+The checked-in `mediaremote-adapter/MediaRemoteAdapterTestClient` and built copy
+must both match the approved SHA-256 pinned in the command, before inspection
+and immediately before signing. Both must be user-owned regular executables,
+without symlinks, hard links or group/world write. That pinned input has exactly
+two architectures: unsigned x86_64 and linker-ad-hoc-signed arm64. Only the pin
+establishes the intentionally unsigned state; no native failure is ignored.
+Strictly verify the existing arm64 signature, identifier
+`MediaRemoteAdapterTestClient`, flags `0x20002` and empty entitlements.
+Sign with that explicit identifier, no entitlement input and no metadata
+preservation; require empty entitlements on both slices in final verification.
+Source/copy drift or unexpected vendor entitlements/signatures block, never
+permit a pin/dependency edit or exception.
 Final verification checks app/helper seals and all Mach-O files, all
 architectures: Developer ID chain, exact signer/team, secure timestamp,
 hardened runtime, expected identities/version, exact app/helper declarations
@@ -275,6 +285,8 @@ already-documented missing-dependency recovery only if needed. Keep
 `scripts/package.py`, `Configuration/dmg`, pins and packaging tests unchanged.
 The new mocked suite runs additively in the existing contract workflow;
 preserve all prior gates, assertions, policies, timeouts and permissions.
+It copies the approved resource bytes into isolated fixtures without executing
+them; mocked metadata models unsigned x86_64 and linker-signed arm64 honestly.
 
 Build directories remain private and retained on success/failure; errors after
 ownership report `retained_build_dir`. Never package failed-build residue,
