@@ -113,8 +113,9 @@ rather than assuming external changes reach this product.
 ## CI and Packaging Inventory
 
 This inventories the bounded product-CI and local-packaging slices of
-[#51](https://github.com/jdylanmc/notch/issues/51) under foundation #54,
-not release #9, release readiness, or closure of #51/#54. The checked-in sources
+[#51](https://github.com/jdylanmc/notch/issues/51) and local-signing slice
+NP-9-local-signing-v1 of [#9](https://github.com/jdylanmc/notch/issues/9) under
+foundation #54, not release readiness or closure of those issues. The checked-in sources
 below are the authority for triggers and behavior; they are not evidence that a
 hosted run or distribution succeeded.
 
@@ -124,8 +125,9 @@ hosted run or distribution succeeded.
 | [SwiftLint](.github/workflows/swiftlint.yml) | `pocket` push/PR, unchanged `SwiftLint` check name and root `.swiftlint.yml`. Non-strict inherited app baseline; do not add strict mode, suppress warnings, or clean up unrelated source to make CI appear clean. |
 | [CodeQL Advanced](.github/workflows/codeql.yml) | `pocket` push/PR; retains Actions, Python, and manual Swift scans, existing permissions, and Monday `31 15 * * 1` UTC schedule. Scheduled runs use GitHub's default-branch semantics, not the push branch filter. Swift still builds the app without signing; a **separate** canonical helper build follows initialization and app extraction, before analysis. |
 | [Native helper](.github/workflows/notch_control.yml) | Unfiltered `pocket` push/PR on `macos-26`, read-only contents, non-persisted checkout credentials, 20-minute timeout. Canonical build, all 41 package tests, and exactly nine Swift lint inputs. No app launch, screenshots, privacy grants, signing secrets, or publication. |
-| [CI contracts](.github/workflows/ci_contract_tests.yml), [tests/package](.github/scripts/ci-contract/) | Unfiltered `pocket` push/PR, read-only contents, non-persisted credentials, five-minute timeout. Node's built-in test runner and one exact-pinned YAML parser inspect actual workflow structure, reject malformed/duplicate YAML, and test deliberately mutated configurations. Workflow `run` blocks are data, never executed by these structural tests. Also runs the existing 22 PR-policy tests and the named portable local-packaging unittest step; no native packaging or uploads on Ubuntu. |
+| [CI contracts](.github/workflows/ci_contract_tests.yml), [tests/package](.github/scripts/ci-contract/) | Unfiltered `pocket` push/PR, read-only contents, non-persisted credentials, five-minute timeout. Node's built-in test runner and one exact-pinned YAML parser inspect actual workflow structure, reject malformed/duplicate YAML, and test deliberately mutated configurations. Workflow `run` blocks are data, never executed by these structural tests. Also runs the existing 22 PR-policy tests and the named portable local-packaging and distribution-signing unittest steps; no native signing, packaging or uploads on Ubuntu. |
 | [Local packaging](scripts/package.py), [portable tests](scripts/tests/test_package.py) | Explicit already-built Release app and new DMG paths; Python 3.9+ standard library, existing hash-pinned DMG builder unchanged. Native identity/signature checks, private copy, read-only image verification, exact-input content comparison, owned-device detach, no-clobber promotion. No implicit build/sign/install/launch, secrets, `local.env`, release credentials, or publication. See [usage and missing-dependency recovery](README.md#local-dmg-preparation). |
+| [Local distribution signing](scripts/distribution.py), [portable tests](scripts/tests/test_distribution.py) | Separately approved NP-9-local-signing-v1: explicit existing Developer ID Application name/team and a fresh private build directory. Xcode Release signing overrides, planned signing of the resource-only MediaRemoteAdapterTestClient plus outer app seal, and all-Mach-O/all-architecture signature evidence. Existing local defaults and packager unchanged. **NOT YET NOTARIZED**; no Keychain management, installation, app launch or publication. See [usage](README.md#local-developer-id-candidate-9-bounded-slice). |
 | [PR target check](.github/workflows/base_ref_check.yml), [guidance](.github/workflows/base_ref_check_comment.yml) | Existing `pull_request_target` events and check identities remain unchanged: `Fork PR target check` and `Sync PR target guidance comment`. Only `pocket` is an allowed base. Guidance uses its existing comment permissions; product-CI changes do not broaden them. |
 | [Existing PR-policy test workflow](.github/workflows/pr_target_policy_tests.yml) | Retains `Test PR target policy`, its four-file path filter, all-branch PR event, and `pocket` push event. The new contract workflow runs the same suite independently without changing that scope. Policy tests evaluate the existing inline policy script with mocked APIs, not workflow shell blocks or live writes. |
 | [Dependabot](.github/dependabot.yml) | All three existing weekly entries now target `pocket`: GitHub Actions at `/`, pip at `/Configuration/dmg`, Swift at `/`. Ecosystems and cadence unchanged. The isolated contract-test npm dependency is manually maintained; adding a fourth update entry is separate scope. |
@@ -164,6 +166,7 @@ npm ci --prefix .github/scripts/ci-contract --ignore-scripts --no-audit --no-fun
 npm test --prefix .github/scripts/ci-contract
 node --test .github/scripts/pr-target-policy.test.cjs
 python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'
+python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'
 ```
 
 Python packaging tests require only Python 3.9+ and its standard library on
@@ -181,6 +184,15 @@ without `os.listxattr`, descriptor versus no-follow link reads, exact binary
 values/names, empty and short reads, native errno and missing API failures.
 Ubuntu fixtures retain the standard-library `os` attribute path. These portable
 checks do not replace parent-owned native attribute and signed-DMG proof.
+
+The additive distribution-signing suite also uses Python 3.9+ only. Its fake
+Mach-O fixtures and mocked Xcode/`codesign`/`lipo` cover explicit selectors,
+no-clobber paths, full-Xcode selection, every nested architecture, exact
+entitlements, signed resource handling, failure exit preservation, and retained
+residue. It never accesses Keychain, developer apps, mounts, privacy or the
+dependency stack. The structural workflow contract requires this exact named
+unfiltered step without skipping or masking failures; existing assertions and
+timeouts remain unchanged.
 
 The package-local `.gitignore` excludes only its generated `/node_modules/`.
 Use the ordinary package install above; keep the manifest and lockfile tracked.
@@ -250,6 +262,147 @@ created, `published_output` is recovered only from the retained regular
 candidate's matching device/inode, never output existence or a symlink target.
 Neither an owned partial output nor a competing output is deleted.
 
+### Local distribution signing outcome and evidence
+
+`scripts/distribution.py --identity FULL_DEVELOPER_ID_NAME --team TEAM_ID --build-dir ABSOLUTE_NEW_BUILD`
+is the **NP-9-local-signing-v1** entrypoint. Follow the
+[exact signed-app → existing packager workflow](README.md#local-developer-id-candidate-9-bounded-slice).
+It never loads `local.env`, changes project/local-test signing defaults, touches
+an input app, imports/exports certificates, calls Keychain management tools, or
+submits anything to Apple. Existing app/helper IDs, version 0.1 and declared
+entitlements are checked, not overridden. The helper's existing sandbox `false`
+entitlement is retained rather than replaced with app entitlements.
+
+The explicit plain command-line `CODE_SIGN_IDENTITY=...` and
+`DEVELOPMENT_TEAM=...` overrides take precedence over project settings, including
+SDK-conditional identities. Do not pass `CODE_SIGN_IDENTITY[sdk=macosx*]=...`
+as a command-line argument: `xcodebuild` splits it at the first `=`, corrupting
+the requested identity. The portable contract requires exactly one plain
+identity assignment; native signature verification below still rejects
+ad-hoc signatures, wrong signers/teams, missing timestamps or hardened runtime.
+
+Signing is mostly Xcode-generated. One explicit exception is necessary:
+`MediaRemoteAdapterTestClient` is a vendored Mach-O copied in the project's
+Resources phase, without CodeSignOnCopy. After verifying the Xcode-signed
+app/helper and all other nested Mach-O signatures, the entrypoint validates and
+signs that **one newly built resource**, then re-seals the new outer app using
+its declared entitlements. Both `mediaremote-adapter/MediaRemoteAdapterTestClient`
+and the built copy must be user-owned regular executables, without symlinks,
+hard links or group/world write. Each must match the approved SHA-256
+`f9784aae0e569e670702b5cd2fe66ba33c3647839bc35d2365c0cac291c0ea3c`,
+including a recheck immediately before signing; matching a changed source alone
+is insufficient.
+
+The exact pinned input is **unsigned on x86_64**, with an existing
+**linker-ad-hoc signature on arm64**. The native architecture inventory must be
+exactly those two slices. The arm64 signature must pass strict verification,
+declare identifier `MediaRemoteAdapterTestClient`, have ad-hoc/linker-signed
+flags `0x20002` and empty entitlements. The pin, not a nonzero native exit,
+establishes the unsigned x86_64 state; all native command failures still stop.
+The planned resource signing supplies that explicit identifier, Developer ID,
+timestamp and runtime options, with no entitlement input or metadata
+preservation. Final verification requires empty entitlements on both slices;
+it does not assume readable preexisting metadata on the unsigned slice.
+It never recursively re-signs, changes vendored source bytes, or retries an
+invalid signature with ad-hoc signing. Source/copy drift, nonempty resource
+entitlements, incorrectly signed frameworks or unexpected nested code are
+fail-closed blockers to report, not permission to update the pin/dependency or
+loosen the contract.
+
+Final verification requires the Apple Developer ID Application certificate
+chain and supplied team using an inline `codesign -R` requirement; both app
+and helper also require their exact identifiers. Every physical Mach-O file,
+including nested resources and framework versions, is verified for all
+architectures and inspected per architecture for the requested certificate
+name, team, hardened-runtime flag, secure `Timestamp` (not merely `Signed Time`)
+and declared entitlements. Frameworks/other code require empty entitlements;
+neither spelling of `get-task-allow` is allowed, even if false. Source scripts
+remain sealed resources, not a claim about interpreter runtime policy.
+`--deep` is used for final **verification**, never recursive signing.
+
+| Exit | Outcome |
+| --- | --- |
+| 0 | `ok: true`, `status: "signed"`; exact `app`, `build_dir`, `configuration`, `version`, developer directory, team, app/helper identifiers and `code` evidence for each architecture |
+| 2 | `invalid_arguments`; no supplied argument contents echoed |
+| 3 | `invalid_input`; invalid identity/team, unsafe paths or entitlement declarations |
+| 4 | `missing_tool`, `unsupported_platform`; full Xcode 26+/macOS 15.6+ required |
+| 5 | `signature_failed`; no fallback, with original `tool_exit` when a native signing/verification command failed |
+| 6 | `build_failed`; original Xcode `tool_exit`, or explicit `timed_out` |
+| 7 | `invalid_output`; missing/wrong product, identity/version, executable or unsafe links |
+| 8 | `cleanup_failed`; owned subprocess could not be stopped; reported `pid` and retained directory need investigation |
+| 9 | `output_exists`; no reuse, clobber, recursive deletion or adoption of another invocation's directory |
+| 10 | `io_error`; explicit filesystem failure |
+| 130 | `interrupted`; no successful candidate |
+
+Success is one JSON stdout line. Errors are one JSON stderr line with
+`ok: false`, `error`, `message`, native exit/timeout information where applicable,
+and `retained_build_dir` after this command creates its private directory.
+Native subprocess output is not echoed or copied into the JSON. Build products,
+DerivedData, dependencies/cache and scratch remain in that owned directory on
+**both success and failure**; no directory is recursively removed. Keep these
+local: Xcode's own build records may contain machine-specific information.
+Timeout/cancellation stops only the invocation's own subprocess group. A
+reported stop failure must be resolved before any artifact cleanup.
+Existence of a `.app` after failure is never signing success or packaging
+authorization. A retry requires a new build directory.
+
+The result is always `distribution: "local-only"`,
+`notarization: "NOT YET NOTARIZED"` and `gatekeeper_assessed: false`.
+Neither successful `codesign` verification nor the packager's signature check
+means `spctl` acceptance. No quarantine stripping, Gatekeeper bypass, Apple
+submission/history/API calls, stapling, installation or app launch belongs to
+this slice.
+
+**Parent-owned gates, after actual-diff reconciliation:**
+
+```bash
+scripts/build.sh
+scripts/test.sh
+scripts/lint.sh
+bash scripts/notch-control/control.sh build
+bash scripts/notch-control/control.sh test
+bash scripts/notch-control/control.sh lint
+npm ci --prefix .github/scripts/ci-contract --ignore-scripts --no-audit --no-fund
+npm test --prefix .github/scripts/ci-contract
+node --test .github/scripts/pr-target-policy.test.cjs
+python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'
+python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'
+```
+
+Local app tests retain their normal test host; that is not permission to launch
+the distribution candidate. Authoring runs none of these commands.
+The parent must record the current commit/diff, host and selected full Xcode,
+exact invocation/output paths and exit status for a **fresh** Developer ID
+Release build using the human-supplied existing identity/team. Retain the
+successful per-code/per-architecture evidence and independently inspect
+app/helper/nested signatures and entitlements, for example using the exact app
+returned by the command:
+
+```bash
+codesign --verify --deep --strict --all-architectures "$SIGNED_APP"
+codesign --display --verbose=4 "$SIGNED_APP"
+codesign --display --verbose=4 "$SIGNED_APP/Contents/XPCServices/notchPocketXPCHelper.xpc"
+```
+
+`SIGNED_APP` must be assigned to the successful JSON `app` path, not a newest
+DerivedData guess or installed app. These supplementary display commands show
+the host-selected architecture; use `lipo -archs` and `codesign --display --arch
+ARCH --verbose=4` / `--entitlements :-` on the reported Mach-O paths for each
+architecture when collecting independent evidence.
+
+Then invoke **unchanged** `scripts/package.py` on that same `SIGNED_APP` and a
+new explicit `NOT-YET-NOTARIZED` DMG filename. Preserve native image creation,
+read-only mounted exact-input content/signature verification, owned detach,
+cleanup and checksum evidence; keep local build residue accounted for.
+Mocked tests are not native proof or runtime/media/shelf verification.
+Do not launch/install either app or change preferences, shelf or privacy.
+
+The parent owns independent review, publication of the bounded PR targeting
+`pocket`, and required hosted/Shepherd evidence or exact blockers. Only the human
+merges/releases. This does not close #9/#54: notarized tagged downloads,
+automated owned Homebrew version/checksum publication, and second-Mac clean
+installation/coexistence proof remain incomplete and separately approved.
+
 ### Project versus distribution artifact
 
 [`notchPocket.xcodeproj/project.pbxproj`](notchPocket.xcodeproj/project.pbxproj)
@@ -263,9 +416,10 @@ the DMG name. [`Configuration/dmg/create_dmg.sh`](Configuration/dmg/create_dmg.s
 takes explicit app/output paths; it does not derive the app name from the scheme.
 
 Structural tests protect those source-level identities without executing
-packaging. Archive/export success, independent distribution signing,
-notarization, credentials, translation ownership, and release/merge policy
-remain separately approved work. Inherited Xcode 16.4 defaults are not aligned
+packaging. The separate local Developer ID command above does not authorize
+these workflows. Archive/export success, notarization, release credential
+handling, translation ownership, and release/merge policy remain separately
+approved work. Inherited Xcode 16.4 defaults are not aligned
 with the product's Xcode 26+ build-host requirement. Do not run the deferred
 workflows to discover whether they work.
 

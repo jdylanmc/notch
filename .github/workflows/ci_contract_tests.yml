@@ -27,3 +27,5 @@ jobs:
         run: node --test .github/scripts/pr-target-policy.test.cjs
       - name: Test local packaging policy
         run: python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'
+      - name: Test local distribution signing policy
+        run: python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'

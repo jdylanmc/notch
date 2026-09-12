@@ -179,6 +179,7 @@ function hostedContract(config, kind) {
           { name: 'Test workflow contracts', run: 'npm test --prefix .github/scripts/ci-contract' },
           { name: 'Test PR target policy', run: 'node --test .github/scripts/pr-target-policy.test.cjs' },
           { name: 'Test local packaging policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'" },
+          { name: 'Test local distribution signing policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'" },
         ]),
       ],
     },
@@ -491,6 +492,21 @@ const mutations = [
   }],
   ['packaging workflow path filter', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
     c.on.pull_request.paths = ['scripts/package.py'];
+  }],
+  ['missing distribution signing run', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    c.jobs.test.steps = c.jobs.test.steps.filter(({ name }) => name !== 'Test local distribution signing policy');
+  }],
+  ['filtered distribution signing tests', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    step(c.jobs.test, 'Test local distribution signing policy').run += ' -k test_success';
+  }],
+  ['skipped distribution signing tests', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    step(c.jobs.test, 'Test local distribution signing policy').if = 'false';
+  }],
+  ['ignored distribution signing failures', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    step(c.jobs.test, 'Test local distribution signing policy')['continue-on-error'] = true;
+  }],
+  ['masked distribution signing exit status', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    step(c.jobs.test, 'Test local distribution signing policy').run += ' || true';
   }],
 ];
 for (const [name, file, check, mutate] of mutations) {
