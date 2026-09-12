@@ -210,6 +210,87 @@ required Shepherd/hosted evidence or an exact blocker; only the user merges.
 This does not close #51/#54 or authorize release #9, Developer ID distribution,
 notarization, Apple uploads or other publication.
 
+### Local Developer ID preparation (#9 bounded slice)
+
+NP-9-local-signing-v1 adds a **separate**, Python 3.9+ standard-library
+`scripts/distribution.py` entrypoint for an explicitly approved **local**
+Developer ID candidate. It does not close #9/#54 or authorize publication.
+Read [usage](README.md#local-developer-id-candidate-9-bounded-slice) and the
+[outcome/evidence contract](CONTRIBUTING.md#local-distribution-signing-outcome-and-evidence).
+An authoring-only phase runs no build, test, lint, signing, packaging or runtime
+commands. The parent reconciles the actual diff before executing any gates.
+
+Require the human-supplied full existing **Developer ID Application** certificate
+name, explicit ten-character team ID and a new canonical absolute build
+directory beneath this checkout's existing `.build/`. Do not inspect Keychain,
+read/copy `local.env`, import/export certificates or embed personal selectors.
+No path reuse, overwriting, input-app mutation, installation or app launch:
+
+```bash
+python3 -B scripts/distribution.py \
+  --identity 'Developer ID Application: YOUR CERTIFICATE NAME (YOURTEAMID)' \
+  --team 'YOURTEAMID' \
+  --build-dir "$PWD/.build/np9-signing-001"
+```
+
+The parent creates the `.build/` parent if needed and substitutes the approved
+selector/team; placeholders are not configured values. The command discovers
+full Xcode 26+ (rejecting invalid explicit `DEVELOPER_DIR` or CLT-only setups),
+builds `notchPocket` in Release for macOS 14 with explicit distribution-only
+overrides, and verifies results rather than trusting requested flags. Both
+normal and SDK-conditional identity settings are overridden; inherited teams
+must not win. Preserve `scripts/env.sh`, `scripts/build.sh`, project settings
+and entitlement files. Their working local XCTest/ad-hoc semantics are not
+distribution configuration.
+
+Xcode signs app/helper/frameworks. `MediaRemoteAdapterTestClient` is copied as
+a resource, not CodeSignOnCopy; the command verifies Xcode-signed code first,
+then signs that **one owned built resource** and re-seals the new outer app
+with its declared entitlements. No `--deep` signing or fallback repairs.
+Resource identifier and empty entitlements are retained; unexpected vendor
+entitlements/signatures block, never permit a dependency edit or exception.
+Final verification checks app/helper seals and all Mach-O files, all
+architectures: Developer ID chain, exact signer/team, secure timestamp,
+hardened runtime, expected identities/version, exact app/helper declarations
+and no debug entitlements. Frameworks/other Mach-O code require empty
+entitlements. Interpreted resources are protected by the bundle seal, not
+claimed as hardened Mach-O signatures.
+
+Only successful JSON identifies the exact
+`BUILD_DIR/Products/Release/notch-pocket.app`. Consume that path with the
+**unchanged** `scripts/package.py` and a new explicit DMG path:
+
+```bash
+python3 -B scripts/package.py \
+  --app "$PWD/.build/np9-signing-001/Products/Release/notch-pocket.app" \
+  --output "$PWD/.build/packages/notch-pocket-0.1-NOT-YET-NOTARIZED-001.dmg"
+python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'
+```
+
+The parent creates the safe existing package-output parent and uses the
+already-documented missing-dependency recovery only if needed. Keep
+`scripts/package.py`, `Configuration/dmg`, pins and packaging tests unchanged.
+The new mocked suite runs additively in the existing contract workflow;
+preserve all prior gates, assertions, policies, timeouts and permissions.
+
+Build directories remain private and retained on success/failure; errors after
+ownership report `retained_build_dir`. Never package failed-build residue,
+guess newest products, recursively delete another run's paths, or treat a
+failed subprocess-stop as cleanup success. Original native failure statuses
+remain in `tool_exit`; no ad-hoc or success-shaped fallback.
+
+Report **NOT YET NOTARIZED**, never equate `codesign` validity with `spctl`
+acceptance, and never strip quarantine or bypass Gatekeeper. No Apple
+submission/history/API calls, releases, Homebrew publication, install/launch,
+preferences/shelf/privacy actions or new features are authorized here.
+Parent validation includes every existing app/helper/Node/policy/package gate
+plus the canonical new Python command, fresh native signing and exact-app DMG
+evidence, independent review and the `pocket` PR/hosted checks. See the complete
+command list in CONTRIBUTING. Mock contracts do not prove native signing,
+packaging or runtime behavior. Human alone merges/releases; tagged notarized
+downloads, Homebrew version/checksum automation and second-Mac
+installation/coexistence remain separate work.
+
 The lint script and `pocket` push/PR SwiftLint workflow use `.swiftlint.yml`.
 Install SwiftLint with `brew install swiftlint` if missing. Preserve the
 non-strict inherited app baseline; report existing warnings without suppressing
@@ -269,7 +350,9 @@ These scripts configure no release credentials. The inherited
 and exports using the `development` method (default identity:
 `Apple Development`), then creates and uploads artifacts. That is not a
 notarized-distribution setup or permission to run it. Distribution signing,
-hardened-runtime requirements, and notarization need separate approved work.
+hardened-runtime requirements, and notarization are not supplied by these local
+test scripts. The separately approved [local Developer ID slice](#local-developer-id-preparation-9-bounded-slice)
+does not authorize that inherited workflow or notarization.
 
 ## macOS expertise skills
 
@@ -400,9 +483,10 @@ and migration requirements:
   path for `pocket`.
 - **Unfinished distribution work:** release scripts consume
   `notch-pocket.app`/`.dmg`, but no independent binaries are published or
-  implied. Release branch/merge policy, distribution signing, and future owned
-  update infrastructure still require separate work. Do not run public release
-  automation as part of naming or local setup.
+  implied. The isolated local Developer ID command is not a notarized release
+  pipeline. Release branch/merge policy, notarization/publication and future
+  owned update infrastructure still require separate work. Do not run public
+  release automation as part of naming or local setup.
 
 ### Test what is testable, and say what is not
 
