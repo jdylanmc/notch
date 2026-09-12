@@ -279,9 +279,34 @@ class PackageTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
         return raised.exception
 
+    def cli_failure(self, code):
+        implementation = package.package
+        before = package.snapshot(self.app)
+        handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGINT, signal.SIGTERM)}
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch.object(package, "package", side_effect=lambda app, output: implementation(
+                app, output, run=self.runner)), \
+                contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            result = package.main(["--app", str(self.app), "--output", str(self.output)])
+        self.assertEqual(result, package.EXIT_CODES[code])
+        self.assertNotEqual(result, 0)
+        self.assertEqual(stdout.getvalue(), "")
+        error = json.loads(stderr.getvalue())
+        self.assertEqual(error["error"], code)
+        self.assertFalse(error["ok"])
+        self.assertNotIn("sha256", error)
+        self.assertNotIn("status", error)
+        self.assertEqual(package.snapshot(self.app), before)
+        for signum, handler in handlers.items():
+            self.assertEqual(signal.getsignal(signum), handler)
+        return error
+
     def test_success_exact_command_contract_and_cleanup(self):
         before = package.snapshot(self.app)
+        handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGINT, signal.SIGTERM)}
         result = self.invoke()
+        for signum, handler in handlers.items():
+            self.assertEqual(signal.getsignal(signum), handler)
         self.assertEqual(result["sha256"], hashlib.sha256(b"fixture DMG bytes").hexdigest())
         self.assertEqual(result["size_bytes"], 17)
         self.assertEqual(result["app"], str(self.app))
@@ -713,6 +738,55 @@ class PackageTests(unittest.TestCase):
         self.assertTrue(self.output.exists())
         self.assertNotIn("sha256", raised.exception.details)
 
+    def test_interrupted_link_records_exact_published_inode_and_preserves_evidence(self):
+        link = os.link
+        for interruption in (
+            KeyboardInterrupt(),
+            package.PackageError("interrupted", "Packaging interrupted by signal.", signal=signal.SIGTERM),
+        ):
+            with self.subTest(interruption=type(interruption).__name__):
+                self.calls = []
+                def interrupted_link(source, destination, **kwargs):
+                    link(source, destination, **kwargs)
+                    raise interruption
+                with mock.patch.object(package.os, "link", side_effect=interrupted_link):
+                    error = self.cli_failure("interrupted")
+                self.assertEqual(error["published_output"], str(self.output))
+                self.assertEqual(error["staging"], str(self.stage))
+                candidate = self.stage / "candidate.dmg"
+                self.assertTrue(candidate.is_file())
+                self.assertTrue(os.path.samefile(candidate, self.output))
+                self.assertEqual(self.output.read_bytes(), b"fixture DMG bytes")
+                self.assertEqual([command for command, _ in self.calls
+                                  if command[:2] == ["/usr/bin/hdiutil", "detach"]],
+                                 [["/usr/bin/hdiutil", "detach", "/dev/disk42s1"]])
+                self.output.unlink()
+
+    def test_interrupted_promotion_does_not_claim_or_remove_concurrent_output(self):
+        for kind in ("regular", "symlink"):
+            for interruption in (
+                KeyboardInterrupt(),
+                package.PackageError("interrupted", "Packaging interrupted by signal.", signal=signal.SIGTERM),
+            ):
+                with self.subTest(kind=kind, interruption=type(interruption).__name__):
+                    def interrupted_race(source, destination, **kwargs):
+                        if kind == "regular":
+                            Path(destination).write_bytes(b"concurrent owner")
+                        else:
+                            Path(destination).symlink_to(source)
+                        raise interruption
+                    with mock.patch.object(package.os, "link", side_effect=interrupted_race):
+                        error = self.cli_failure("interrupted")
+                    self.assertNotIn("published_output", error)
+                    self.assertEqual(error["staging"], str(self.stage))
+                    self.assertEqual((self.stage / "candidate.dmg").read_bytes(), b"fixture DMG bytes")
+                    if kind == "regular":
+                        self.assertEqual(self.output.read_bytes(), b"concurrent owner")
+                    else:
+                        self.assertTrue(self.output.is_symlink())
+                        self.assertEqual(os.readlink(self.output), str(self.stage / "candidate.dmg"))
+                    self.output.unlink()
+
     def test_cli_exact_json_success_and_failure(self):
         with mock.patch.object(package, "package", return_value={"ok": True, "status": "verified"}) as command:
             stdout, stderr = io.StringIO(), io.StringIO()
@@ -811,6 +885,70 @@ class PackageTests(unittest.TestCase):
         self.fails("interrupted")
         self.assertEqual([command for command, _ in self.calls if command[:2] == ["/usr/bin/hdiutil", "detach"]],
                          [["/usr/bin/hdiutil", "detach", "/dev/disk42s1"]])
+
+    def cleanup_signal_case(self, signum, phase, cleanup_fails):
+        self.calls = []
+        delivered = False
+        remove = package.remove_private
+
+        def deliver():
+            nonlocal delivered
+            if delivered:
+                return
+            delivered = True
+            self.assertTrue(callable(signal.getsignal(signum)))
+            signal.raise_signal(signum)
+            # A repeated request must not abort owned cleanup either.
+            signal.raise_signal(signum)
+            if cleanup_fails:
+                raise PermissionError("fixture cleanup failure after signal")
+
+        def hook(command, options):
+            if command[:2] == ["/usr/bin/hdiutil", phase]:
+                deliver()
+
+        def remove_with_signal(path, device):
+            if phase == "recursive" and path.parent != self.stage:
+                deliver()
+            return remove(path, device)
+
+        self.hook = hook
+        with mock.patch.object(package, "remove_private", side_effect=remove_with_signal):
+            error = self.cli_failure("cleanup_failed" if cleanup_fails else "interrupted")
+        self.assertTrue(delivered)
+        self.assertEqual(error["signal"], signum)
+        self.assertFalse(self.output.exists())
+        self.assertNotIn("published_output", error)
+        self.assertEqual(error["staging"], str(self.stage))
+        self.assertTrue(self.stage.is_dir())
+        self.assertEqual((self.stage / "candidate.dmg").read_bytes(), b"fixture DMG bytes")
+        self.assertEqual([command for command, _ in self.calls
+                          if command[:2] == ["/usr/bin/hdiutil", "detach"]],
+                         [["/usr/bin/hdiutil", "detach", "/dev/disk42s1"]])
+        if cleanup_fails:
+            self.assertEqual(error["cause"], "interrupted")
+            if phase == "detach":
+                self.assertEqual(error["device"], "/dev/disk42s1")
+                self.assertEqual(error["ownership"], "known")
+                self.assertEqual(error["mount"], str(self.mount))
+        else:
+            self.assertEqual(list(self.stage.iterdir()), [self.stage / "candidate.dmg"])
+            self.assertNotIn("device", error)
+            self.assertNotIn("mount", error)
+            self.assertEqual(sum(command[:2] == ["/usr/bin/hdiutil", "info"]
+                                 for command, _ in self.calls), 1)
+
+    def test_first_cleanup_signals_prevent_success_after_detach_info_and_recursive_removal(self):
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            for phase in ("detach", "info", "recursive"):
+                with self.subTest(signum=signum, phase=phase):
+                    self.cleanup_signal_case(signum, phase, cleanup_fails=False)
+
+    def test_cleanup_failure_outranks_latched_signals_and_names_owned_residue(self):
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            for phase in ("detach", "info", "recursive"):
+                with self.subTest(signum=signum, phase=phase):
+                    self.cleanup_signal_case(signum, phase, cleanup_fails=True)
 
     def test_subprocess_unresolved_stop_reports_cleanup_failure(self):
         process = mock.Mock(pid=12345)

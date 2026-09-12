@@ -427,10 +427,17 @@ def package(app_value, output_value, run=run_command):
     except KeyboardInterrupt:
         failure = PackageError("interrupted", "Packaging interrupted.")
     finally:
-        # Ignore further interruption while bounded cleanup protects the owned mount.
+        # Defer cancellation without losing it while cleanup protects the owned mount.
+        cancellation = None
+
+        def defer_interrupt(signum, frame):
+            nonlocal cancellation
+            if cancellation is None:
+                cancellation = PackageError("interrupted", "Packaging interrupted by signal.", signal=signum)
+
         previous = {}
         for signum in (signal.SIGINT, signal.SIGTERM):
-            previous[signum] = signal.signal(signum, signal.SIG_IGN)
+            previous[signum] = signal.signal(signum, defer_interrupt)
         try:
             if failure is not None and failure.details.get("cleanup_uncertain"):
                 raise failure
@@ -452,13 +459,20 @@ def package(app_value, output_value, run=run_command):
             if failure is not None:
                 stage.rmdir()
         except (PackageError, OSError) as exc:
-            cause = failure.code if failure else None
+            cause = (failure or cancellation).code if failure or cancellation else None
             details = exc.details.copy() if isinstance(exc, PackageError) else {}
             details["cause"] = cause
             failure = PackageError("cleanup_failed", str(exc), **details)
         finally:
             for signum, handler in previous.items():
                 signal.signal(signum, handler)
+        if cancellation is not None:
+            if failure is None:
+                failure = cancellation
+            else:
+                failure.details["signal"] = cancellation.details["signal"]
+                if failure.code == "cleanup_failed" and failure.details.get("cause") is None:
+                    failure.details["cause"] = "interrupted"
     if failure is None:
         try:
             digest = hashlib.sha256()
@@ -486,6 +500,18 @@ def package(app_value, output_value, run=run_command):
                                    "Final artifact operation failed.", operation=type(exc).__name__)
         except KeyboardInterrupt:
             failure = PackageError("interrupted", "Packaging interrupted before completion.")
+        if failure is not None and not published:
+            # A signal can arrive after link(2) succeeds but before its bookkeeping.
+            # Only the retained regular candidate's inode establishes ownership.
+            try:
+                source_stat, output_stat = candidate.lstat(), output.lstat()
+            except OSError:
+                pass
+            else:
+                published = (
+                    stat.S_ISREG(source_stat.st_mode) and stat.S_ISREG(output_stat.st_mode)
+                    and (source_stat.st_dev, source_stat.st_ino) == (output_stat.st_dev, output_stat.st_ino)
+                )
     if failure is not None:
         if stage.exists():
             failure.details["staging"] = str(stage)

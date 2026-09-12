@@ -241,6 +241,15 @@ output with failed final cleanup remains explicitly partial and is never
 overwritten on retry. Filesystem hard-link support in the output directory is
 required for atomic no-clobber promotion; unsupported filesystems fail safely.
 
+SIGINT/SIGTERM during owned cleanup are latched, not ignored: safe cleanup
+finishes without another detach attempt. Cancellation of an otherwise successful
+invocation prevents promotion and reports `interrupted`, with the retained
+candidate's `staging` path; cleanup failure takes precedence and retains its
+cause and residue. If cancellation interrupts promotion after the hard link was
+created, `published_output` is recovered only from the retained regular
+candidate's matching device/inode, never output existence or a symlink target.
+Neither an owned partial output nor a competing output is deleted.
+
 ### Project versus distribution artifact
 
 [`notchPocket.xcodeproj/project.pbxproj`](notchPocket.xcodeproj/project.pbxproj)
