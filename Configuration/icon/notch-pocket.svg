@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Notch Pocket utility pocket icon</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2=".85" y2="1">
+      <stop stop-color="#80c7ff"/>
+      <stop offset=".42" stop-color="#3e91ef"/>
+      <stop offset="1" stop-color="#1760c4"/>
+    </linearGradient>
+    <radialGradient id="light" cx=".2" cy="0" r="1">
+      <stop stop-color="#e1f5ff" stop-opacity=".65"/>
+      <stop offset=".65" stop-color="#b4e4ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="metal" x1="0" x2="1" y1=".15" y2=".8">
+      <stop stop-color="#9cabc0"/>
+      <stop offset=".22" stop-color="#f9fcff"/>
+      <stop offset=".48" stop-color="#dbe5ee"/>
+      <stop offset=".72" stop-color="#a4b2c5"/>
+      <stop offset="1" stop-color="#f0f6fa"/>
+    </linearGradient>
+    <linearGradient id="ferrule" x1="0" x2="1">
+      <stop stop-color="#7e8b9f"/>
+      <stop offset=".38" stop-color="#f4f8ff"/>
+      <stop offset=".65" stop-color="#b2c0d3"/>
+      <stop offset="1" stop-color="#73849a"/>
+    </linearGradient>
+    <linearGradient id="yellow" x1="0" x2="1">
+      <stop stop-color="#e99b05"/>
+      <stop offset=".28" stop-color="#ffdf54"/>
+      <stop offset=".6" stop-color="#ffc82d"/>
+      <stop offset="1" stop-color="#f5a407"/>
+    </linearGradient>
+    <linearGradient id="eraser" x1="0" x2="1" y1="0" y2=".7">
+      <stop stop-color="#ffa1c7"/>
+      <stop offset=".48" stop-color="#fb609c"/>
+      <stop offset="1" stop-color="#d7337b"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#687788"/>
+      <stop offset=".12" stop-color="#3b485b"/>
+      <stop offset=".6" stop-color="#1f2b3e"/>
+      <stop offset="1" stop-color="#101c30"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#244657"/>
+      <stop offset="1" stop-color="#132c40"/>
+    </linearGradient>
+    <linearGradient id="pocket" x1=".2" y1="0" x2=".8" y2="1">
+      <stop stop-color="#378df7"/>
+      <stop offset=".32" stop-color="#1668de"/>
+      <stop offset=".75" stop-color="#0d4eaf"/>
+      <stop offset="1" stop-color="#083777"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#9bdaff" stop-opacity=".95"/>
+      <stop offset=".5" stop-color="#53a4f5" stop-opacity=".4"/>
+      <stop offset="1" stop-color="#042958" stop-opacity=".8"/>
+    </linearGradient>
+    <filter id="tileShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#153764" flood-opacity=".23"/>
+    </filter>
+    <filter id="toolShadow" x="-35%" y="-25%" width="175%" height="175%">
+      <feDropShadow dx="5" dy="14" stdDeviation="11" flood-color="#061f45" flood-opacity=".48"/>
+    </filter>
+    <filter id="pocketShadow" x="-20%" y="-25%" width="140%" height="165%">
+      <feDropShadow dx="0" dy="22" stdDeviation="17" flood-color="#072b66" flood-opacity=".58"/>
+    </filter>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".7" numOctaves="3" seed="11" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".085"/></feComponentTransfer>
+      <feComposite in2="SourceGraphic" operator="in"/>
+      <feBlend in2="SourceGraphic" mode="soft-light"/>
+    </filter>
+    <path id="pocketShape" d="M184 440 C238 456 309 473 374 482 C415 488 437 501 444 531 L454 565 C461 591 481 608 512 608 C543 608 563 591 570 565 L580 531 C587 501 609 488 650 482 C715 473 786 456 840 440 L814 742 C810 793 782 824 742 847 L551 938 C526 950 498 950 473 938 L282 847 C242 824 214 793 210 742 Z"/>
+  </defs>
+
+  <rect x="72" y="68" width="880" height="880" rx="200" fill="url(#tile)" filter="url(#tileShadow)"/>
+  <rect x="72" y="68" width="880" height="880" rx="200" fill="url(#light)"/>
+  <rect x="74" y="70" width="876" height="876" rx="198" fill="none" stroke="#d4ecff" stroke-opacity=".36" stroke-width="3"/>
+
+  <path d="M185 440 C244 390 780 390 839 440 C867 464 794 531 512 540 C230 531 157 464 185 440Z"
+        fill="#123f82" stroke="#347fe0" stroke-width="10"/>
+
+  <g transform="rotate(-18 298 444)" filter="url(#toolShadow)">
+    <path d="M240 183 C194 204 174 241 179 283 C183 327 211 354 248 365 L248 675 Q248 713 288 713 Q328 713 328 675 L328 365 C369 354 397 319 397 276 C397 234 376 201 340 183 L340 256 L288 289 L236 256Z"
+          fill="#7c8ba0" stroke="#64758e" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M240 183 C194 204 174 241 179 283 C183 327 211 354 248 365 L248 675 Q248 713 288 713 Q328 713 328 675 L328 365 C369 354 397 319 397 276 C397 234 376 201 340 183 L340 256 L288 289 L236 256Z"
+          transform="translate(-3 -5)" fill="url(#metal)" stroke="#f6fcff" stroke-opacity=".6" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M205 224 C184 282 210 325 266 338 L266 600" fill="none" stroke="#ffffff" stroke-opacity=".42" stroke-width="7" stroke-linecap="round"/>
+  </g>
+
+  <g transform="rotate(-7 449 443)" filter="url(#toolShadow)">
+    <path d="M415 281 H482 V635 L449 712 L415 635Z" fill="url(#yellow)" stroke="#ac7408" stroke-width="2"/>
+    <path d="M427 301 V620" stroke="#ffed86" stroke-width="8" stroke-linecap="round" opacity=".7"/>
+    <path d="M415 214 Q415 183 446 183 H451 Q482 183 482 214 V257 H415Z" fill="url(#eraser)"/>
+    <path d="M425 209 Q425 196 443 194" fill="none" stroke="#ffe2ed" stroke-width="5" stroke-linecap="round" opacity=".5"/>
+    <rect x="413" y="244" width="71" height="64" rx="9" fill="url(#ferrule)" stroke="#8795a8" stroke-width="2"/>
+    <path d="M416 260 H481 M416 285 H481 M416 299 H481" stroke="#6d7b8b" stroke-width="4" opacity=".65"/>
+    <path d="M416 264 H481 M416 289 H481" stroke="#f1f7ff" stroke-width="2" opacity=".8"/>
+  </g>
+
+  <g transform="rotate(12 663 425)" filter="url(#toolShadow)">
+    <rect x="546" y="207" width="237" height="390" rx="43" fill="url(#card)" stroke="#a0acb9" stroke-width="4"/>
+    <rect x="554" y="216" width="221" height="370" rx="35" fill="none" stroke="#0e1c30" stroke-opacity=".7" stroke-width="4"/>
+    <rect x="566" y="246" width="197" height="147" rx="18" fill="#071625"/>
+    <rect x="572" y="252" width="185" height="133" rx="13" fill="url(#screen)"/>
+    <path d="M639 251 H691 V266 Q691 275 682 275 H648 Q639 275 639 266Z" fill="#071625"/>
+    <path d="M594 335 H605 L614 311 L626 351 L638 302 L650 331 H664 L675 320 L686 346 L699 313 L710 333 H733"
+          fill="none" stroke="#91e7eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="568" y="411" width="57" height="66" rx="13" fill="#4c5e73" stroke="#071625" stroke-width="3"/>
+    <rect x="637" y="411" width="57" height="66" rx="13" fill="#4c5e73" stroke="#071625" stroke-width="3"/>
+    <rect x="706" y="411" width="57" height="66" rx="13" fill="#4c5e73" stroke="#071625" stroke-width="3"/>
+    <path d="M596 429 V457 M582 443 H610" stroke="#e1ecf5" stroke-width="6" stroke-linecap="round"/>
+    <path d="M657 429 L679 443 L657 457Z" fill="#e1ecf5"/>
+    <path d="M722 443 H747" stroke="#e1ecf5" stroke-width="6" stroke-linecap="round"/>
+  </g>
+
+  <use href="#pocketShape" transform="translate(0 7)" fill="#0a397e" filter="url(#pocketShadow)"/>
+  <use href="#pocketShape" fill="url(#pocket)" filter="url(#grain)"/>
+  <use href="#pocketShape" fill="none" stroke="url(#edge)" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M204 463 C266 481 321 491 373 501 C409 507 419 519 425 545 L435 578 C446 611 473 633 512 633 C551 633 578 611 589 578 L599 545 C605 519 615 507 651 501 C703 491 758 481 820 463"
+        fill="none" stroke="#b1deff" stroke-opacity=".75" stroke-width="4" stroke-linecap="round" stroke-dasharray="10 12"/>
+  <path d="M226 511 L244 739 C247 776 266 799 302 819 L486 908 Q512 922 538 908 L722 819 C758 799 777 776 780 739 L798 511"
+        fill="none" stroke="#032b68" stroke-opacity=".48" stroke-width="8" stroke-linecap="round"/>
+  <path d="M226 507 L244 735 C247 772 266 795 302 815 L486 904 Q512 918 538 904 L722 815 C758 795 777 772 780 735 L798 507"
+        fill="none" stroke="#83baf2" stroke-opacity=".65" stroke-width="4" stroke-linecap="round" stroke-dasharray="10 12"/>
+</svg>
