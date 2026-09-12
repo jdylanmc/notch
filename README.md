@@ -204,8 +204,12 @@ artifacts. A failure reports `retained_build_dir` when this command owns residue
 
 The command explicitly builds project/scheme `notchPocket`, **Release**, macOS
 14 deployment, with manual Developer ID signing, your team, hardened runtime,
-secure timestamps and no injected debug entitlements. Both ordinary and
-macOS-conditional identity overrides are supplied. It does not source
+secure timestamps and no injected debug entitlements. The plain command-line
+`CODE_SIGN_IDENTITY=...` override takes precedence over project settings,
+including SDK-conditional identities. No SDK-conditional assignment is passed
+on the command line: `xcodebuild` splits assignments at the first `=`.
+The resulting signatures, not requested flags alone, must pass the checks
+below. It does not source
 `local.env` or the local build scripts; their XCTest/ad-hoc semantics, project
 settings, identifiers, entitlements, media/shelf code and installed app are
 unchanged. Pinned Swift package resolution is used; no pin updates or

@@ -237,9 +237,12 @@ The parent creates the `.build/` parent if needed and substitutes the approved
 selector/team; placeholders are not configured values. The command discovers
 full Xcode 26+ (rejecting invalid explicit `DEVELOPER_DIR` or CLT-only setups),
 builds `notchPocket` in Release for macOS 14 with explicit distribution-only
-overrides, and verifies results rather than trusting requested flags. Both
-normal and SDK-conditional identity settings are overridden; inherited teams
-must not win. Preserve `scripts/env.sh`, `scripts/build.sh`, project settings
+overrides, and verifies results rather than trusting requested flags. Plain
+command-line `CODE_SIGN_IDENTITY=...` and `DEVELOPMENT_TEAM=...` take precedence
+over project settings, including SDK-conditional identities. Do not pass
+SDK-conditional assignments on the command line: `xcodebuild` splits at the
+first `=`. Signature verification still rejects ad-hoc or wrong-team results.
+Preserve `scripts/env.sh`, `scripts/build.sh`, project settings
 and entitlement files. Their working local XCTest/ad-hoc semantics are not
 distribution configuration.
 

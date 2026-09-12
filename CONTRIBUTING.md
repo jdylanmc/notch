@@ -273,6 +273,14 @@ submits anything to Apple. Existing app/helper IDs, version 0.1 and declared
 entitlements are checked, not overridden. The helper's existing sandbox `false`
 entitlement is retained rather than replaced with app entitlements.
 
+The explicit plain command-line `CODE_SIGN_IDENTITY=...` and
+`DEVELOPMENT_TEAM=...` overrides take precedence over project settings, including
+SDK-conditional identities. Do not pass `CODE_SIGN_IDENTITY[sdk=macosx*]=...`
+as a command-line argument: `xcodebuild` splits it at the first `=`, corrupting
+the requested identity. The portable contract requires exactly one plain
+identity assignment; native signature verification below still rejects
+ad-hoc signatures, wrong signers/teams, missing timestamps or hardened runtime.
+
 Signing is mostly Xcode-generated. One explicit exception is necessary:
 `MediaRemoteAdapterTestClient` is a vendored Mach-O copied in the project's
 Resources phase, without CodeSignOnCopy. After verifying the Xcode-signed

@@ -169,7 +169,7 @@ def build_command(build, identity, team, tools):
         "SYMROOT=" + str(build / "Products"), "OBJROOT=" + str(build / "Intermediates"),
         "CONFIGURATION_BUILD_DIR=" + str(build / "Products/Release"),
         "CODE_SIGN_STYLE=Manual", "CODE_SIGNING_ALLOWED=YES", "CODE_SIGNING_REQUIRED=YES",
-        "CODE_SIGN_IDENTITY=" + identity, "CODE_SIGN_IDENTITY[sdk=macosx*]=" + identity,
+        "CODE_SIGN_IDENTITY=" + identity,
         "DEVELOPMENT_TEAM=" + team, "ENABLE_HARDENED_RUNTIME=YES",
         "CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO", "CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION=NO",
         "OTHER_CODE_SIGN_FLAGS=--timestamp --options runtime",

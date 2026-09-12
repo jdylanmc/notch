@@ -141,7 +141,7 @@ class InputTests(FixtureTests):
         command = distribution.build_command(self.build, IDENTITY, TEAM, TOOLS)
         for value in (
             "-scheme", "notchPocket", "-configuration", "Release", "generic/platform=macOS",
-            "CODE_SIGN_IDENTITY=" + IDENTITY, "CODE_SIGN_IDENTITY[sdk=macosx*]=" + IDENTITY,
+            "CODE_SIGN_IDENTITY=" + IDENTITY,
             "DEVELOPMENT_TEAM=" + TEAM, "ENABLE_HARDENED_RUNTIME=YES",
             "CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO", "CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION=NO",
             "CODE_SIGNING_ALLOWED=YES", "CODE_SIGNING_REQUIRED=YES", "CODE_SIGN_STYLE=Manual",
@@ -150,6 +150,11 @@ class InputTests(FixtureTests):
             "ONLY_ACTIVE_ARCH=NO",
         ):
             self.assertIn(value, command)
+        self.assertEqual(
+            [part for part in command if part.startswith("CODE_SIGN_IDENTITY")],
+            ["CODE_SIGN_IDENTITY=" + IDENTITY],
+            "Use one plain assignment; xcodebuild splits SDK-conditional arguments at the first '='.",
+        )
         self.assertEqual(command[-1], "build")
         for option in ("-derivedDataPath", "-clonedSourcePackagesDirPath", "-packageCachePath"):
             self.assertIn(self.build, Path(command[command.index(option) + 1]).parents)
