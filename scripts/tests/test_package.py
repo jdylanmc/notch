@@ -811,19 +811,30 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(json.loads(stderr.getvalue())["error"], "invalid_arguments")
 
     def test_cli_native_attribute_error_is_structured_without_os_apis(self):
+        implementation = package.package
         for failure, code, exit_code in (
             (OSError(errno.EACCES, "denied"), "io_error", 10),
             (package.PackageError("unsupported_platform", "xattr unavailable"), "unsupported_platform", 4),
         ):
             stdout, stderr = io.StringIO(), io.StringIO()
-            with self.subTest(code=code), mock.patch.object(package.sys, "platform", "darwin"), \
-                    mock.patch.object(package, "darwin_xattr_api", side_effect=failure), \
-                    contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-                self.assertEqual(package.main(["--app", str(self.app), "--output", str(self.output)]),
-                                 exit_code)
-            self.assertEqual(stdout.getvalue(), "")
-            self.assertEqual(json.loads(stderr.getvalue())["error"], code)
-            self.assertEqual(list(self.output_dir.iterdir()), [])
+            self.calls.clear()
+            with self.subTest(code=code):
+                # AttributeTests covers native routing; keep host filesystem semantics
+                # and replace native cleanup commands as well as attribute reads.
+                with mock.patch.object(package, "attributes", side_effect=failure) as attributes, \
+                        mock.patch.object(package, "package", side_effect=lambda app, output: implementation(
+                            app, output, run=self.runner)), \
+                        contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                    self.assertEqual(package.main(["--app", str(self.app), "--output", str(self.output)]),
+                                     exit_code)
+                attributes.assert_called_once()
+                self.assertEqual(stdout.getvalue(), "")
+                error = json.loads(stderr.getvalue())
+                self.assertEqual(error["error"], code)
+                self.assertFalse(error["ok"])
+                self.assertEqual([command for command, _ in self.calls],
+                                 [["/usr/bin/hdiutil", "info", "-plist"]])
+                self.assertEqual(list(self.output_dir.iterdir()), [])
 
     def test_platform_and_missing_tool_policy(self):
         self.tools_patch.stop()
