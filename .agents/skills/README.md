@@ -20,10 +20,15 @@ platform skills under `.github/skills`.
   and upstream baseline hashes. These are not hashes of locally adapted
   files or immutable pins for a future update. The committed files are the
   authoritative local snapshot.
-- The selected Matt directories contain 56 upstream-derived files. Twenty-four
+- The selected Matt directories contain 37 upstream-derived files. Twenty-four
   Markdown files have the local adaptations below; other resource bytes and
   executable modes are retained. This README, the root license copy and
   repository configuration are local additions.
+- The 19 optional `agents/openai.yaml` files are intentionally omitted by user
+  direction. Skill instructions and existing `SKILL.md` invocation frontmatter
+  are unchanged. Codex can still discover the skills, but its display metadata
+  and the explicit-invocation policies previously supplied by 11 of these YAML
+  files are no longer shipped.
 
 ### Caveman
 
@@ -124,8 +129,9 @@ DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add \
 
 This command reads the source's current default branch and does not replay
 our local adaptations. The CLI treats a tree-URL ref as a branch, not a commit
-pin. Verify the intended source revision and reapply reviewed adaptations
-before replacing files; never bulk-update the other platform skills.
+pin. Verify the intended source revision and reapply reviewed adaptations,
+including omission of Matt's `agents/openai.yaml` files, before replacing
+files; never bulk-update the other platform skills.
 
 The installer uses shared `.agents/skills` discovery, also recognized by
 Codex. An agent-filtered removal can report success while retaining shared
