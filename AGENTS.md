@@ -369,6 +369,36 @@ hardened-runtime requirements, and notarization are not supplied by these local
 test scripts. The separately approved [local Developer ID slice](#local-developer-id-preparation-9-bounded-slice)
 does not authorize that inherited workflow or notarization.
 
+## Agent skills
+
+Imported skills supplement, not override, this repository's scope, verification
+and approval rules. They do not authorize merges, releases or bypassing #54.
+Before using the imported workflow packet, read its
+[operating boundaries](.agents/skills/README.md#repository-setup-and-boundaries)
+and the relevant configuration below. Use project-local skills when names
+overlap with global plugins; confirm the source path rather than invoking an
+unrelated workflow. Delegation remains subject to the active harness and task,
+not mandatory merely because an imported recipe suggests sub-agents.
+
+Use the project `caveman-review` as the single review entry point, owning
+complete evidence collection and separate Standards/Spec checks.
+Retain full rationale when terse output would obscure a risk or design trade-off.
+Use `caveman-commit` for authorized commit messages. Review is read-only and
+commit-message generation is output-only; neither stages, commits, publishes
+reviews or grants git authority.
+
+### Issue tracker
+GitHub Issues in `jdylanmc/notch`, using `gh`.
+See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+Use the five default triage roles.
+See `docs/agents/triage-labels.md`.
+
+### Domain docs
+Single-context: root `CONTEXT.md` and `docs/adr/`.
+See `docs/agents/domain.md`.
+
 ## macOS expertise skills
 
 Use the vetted project-local [SwiftUI expertise](.github/skills/swiftui-expert-skill/SKILL.md)

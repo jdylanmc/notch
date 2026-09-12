@@ -6,6 +6,11 @@ packages, not approval to execute their examples, modernize the app, or add
 features. The existing [notch skill](notch/SKILL.md) remains the live-control
 interface; these packages do not replace it.
 
+The separate [Matt Pocock and Caveman packet](../../.agents/skills/README.md)
+adds engineering/productivity workflows and review/commit formatting under
+`.agents/skills`, with source records and user-confirmed setup. It does not replace or
+change these three skills or their compatibility boundaries.
+
 ## Candidate decisions
 
 | Candidate | Decision and current-code evidence |
