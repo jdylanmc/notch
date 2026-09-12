@@ -5,6 +5,11 @@ description: Build and sharpen a project's domain model. Use when discussing cod
 
 # Domain Modeling
 
+Read `docs/agents/domain.md` and existing repository guidance before writing.
+This checkout is single-context. Create a glossary or ADR only when an actual
+term or decision is resolved and document writes are in scope; installation
+and code review alone do not authorize new domain documents.
+
 Actively build and sharpen the project's domain model as you design. This is the *active* discipline: challenging terms, inventing edge-case scenarios, and writing the glossary and decisions down the moment they crystallise. (Merely *reading* `CONTEXT.md` for vocabulary is not this skill: that's a one-line habit any skill can do. This skill is for when you're changing the model, not just consuming it.)
 
 ## File structure

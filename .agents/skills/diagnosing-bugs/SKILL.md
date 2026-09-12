@@ -7,6 +7,13 @@ description: Diagnosis loop for hard bugs and performance regressions. Use when 
 
 A discipline for hard bugs. Skip phases only when explicitly justified.
 
+For Notch Pocket, use Swift/XCTest and the repository's canonical commands.
+Read `AGENTS.md` before running a loop. Native app checks require separate
+runtime authorization, exact app selection and the existing `notch` skill;
+browser automation is not a substitute. Preserve app identity, permissions,
+preferences and shelf. Do not stress-loop live media or replay uncertain
+notch actions. Authoring-only phases stop before execution.
+
 When exploring the codebase, read `CONTEXT.md` (if it exists) to get a clear mental model of the relevant modules, and check ADRs in the area you're touching.
 
 ## Redact
@@ -23,16 +30,19 @@ Spend disproportionate effort here. **Be aggressive. Be creative. Refuse to give
 
 ### Ways to construct one, in roughly this order
 
-1. **Failing test** at whatever seam reaches the bug: unit, integration, e2e.
-2. **Curl / HTTP script** against a running dev server.
-3. **CLI invocation** with a fixture input, diffing stdout against a known-good snapshot.
-4. **Headless browser script** (Playwright / Puppeteer) that drives the UI and asserts on DOM/console/network.
+1. **Failing XCTest** at the agreed seam that reaches the bug.
+2. **Pure Swift fixture** for parsing, state transitions, or event ordering.
+3. **Canonical CLI invocation** with a fixture input and exact output assertion.
+4. **Authorized native observation** through the existing `notch` helper, or
+   human-led reproduction when its bounded controls cannot exercise the bug.
 5. **Replay a captured trace.** Save a real network request / payload / event log to disk; replay it through the code path in isolation.
 6. **Throwaway harness.** Spin up a minimal subset of the system (one service, mocked deps) that exercises the bug code path with a single function call.
 7. **Property / fuzz loop.** If the bug is "sometimes wrong output", run 1000 random inputs and look for the failure mode.
 8. **Bisection harness.** If the bug appeared between two known states (commit, dataset, version), automate "boot at state X, check, repeat" so you can `git bisect run` it.
 9. **Differential loop.** Run the same input through old-version vs new-version (or two configs) and diff outputs.
-10. **HITL bash script.** Last resort. If a human must click, drive _them_ with `scripts/hitl-loop.template.sh` so the loop is still structured. Captured output feeds back to you.
+10. **Human-led checklist.** Record the exact steps and result. The bundled
+    `scripts/hitl-loop.template.sh` is an optional reference, not an installed
+    hook or approval to run scripts, modify privacy settings, or capture data.
 
 Build the right feedback loop, and the bug is 90% fixed.
 
@@ -61,7 +71,8 @@ Phase 1 is done when the loop is **tight** and **red-capable**: you can name **o
 - [ ] **Red-capable**: it drives the actual bug code path and asserts the **user's exact symptom**, so it can go red on this bug and green once fixed. Not "runs without erroring"; it must be able to _catch this specific bug_.
 - [ ] **Deterministic**: same verdict every run (flaky bugs: a pinned, high reproduction rate, per above).
 - [ ] **Fast**: seconds, not minutes.
-- [ ] **Agent-runnable**: you can run it unattended; a human in the loop only via `scripts/hitl-loop.template.sh`.
+- [ ] **Repeatable within authority**: run unattended only if authorized;
+  otherwise use documented human-led steps and report that dependency.
 
 If you catch yourself reading code to build a theory before this command exists, **stop: jumping straight to a hypothesis is the exact failure this skill prevents.** No red-capable command, no Phase 2.
 
@@ -109,7 +120,9 @@ Tool preference:
 
 **Tag every debug log** with a unique prefix, e.g. `[DEBUG-a4f2]`. Cleanup at the end becomes a single grep. Untagged logs survive; tagged logs die.
 
-**Perf branch.** For performance regressions, logs are usually wrong. Instead: establish a baseline measurement (timing harness, `performance.now()`, profiler, query plan), then bisect. Measure first, fix second.
+**Perf branch.** Establish a baseline using XCTest measurement, a Swift
+`ContinuousClock`, or separately approved app-scoped Instruments tracing.
+Measure first, fix second; no all-process recording or implicit trace upload.
 
 ## Phase 5: Fix + regression test
 
@@ -134,5 +147,6 @@ Required before declaring done:
 - [ ] Original repro no longer reproduces (re-run the Phase 1 loop)
 - [ ] Regression test passes (or absence of seam is documented)
 - [ ] All `[DEBUG-...]` instrumentation removed (`grep` the prefix)
-- [ ] Throwaway prototypes deleted (or moved to a clearly-marked debug location)
+- [ ] Owned disposable debug artifacts cleaned up; primary-source prototypes
+      preserved according to the `prototype` skill and the user's instructions
 - [ ] The hypothesis that turned out correct is stated in the commit / PR message, so the next debugger learns

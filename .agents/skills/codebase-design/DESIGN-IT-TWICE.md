@@ -1,6 +1,9 @@
 # Design It Twice
 
-When the user wants to explore alternative interfaces for a chosen deepening candidate, use this parallel sub-agent pattern. Based on "Design It Twice" (Ousterhout): your first idea is unlikely to be the best.
+When the user wants alternative interfaces, compare genuinely different
+designs. Work directly for a bounded problem; use separate agents only when
+permitted and the evidence warrants separate contexts. Based on "Design It
+Twice" (Ousterhout): your first idea is unlikely to be the best.
 
 Uses the vocabulary in [SKILL.md](SKILL.md): **module**, **interface**, **seam**, **adapter**, **leverage**.
 
@@ -16,9 +19,11 @@ Before spawning sub-agents, write a user-facing explanation of the problem space
 
 Show this to the user, then immediately proceed to Step 2. The user reads and thinks while the sub-agents work in parallel.
 
-### 2. Spawn sub-agents
+### 2. Explore alternatives
 
-Spawn 3+ sub-agents in parallel. Each must produce a **radically different** interface for the deepened module.
+Produce several **radically different** interfaces. These are design
+constraints, not a required agent count. If delegating, use the minimum
+appropriate number of agents and do not repeat their work in the parent.
 
 Prompt each sub-agent with a separate technical brief (file paths, coupling details, dependency category from [DEEPENING.md](DEEPENING.md), what sits behind the seam). The brief is independent of the user-facing problem-space explanation in Step 1. Give each agent a different design constraint:
 

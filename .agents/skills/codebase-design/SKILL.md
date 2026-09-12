@@ -5,6 +5,11 @@ description: Shared vocabulary for designing deep modules. Use when the user wan
 
 # Codebase Design
 
+Use this vocabulary to discuss design, not to rename existing repository
+services, models, or APIs. Preserve the AppKit/SwiftUI/Defaults architecture
+unless the user has scoped a change. The Swift examples below use hypothetical
+commerce types to illustrate seams; they are not app features.
+
 Design **deep modules**: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use this language and these principles wherever code is being designed or restructured. The aim is leverage for callers, locality for maintainers, and testability for everyone.
 
 ## Glossary
@@ -70,25 +75,33 @@ Good interfaces make testing natural:
 
 1. **Accept dependencies, don't create them.**
 
-   ```typescript
+   ```swift
    // Testable
-   function processOrder(order, paymentGateway) {}
+   func processOrder(
+       _ order: Order,
+       using gateway: any PaymentGateway
+   ) async throws -> Receipt {
+       try await gateway.charge(total: order.total)
+   }
 
    // Hard to test
-   function processOrder(order) {
-     const gateway = new StripeGateway();
+   func processOrder(_ order: Order) async throws -> Receipt {
+       let gateway = LivePaymentGateway()
+       return try await gateway.charge(total: order.total)
    }
    ```
 
 2. **Return results, don't produce side effects.**
 
-   ```typescript
+   ```swift
    // Testable
-   function calculateDiscount(cart): Discount {}
+   func calculateDiscount(for cart: Cart) -> Discount {
+       Discount(amount: cart.total >= 100 ? 10 : 0)
+   }
 
    // Hard to test
-   function applyDiscount(cart): void {
-     cart.total -= discount;
+   func applyDiscount(to cart: inout Cart) {
+       cart.total -= calculateDiscount(for: cart).amount
    }
    ```
 
@@ -105,7 +118,7 @@ Good interfaces make testing natural:
 ## Rejected framings
 
 - **Depth as ratio of implementation-lines to interface-lines** (Ousterhout): rewards padding the implementation. We use depth-as-leverage instead.
-- **"Interface" as the TypeScript `interface` keyword or a class's public methods**: too narrow: interface here includes every fact a caller must know.
+- **"Interface" as a Swift `protocol` declaration or a class's public methods**: too narrow: interface here includes every fact a caller must know.
 - **"Boundary"**: overloaded with DDD's bounded context. Say **seam** or **interface**.
 
 ## Going deeper

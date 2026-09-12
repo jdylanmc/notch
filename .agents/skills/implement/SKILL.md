@@ -6,10 +6,24 @@ disable-model-invocation: true
 
 Implement the work described by the user in the spec or tickets.
 
-Use /tdd where possible, at pre-agreed seams.
+Read `AGENTS.md` and `docs/agents/issue-tracker.md` before acting. Confirm the
+assigned worktree, approved scope, foundation gate, and validation ownership.
+Do not implement new features just because a ticket is labeled ready.
 
-Run typechecking regularly, single test files regularly, and the full test suite once at the end.
+Capture `git rev-parse HEAD` before editing as the review base. Preserve unrelated
+local changes and identify any relevant pre-existing changes in the review scope.
 
-Once done, use /code-review to review the work.
+Use /tdd at pre-agreed seams, with Swift/XCTest and existing targets. Run the
+smallest relevant canonical checks during iteration and the full verification
+gate required by the task before reporting completion. Honor authoring-only
+phases; documentation-only work does not require launching the app.
 
-Commit your work to the current branch.
+Once done, use /code-review in working-tree mode against the captured base,
+including new files. Fix in-scope findings and repeat affected checks. A
+committed-only diff cannot review work that has not been committed yet.
+
+Use the project /caveman-commit to draft the message for an authorized commit.
+It does not stage files or run git. Stage only this task's files and commit only
+when authorized. A request to
+implement does not itself authorize pushing, merging, releasing or closing
+issues. Report any pending gate rather than treating a commit as completion.

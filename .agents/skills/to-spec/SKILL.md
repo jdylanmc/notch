@@ -6,7 +6,10 @@ disable-model-invocation: true
 
 This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user; just synthesize what you already know.
 
-The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
+Read `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, and
+`docs/agents/domain.md`. If configuration is missing, ask for setup rather
+than inventing a tracker. Preserve #54's gate: publishing a specification
+does not authorize feature implementation or silently change priorities.
 
 ## Process
 
@@ -16,7 +19,10 @@ The issue tracker and triage label vocabulary should have been provided to you. 
 
 Check with the user that these seams match their expectations.
 
-3. Write the spec using the template below, then publish it to the project issue tracker. Apply the `ready-for-agent` triage label - no need for additional triage.
+3. Write the agreed spec using the template below. Publish it and apply the
+configured `ready-for-agent` label only within the task's write authorization,
+following the tracker's missing-label preflight. Preserve known blocking
+dependencies; a specified feature may still be blocked by the foundation.
 
 <spec-template>
 

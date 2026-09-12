@@ -1,14 +1,17 @@
 ---
 name: code-review
-description: "Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \"review since X\"."
+description: "Review committed or working-tree changes against a fixed point on two axes: repository standards and the originating spec. Use for branch, PR, or uncommitted implementation review."
 ---
 
-Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
+Two-axis review against a fixed point:
 
 - **Standards**: does the code conform to this repo's documented coding standards?
 - **Spec**: does the code faithfully implement the originating issue / spec?
 
-Both axes run as **parallel sub-agents** so they don't pollute each other's context, then this skill aggregates their findings.
+Keep the axes distinct. Review directly when the evidence fits one review;
+use parallel sub-agents only when the active harness permits delegation and
+the work benefits from separate contexts. Do not spawn a second review merely
+to re-check evidence already reviewed directly.
 
 The issue tracker should have been provided to you. If `docs/agents/issue-tracker.md` is missing, tell the user to run `/setup-matt-pocock-skills`.
 
@@ -16,11 +19,20 @@ The issue tracker should have been provided to you. If `docs/agents/issue-tracke
 
 ### 1. Pin the fixed point
 
-Whatever the user said is the fixed point (a commit SHA, branch name, tag, `main`, `HEAD~5`, etc.). If they didn't specify one, ask for it.
+Resolve the supplied base to an immutable commit. `/implement` supplies its
+pre-edit HEAD. For a PR use its actual base (`pocket` here); ask when the
+intended scope is unclear.
 
-Capture the diff command once: `git diff <fixed-point>...HEAD` (three-dot, so the comparison is against the merge-base). Also note the list of commits via `git log <fixed-point>..HEAD --oneline`.
+- **Committed branch/PR review:** capture `git diff <fixed-point>...HEAD` and
+  `git log <fixed-point>..HEAD --oneline`.
+- **Working-tree review:** capture `git diff <base-sha>` for tracked changes
+  (including staged and unstaged work), then `git ls-files --others
+  --exclude-standard` and read relevant new files separately. Do not stage
+  files just to make them visible to the review.
 
-Before going further, confirm the fixed point resolves (`git rev-parse <fixed-point>`) and the diff is non-empty. A bad ref or empty diff should fail here, not inside two parallel sub-agents.
+Use the same fixed base and file scope for both axes. An empty tracked diff
+does not mean no work when new files exist. If the complete scope is empty,
+report nothing to review rather than inventing findings.
 
 ### 2. Identify the spec source
 
@@ -55,7 +67,11 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 - **Middle Man**: a class or function that mostly just delegates onward. → cut it, call the real target direct.
 - **Refused Bequest**: a subclass or implementer that ignores or overrides most of what it inherits. → drop the inheritance, use composition.
 
-### 4. Spawn both sub-agents in parallel
+### 4. Review both axes
+
+For a direct review, apply both briefs below yourself. When delegation is
+appropriate, supply the complete evidence commands, including working-tree
+and new-file reads where applicable, to the independent reviewers.
 
 **Standards sub-agent prompt** should include:
 
@@ -73,7 +89,11 @@ If the spec is missing, skip the Spec sub-agent and note this in the final repor
 
 ### 5. Aggregate
 
-Present the two reports under `## Standards` and `## Spec` headings, verbatim or lightly cleaned. Do **not** merge or rerank findings, because the two axes are deliberately separate (see _Why two axes_).
+Call the project `caveman-review` skill with the completed findings and exact
+locations. It formats them; it does not replace or repeat the analysis.
+Present the output under `## Standards` and `## Spec`, without merging or
+reranking across axes. Retain the full explanation for architectural
+disagreements, substantive risks or uncertainty when a one-liner is insufficient.
 
 End with a one-line summary: total findings per axis, and the worst issue _within each axis_ (if any). Don't pick a single winner across axes: that's the reranking the separation exists to prevent.
 

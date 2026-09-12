@@ -6,6 +6,13 @@ disable-model-invocation: true
 
 # Triage
 
+Before using the tracker, read `docs/agents/issue-tracker.md` and
+`docs/agents/triage-labels.md`; before code exploration, read
+`docs/agents/domain.md`. Preserve existing priority/area labels and issue
+relationships. Repository approval and phase boundaries apply to reproduction,
+app launch, tests, tracker writes and issue closure; a triage label is not
+execution or merge authorization.
+
 Move issues on the project issue tracker through a small state machine of triage roles.
 
 If this repo treats external pull requests as a request surface (see the issue-tracker config), triage covers them too: **a PR is an issue with attached code**, using the same roles, same states, and same machine, with a few deltas marked "for a PR" below. Resolve a bare `#42` to an issue or PR per the tracker config.
@@ -57,7 +64,8 @@ The maintainer invokes `/triage` and describes what they want in natural languag
 
 Query the issue tracker and present three buckets, oldest first:
 
-1. **Unlabeled**: never triaged.
+1. **No triage state**: none of the five configured state labels is present,
+   even if priority, area, or other labels already exist.
 2. **`needs-triage`**: evaluation in progress.
 3. **`needs-info` with reporter activity since the last triage notes**: needs re-evaluation.
 

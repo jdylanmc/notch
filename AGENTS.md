@@ -373,6 +373,18 @@ does not authorize that inherited workflow or notarization.
 
 Imported skills supplement, not override, this repository's scope, verification
 and approval rules. They do not authorize merges, releases or bypassing #54.
+Before using the imported workflow packet, read its
+[operating boundaries](.agents/skills/README.md#repository-setup-and-boundaries)
+and the relevant configuration below. Use project-local skills when names
+overlap with global plugins; confirm the source path rather than invoking an
+unrelated workflow. Delegation remains subject to the active harness and task,
+not mandatory merely because an imported recipe suggests sub-agents.
+
+Route review findings through the project `caveman-review` skill; Matt's
+`code-review` still owns evidence collection and separate Standards/Spec axes.
+Retain full rationale when terse output would obscure a risk or design trade-off.
+Use `caveman-commit` for authorized commit messages. Both Caveman skills are
+output-only: they do not stage, commit, publish reviews or grant git authority.
 
 ### Issue tracker
 GitHub Issues in `jdylanmc/notch`, using `gh`.

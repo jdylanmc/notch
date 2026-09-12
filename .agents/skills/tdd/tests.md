@@ -1,17 +1,21 @@
 # Good and Bad Tests
 
+The snippets are XCTestCase methods using hypothetical commerce APIs, not
+Notch Pocket features. Import XCTest and substitute the actual types and
+interfaces under test; do not introduce these examples into the app.
+
 ## Good Tests
 
 **Integration-style**: Test through real interfaces, not mocks of internal parts.
 
-```typescript
+```swift
 // GOOD: Tests observable behavior
-test("user can checkout with valid cart", async () => {
-  const cart = createCart();
-  cart.add(product);
-  const result = await checkout(cart, paymentMethod);
-  expect(result.status).toBe("confirmed");
-});
+func testCheckoutConfirmsValidCart() async throws {
+    var cart = Cart()
+    cart.add(Product(price: 15))
+    let result = try await checkout(cart, paymentMethod: .card)
+    XCTAssertEqual(result.status, .confirmed)
+}
 ```
 
 Characteristics:
@@ -26,13 +30,15 @@ Characteristics:
 
 **Implementation-detail tests**: Coupled to internal structure.
 
-```typescript
+```swift
 // BAD: Tests implementation details
-test("checkout calls paymentService.process", async () => {
-  const mockPayment = jest.mock(paymentService);
-  await checkout(cart, payment);
-  expect(mockPayment.process).toHaveBeenCalledWith(cart.total);
-});
+func testCheckoutCallsInternalPaymentService() async throws {
+    let payment = PaymentSpy()
+    let service = CheckoutService(paymentService: payment)
+    let cart = Cart(items: [Product(price: 15)])
+    _ = try await service.checkout(cart, paymentMethod: .card)
+    XCTAssertEqual(payment.processedAmounts, [15])
+}
 ```
 
 Red flags:
@@ -44,34 +50,37 @@ Red flags:
 - Test name describes HOW not WHAT
 - Verifying through external means instead of interface
 
-```typescript
+```swift
 // BAD: Bypasses interface to verify
-test("createUser saves to database", async () => {
-  await createUser({ name: "Alice" });
-  const row = await db.query("SELECT * FROM users WHERE name = ?", ["Alice"]);
-  expect(row).toBeDefined();
-});
+func testCreateUserWritesDatabaseRow() throws {
+    let database = UserDatabase.inMemory()
+    let users = UserDirectory(database: database)
+    _ = try users.createUser(name: "Alice")
+    XCTAssertEqual(try database.countUsers(named: "Alice"), 1)
+}
 
 // GOOD: Verifies through interface
-test("createUser makes user retrievable", async () => {
-  const user = await createUser({ name: "Alice" });
-  const retrieved = await getUser(user.id);
-  expect(retrieved.name).toBe("Alice");
-});
+func testCreatedUserIsRetrievable() throws {
+    let users = UserDirectory.inMemory()
+    let created = try users.createUser(name: "Alice")
+    let retrieved = try XCTUnwrap(users.user(id: created.id))
+    XCTAssertEqual(retrieved.name, "Alice")
+}
 ```
 
 **Tautological tests**: Expected value restates the implementation, so the test passes by construction.
 
-```typescript
+```swift
 // BAD: Expected value is recomputed the way the code computes it
-test("calculateTotal sums line items", () => {
-  const items = [{ price: 10 }, { price: 5 }];
-  const expected = items.reduce((sum, i) => sum + i.price, 0);
-  expect(calculateTotal(items)).toBe(expected);
-});
+func testTotalRepeatsImplementation() {
+    let items = [Product(price: 10), Product(price: 5)]
+    let expected = items.reduce(0) { $0 + $1.price }
+    XCTAssertEqual(calculateTotal(items), expected)
+}
 
 // GOOD: Expected value is an independent, known literal
-test("calculateTotal sums line items", () => {
-  expect(calculateTotal([{ price: 10 }, { price: 5 }])).toBe(15);
-});
+func testTotalMatchesKnownAmount() {
+    let items = [Product(price: 10), Product(price: 5)]
+    XCTAssertEqual(calculateTotal(items), 15)
+}
 ```

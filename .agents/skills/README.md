@@ -1,100 +1,165 @@
-# Matt Pocock skills trial
+# Notch Pocket workflow skills
 
-Repository-local, editable copies of
-[mattpocock/skills](https://github.com/mattpocock/skills), installed at the user's
-request on 2026-09-12. This is a trial of the full collection, not a claim that
-every workflow or bundled script is appropriate for a native macOS app.
+Repository-local, editable skills from
+[mattpocock/skills](https://github.com/mattpocock/skills), selected and adapted
+at the user's request on 2026-09-12, with two output-formatting skills from
+[juliusbrussee/caveman](https://github.com/juliusbrussee/caveman). The packet
+contains **20 Matt skills + 2 Caveman skills**, alongside the three existing
+platform skills under `.github/skills`.
 
 ## Source and license
+
+### Matt Pocock
 
 - Source revision:
   [`3cca18b368ae95cdbdebbff572ccafa662551015`](https://github.com/mattpocock/skills/tree/3cca18b368ae95cdbdebbff572ccafa662551015).
 - Installer: `skills` CLI **1.5.23**.
-- [MIT license](LICENSE), Copyright (c) 2026 Matt Pocock, applies to the imported
-  skill directories. Preserve it when copying or updating them.
-- [`skills-lock.json`](../../skills-lock.json) records each upstream skill path
-  and the installer's computed hash. Those hashes do not pin a future update
-  to this revision; the committed files are this checkout's snapshot.
-- The installed skill files and package-relative resources are unmodified.
-  This README, the retained root license, and the repository setup documents
-  are local additions.
+- [MIT license](LICENSE), Copyright (c) 2026 Matt Pocock, applies to the
+  Matt skill directories, including locally adapted copies.
+- [`skills-lock.json`](../../skills-lock.json) records selected source paths
+  and upstream baseline hashes. These are not hashes of locally adapted
+  files or immutable pins for a future update. The committed files are the
+  authoritative local snapshot.
+- The selected directories contain 58 upstream-derived files. Twenty-five
+  Markdown files have the local adaptations below; other resource bytes and
+  executable modes are retained. This README, the root license copy and
+  repository configuration are local additions.
 
-The installer selected all **37** upstream skills, including the less mature
-`in-progress` collection and the specialized `misc` collection:
+### Caveman
 
-| Upstream group | Installed skills |
+- Source revision:
+  [`15581d14007fd01fb3f132016741962f34936ca2`](https://github.com/juliusbrussee/caveman/tree/15581d14007fd01fb3f132016741962f34936ca2).
+- Only `caveman-review` and `caveman-commit` were installed with `skills` 1.5.23.
+  These are standalone Markdown formatters, not the Caveman runtime, engine,
+  plugin, SDK or base skill.
+- Their four upstream files have local adaptations: repository/output-only
+  guards, a Swift-oriented review example, and corrected source/packet links.
+- The full upstream MIT notice, Copyright (c) 2026 Julius Brussee, is preserved
+  in [caveman-review/LICENSE](caveman-review/LICENSE) and
+  [caveman-commit/LICENSE](caveman-commit/LICENSE). Upstream
+  [LICENSING.md](https://github.com/juliusbrussee/caveman/blob/15581d14007fd01fb3f132016741962f34936ca2/LICENSING.md)
+  classifies `skills/` as MIT. No engine-linked, separately licensed runtime
+  directories were installed.
+
+## Selection
+
+The initial full installation was trimmed by user direction. The in-progress
+and miscellaneous collections and five additional standalone tools are not
+installed. Use the explicit allowlist below rather than `--skill '*'`.
+
+| Group | Installed skills |
 | --- | --- |
-| `engineering` (18) | `ask-matt`, `code-review`, `codebase-design`, `diagnosing-bugs`, `domain-modeling`, `grill-with-docs`, `implement`, `improve-codebase-architecture`, `prototype`, `research`, `resolving-merge-conflicts`, `setup-matt-pocock-skills`, `tdd`, `to-spec`, `to-tickets`, `triage`, `wayfinder`, `wizard` |
-| `productivity` (7) | `grill-me`, `grilling`, `handoff`, `teach`, `to-questionnaire`, `wait-what`, `writing-for-agents` |
-| `in-progress` (8) | `claude-handoff`, `implement-spec`, `loop-me`, `retro`, `setup-ts-deep-modules`, `writing-beats`, `writing-fragments`, `writing-shape` |
-| `misc` (4) | `git-guardrails-claude-code`, `migrate-to-shoehorn`, `scaffold-exercises`, `setup-pre-commit` |
+| Engineering (17) | `ask-matt`, `code-review`, `codebase-design`, `diagnosing-bugs`, `domain-modeling`, `grill-with-docs`, `implement`, `improve-codebase-architecture`, `prototype`, `research`, `resolving-merge-conflicts`, `setup-matt-pocock-skills`, `tdd`, `to-spec`, `to-tickets`, `triage`, `wayfinder` |
+| Productivity (3) | `grill-me`, `grilling`, `handoff` |
+| Caveman output (2) | `caveman-review`, `caveman-commit` |
+
+## Local adaptations
+
+| Files beneath this directory | Adaptation |
+| --- | --- |
+| `ask-matt/SKILL.md` | Remove recommendations for uninstalled tools; route prototypes to the native workflow and `pocket` branches. |
+| `tdd/{SKILL,tests,mocking}.md` | Swift/XCTest examples, existing test targets and phase-aware canonical validation. |
+| `codebase-design/{SKILL,DEEPENING,DESIGN-IT-TWICE}.md` | Swift examples, preserve established names and regression coverage, conditional delegation. |
+| `prototype/{SKILL,LOGIC,UI}.md` | Swift models and Debug-only SwiftUI fixtures, no web application scaffold; preserve AppKit lifecycle, data and app-control boundaries. |
+| `triage/{SKILL,AGENT-BRIEF,OUT-OF-SCOPE}.md` | Load actual tracker configuration, recognize missing triage state despite other labels, use Swift examples explicitly marked as fictional. |
+| `implement/SKILL.md`, `code-review/SKILL.md` | Capture a pre-edit base and review tracked plus new uncommitted files; preserve standards/spec axes, then route findings/messages through Caveman. |
+| `diagnosing-bugs/SKILL.md`, `resolving-merge-conflicts/SKILL.md` | Native authorized diagnostics, preserve prototype evidence, stop on unresolved intent, stage only owned changes. |
+| `domain-modeling/SKILL.md`, `grilling/SKILL.md`, `research/SKILL.md` | Consume domain configuration, respect question limits, avoid compulsory or recursive delegation and unsolicited permanent documents. |
+| `to-spec/SKILL.md`, `to-tickets/SKILL.md`, `wayfinder/SKILL.md` | Explicit configuration, labels/dependencies preflight, foundation and publication gates; no silent tracker fallback or nested research chain. |
+| `improve-codebase-architecture/{SKILL,HTML-REPORT}.md` | Private offline report with inline CSS/static diagrams, no network-loaded resources or executable scripts. |
+
+## How the packet fits together
+
+`ask-matt` recommends entry points; it does not automatically run every phase.
+User-invoked steps remain user-invoked:
+
+```text
+grill-me ------------------> grilling
+grill-with-docs -----------> grilling + domain-modeling
+to-spec -> to-tickets -----> approved GitHub specs, slices and blocking edges
+implement ----------------> tdd -> codebase-design
+          \---------------> code-review -> caveman-review (finding text)
+          \---------------> caveman-commit (authorized commit message only)
+triage -------------------> grilling + domain-modeling, when needed
+improve-codebase-architecture -> codebase-design + grilling + domain-modeling
+wayfinder ----------------> research / prototype / grilling + domain-modeling
+```
+
+`diagnosing-bugs` supplies the native reproduction/regression loop.
+`handoff` carries references to another session; `resolving-merge-conflicts`
+handles an already authorized merge/rebase. `setup-matt-pocock-skills` owns
+initial configuration. All referenced packet skills are installed.
+
+Matt's `code-review` owns the evidence and Standards/Spec checks; it calls
+`caveman-review` once to render completed findings, without a reverse call.
+Architecture review summaries use the same style but retain necessary rationale.
+`caveman-commit` writes messages only; the authorized caller owns git operations.
+Neither formatter fixes code, publishes review comments, stages files or commits.
 
 ## Installation and discovery
 
-The requested `npx skills add` installation used explicit project scope,
-GitHub Copilot selection, all skills, and copies rather than symlinks:
+A checkout already contains the selected files; no global install is needed.
+For an explicitly approved refresh in a separate worktree, the selection is:
 
 ```bash
 DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add \
-  https://github.com/mattpocock/skills \
-  --agent github-copilot --skill '*' --copy --yes
+  https://github.com/mattpocock/skills --agent github-copilot --copy --yes \
+  --skill ask-matt code-review codebase-design diagnosing-bugs \
+  domain-modeling grill-me grill-with-docs grilling handoff implement \
+  improve-codebase-architecture prototype research resolving-merge-conflicts \
+  setup-matt-pocock-skills tdd to-spec to-tickets triage wayfinder
+
+DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add \
+  https://github.com/juliusbrussee/caveman --agent github-copilot --copy --yes \
+  --skill caveman-review caveman-commit
 ```
 
-This is an installation record, not an immutable replay command: it reads the
-source repository's current default branch. The CLI does not accept a commit
-SHA in its tree URL as a branch. Verify any new installation against the
-intended immutable source revision before committing it.
+This command reads the source's current default branch and does not replay
+our local adaptations. The CLI treats a tree-URL ref as a branch, not a commit
+pin. Verify the intended source revision and reapply reviewed adaptations
+before replacing files; never bulk-update the other platform skills.
 
-The installer uses `.agents/skills` for Copilot. That is a shared discovery
-location also recognized by other agents, including Codex; it is not a
-Copilot-only access boundary. No global installation or additional per-agent
-copy was requested. The three existing skills under `.github/skills` are
-unchanged, including their macOS compatibility guards.
+The installer uses shared `.agents/skills` discovery, also recognized by
+Codex. An agent-filtered removal can report success while retaining shared
+files; for approved project-wide removals, use explicit names without a global
+flag and verify folders, lock entries and discovery afterward.
 
-Start Copilot in the checkout/worktree containing these files. Use
-`/skills reload` if supported by the current session, or start a new session.
-Inspect project discovery without executing skill scripts:
+Start Copilot in this checkout/worktree, or reload skills if supported:
 
 ```bash
 copilot skill list --json
 ```
 
-The expected local inventory is 40 skills: these 37 plus `notch`,
-`macos-patterns`, and `swiftui-expert-skill`. Global/plugin skills can add other
-entries. Some names, such as `handoff` and `teach`, can also exist globally;
-check the selected skill's source path before use.
+Expect **25 project skills**: these 22 plus `notch`, `macos-patterns`, and
+`swiftui-expert-skill`. Global plugins may add other entries. In particular,
+`handoff` can collide with a global skill: confirm the project source path
+before invoking it, not an unrelated plugin with the same name.
 
 ## Repository setup and boundaries
 
-The user-confirmed `setup-matt-pocock-skills` configuration is linked from
-[`AGENTS.md`](../../AGENTS.md#agent-skills):
+Before a workflow, read [`AGENTS.md`](../../AGENTS.md#agent-skills) and the
+configuration it consumes:
 
 - [`docs/agents/issue-tracker.md`](../../docs/agents/issue-tracker.md):
-  `jdylanmc/notch` GitHub Issues, explicit `gh` repository selection, PRs to
-  `pocket`, and preserved native issue relationships.
+  GitHub Issues in `jdylanmc/notch`, `pocket` PRs, native relationships and
+  missing-label preflight.
 - [`docs/agents/triage-labels.md`](../../docs/agents/triage-labels.md):
-  five default roles; no labels were created or applied during setup.
+  five default roles; setup created/applied no tracker labels.
 - [`docs/agents/domain.md`](../../docs/agents/domain.md):
-  single-context layout, with `CONTEXT.md` and `docs/adr/` created lazily when
-  actual terminology or decisions warrant them.
+  a root glossary and `docs/adr/`, created lazily from actual resolved knowledge.
 
-The setup skill is a prompt-driven interview, not an executable installer.
-Only that setup workflow was exercised for this installation. Discovery does
-not establish the correctness or safety of the other workflows.
+The technical fit is Swift 5 language mode, XCTest and macOS 14-compatible
+SwiftUI/AppKit. Preserve centralized Defaults, app/helper identity, media,
+shelf and the existing controller/panel lifecycle. Use `notch` only for its
+bounded app-control surface, and the existing macOS/SwiftUI skills for platform
+expertise; these are not replaced by generic architecture advice.
 
-Repository guidance and the current task's authority remain controlling.
-Imported workflow examples do not replace canonical build/test/lint commands,
-approve hooks, grant unattended execution, permit a merge/release, bypass the
-foundation gate, or authorize app/privacy/data changes. TypeScript-, Claude-,
-and browser-specific examples are not native macOS implementation guidance.
-Use the existing `notch` skill for its bounded app-control surface and the
-existing macOS/SwiftUI skills for platform expertise.
+Readiness is not execution permission. Honor #54, authoring-only phases,
+canonical verification, and separate human-owned privacy, merge and release
+approvals. Commit/push/issue changes follow the active task's authorization.
+Delegation follows harness limits; skill recipes do not grant extra authority.
 
-## Updates
-
-Use a separate worktree and an explicitly reviewed source revision. Inspect
-the changed prompts, scripts, resources, source paths and license before
-replacing files; preserve this setup and the existing platform-skill guards.
-Do not bulk-update either skills collection as a side effect of another task.
-Changes to this trial's selection or repository workflow belong in a reviewed
-PR, not an automatic upstream sync.
+Setup is a prompt-driven interview, not a program. Static packet checks and
+Swift example type-checks do not establish live app behavior or execution of
+every skill workflow. No installed hook, app change, privacy grant, signing
+change or release is implied.

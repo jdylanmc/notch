@@ -20,7 +20,11 @@ One file per **concept**, not per issue. Multiple issues requesting the same thi
 
 The file should be written in a relaxed, readable style, more like a short design document than a database entry. Use paragraphs, code samples, and examples to make the reasoning clear and useful to someone encountering it for the first time.
 
-```markdown
+The following is a fictional Swift renderer example, not a Notch Pocket
+theming decision. Only record rejections actually approved by the maintainer;
+lower priority or a foundation blocker is not a rejection.
+
+````markdown
 # Dark Mode
 
 This project does not support dark mode or user-facing theming.
@@ -28,30 +32,31 @@ This project does not support dark mode or user-facing theming.
 ## Why this is out of scope
 
 The rendering pipeline assumes a single color palette defined in
-`ThemeConfig`. Supporting multiple themes would require:
+`ThemeConfiguration`. Supporting multiple themes would require:
 
-- A theme context provider wrapping the entire component tree
-- Per-component theme-aware style resolution
-- A persistence layer for user theme preferences
+- Passing a theme value through the renderer's view hierarchy
+- Resolving the hypothetical renderer's fixed colors at runtime
+- Defining whether theme choice is transient or persisted
 
 This is a significant architectural change that doesn't align with the
 project's focus on content authoring. Theming is a concern for downstream
 consumers who embed or redistribute the output.
 
-```ts
-// The current ThemeConfig interface is not designed for runtime switching:
-interface ThemeConfig {
-  colors: ColorPalette; // single palette, resolved at build time
-  fonts: FontStack;
+```swift
+import AppKit
+
+// This hypothetical renderer receives a fixed configuration at construction.
+struct ThemeConfiguration {
+    let background: NSColor
+    let foreground: NSColor
+    let font: NSFont
 }
 ```
 
 ## Prior requests
 
-- #42: "Add dark mode support"
-- #87: "Night theme for accessibility"
-- #134: "Dark theme option"
-```
+- #<issue-number>: "Add dark mode support"
+````
 
 ### Naming the file
 

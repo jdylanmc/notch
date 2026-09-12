@@ -1,6 +1,9 @@
 # Writing Agent Briefs
 
-An agent brief is a structured comment posted on a GitHub issue or PR when it moves to `ready-for-agent`. It is the authoritative specification that an AFK agent will work from. The original body and discussion are context: the agent brief is the contract.
+An agent brief is a structured comment posted on a GitHub issue or PR when it
+moves to `ready-for-agent`. It records the approved implementation contract,
+not permission to execute. Reconcile it with later maintainer decisions and
+current repository constraints; a stale brief does not override either.
 
 The brief states **what the agent should do**, which stretches to both surfaces: for an issue, that's building the change from nothing; for a PR, it's what's left to do *to the existing diff*: finish it, close gaps, address review points. Same principles either way; the PR example below shows the difference.
 
@@ -21,7 +24,7 @@ The issue may sit in `ready-for-agent` for days or weeks. The codebase will chan
 Describe **what** the system should do, not **how** to implement it. The agent will explore the codebase fresh and make its own implementation decisions.
 
 - **Good:** "The `SkillConfig` type should accept an optional `schedule` field of type `CronExpression`"
-- **Bad:** "Open src/types/skill.ts and add a schedule field on line 42"
+- **Bad:** "Open Sources/SkillConfig.swift and add a schedule field on line 42"
 - **Good:** "When a user runs `/triage` with no arguments, they should see a summary of issues needing attention"
 - **Bad:** "Add a switch statement in the main handler function"
 
@@ -194,8 +197,8 @@ The triage thing is broken. Look at the main file and fix it.
 The function around line 150 has the issue.
 
 **Files to change:**
-- src/triage/handler.ts (line 150)
-- src/types.ts (line 42)
+- Sources/TriageHandler.swift (line 150)
+- Sources/SkillConfig.swift (line 42)
 ```
 
 This is bad because:
