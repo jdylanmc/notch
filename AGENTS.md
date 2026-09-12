@@ -380,11 +380,12 @@ overlap with global plugins; confirm the source path rather than invoking an
 unrelated workflow. Delegation remains subject to the active harness and task,
 not mandatory merely because an imported recipe suggests sub-agents.
 
-Route review findings through the project `caveman-review` skill; Matt's
-`code-review` still owns evidence collection and separate Standards/Spec axes.
+Use the project `caveman-review` as the single review entry point, owning
+complete evidence collection and separate Standards/Spec checks.
 Retain full rationale when terse output would obscure a risk or design trade-off.
-Use `caveman-commit` for authorized commit messages. Both Caveman skills are
-output-only: they do not stage, commit, publish reviews or grant git authority.
+Use `caveman-commit` for authorized commit messages. Review is read-only and
+commit-message generation is output-only; neither stages, commits, publishes
+reviews or grants git authority.
 
 ### Issue tracker
 GitHub Issues in `jdylanmc/notch`, using `gh`.

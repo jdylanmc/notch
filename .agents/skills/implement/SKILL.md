@@ -18,7 +18,7 @@ smallest relevant canonical checks during iteration and the full verification
 gate required by the task before reporting completion. Honor authoring-only
 phases; documentation-only work does not require launching the app.
 
-Once done, use /code-review in working-tree mode against the captured base,
+Once done, use /caveman-review in working-tree mode against the captured base,
 including new files. Fix in-scope findings and repeat affected checks. A
 committed-only diff cannot review work that has not been committed yet.
 

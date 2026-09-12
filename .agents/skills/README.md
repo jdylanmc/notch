@@ -4,7 +4,7 @@ Repository-local, editable skills from
 [mattpocock/skills](https://github.com/mattpocock/skills), selected and adapted
 at the user's request on 2026-09-12, with two output-formatting skills from
 [juliusbrussee/caveman](https://github.com/juliusbrussee/caveman). The packet
-contains **20 Matt skills + 2 Caveman skills**, alongside the three existing
+contains **19 Matt skills + 2 Caveman skills**, alongside the three existing
 platform skills under `.github/skills`.
 
 ## Source and license
@@ -20,7 +20,7 @@ platform skills under `.github/skills`.
   and upstream baseline hashes. These are not hashes of locally adapted
   files or immutable pins for a future update. The committed files are the
   authoritative local snapshot.
-- The selected directories contain 58 upstream-derived files. Twenty-five
+- The selected Matt directories contain 56 upstream-derived files. Twenty-four
   Markdown files have the local adaptations below; other resource bytes and
   executable modes are retained. This README, the root license copy and
   repository configuration are local additions.
@@ -30,9 +30,9 @@ platform skills under `.github/skills`.
 - Source revision:
   [`15581d14007fd01fb3f132016741962f34936ca2`](https://github.com/juliusbrussee/caveman/tree/15581d14007fd01fb3f132016741962f34936ca2).
 - Only `caveman-review` and `caveman-commit` were installed with `skills` 1.5.23.
-  These are standalone Markdown formatters, not the Caveman runtime, engine,
+  These are standalone Markdown workflows, not the Caveman runtime, engine,
   plugin, SDK or base skill.
-- Their four upstream files have local adaptations: repository/output-only
+- Their four upstream files have local adaptations: repository/read-only
   guards, a Swift-oriented review example, and corrected source/packet links.
 - The full upstream MIT notice, Copyright (c) 2026 Julius Brussee, is preserved
   in [caveman-review/LICENSE](caveman-review/LICENSE) and
@@ -40,16 +40,23 @@ platform skills under `.github/skills`.
   [LICENSING.md](https://github.com/juliusbrussee/caveman/blob/15581d14007fd01fb3f132016741962f34936ca2/LICENSING.md)
   classifies `skills/` as MIT. No engine-linked, separately licensed runtime
   directories were installed.
+- `caveman-review/REVIEW-PROCESS.md` preserves the scoped Standards/Spec
+  procedure adapted from Matt's retired review workflow. Its source is linked
+  there and Matt's full notice is also retained in
+  [caveman-review/LICENSE.mattpocock](caveman-review/LICENSE.mattpocock).
+  Review analysis now lives in this single entry point; no second review skill
+  is required.
 
 ## Selection
 
 The initial full installation was trimmed by user direction. The in-progress
-and miscellaneous collections and five additional standalone tools are not
-installed. Use the explicit allowlist below rather than `--skill '*'`.
+and miscellaneous collections, five additional standalone tools, and the
+redundant Matt review entry point are not installed. Use the explicit allowlist
+below rather than `--skill '*'`.
 
 | Group | Installed skills |
 | --- | --- |
-| Engineering (17) | `ask-matt`, `code-review`, `codebase-design`, `diagnosing-bugs`, `domain-modeling`, `grill-with-docs`, `implement`, `improve-codebase-architecture`, `prototype`, `research`, `resolving-merge-conflicts`, `setup-matt-pocock-skills`, `tdd`, `to-spec`, `to-tickets`, `triage`, `wayfinder` |
+| Engineering (16) | `ask-matt`, `codebase-design`, `diagnosing-bugs`, `domain-modeling`, `grill-with-docs`, `implement`, `improve-codebase-architecture`, `prototype`, `research`, `resolving-merge-conflicts`, `setup-matt-pocock-skills`, `tdd`, `to-spec`, `to-tickets`, `triage`, `wayfinder` |
 | Productivity (3) | `grill-me`, `grilling`, `handoff` |
 | Caveman output (2) | `caveman-review`, `caveman-commit` |
 
@@ -62,7 +69,7 @@ installed. Use the explicit allowlist below rather than `--skill '*'`.
 | `codebase-design/{SKILL,DEEPENING,DESIGN-IT-TWICE}.md` | Swift examples, preserve established names and regression coverage, conditional delegation. |
 | `prototype/{SKILL,LOGIC,UI}.md` | Swift models and Debug-only SwiftUI fixtures, no web application scaffold; preserve AppKit lifecycle, data and app-control boundaries. |
 | `triage/{SKILL,AGENT-BRIEF,OUT-OF-SCOPE}.md` | Load actual tracker configuration, recognize missing triage state despite other labels, use Swift examples explicitly marked as fictional. |
-| `implement/SKILL.md`, `code-review/SKILL.md` | Capture a pre-edit base and review tracked plus new uncommitted files; preserve standards/spec axes, then route findings/messages through Caveman. |
+| `implement/SKILL.md` | Capture a pre-edit base; route tracked/new-file Standards/Spec review directly to Caveman and generate authorized commit messages separately. |
 | `diagnosing-bugs/SKILL.md`, `resolving-merge-conflicts/SKILL.md` | Native authorized diagnostics, preserve prototype evidence, stop on unresolved intent, stage only owned changes. |
 | `domain-modeling/SKILL.md`, `grilling/SKILL.md`, `research/SKILL.md` | Consume domain configuration, respect question limits, avoid compulsory or recursive delegation and unsolicited permanent documents. |
 | `to-spec/SKILL.md`, `to-tickets/SKILL.md`, `wayfinder/SKILL.md` | Explicit configuration, labels/dependencies preflight, foundation and publication gates; no silent tracker fallback or nested research chain. |
@@ -78,7 +85,7 @@ grill-me ------------------> grilling
 grill-with-docs -----------> grilling + domain-modeling
 to-spec -> to-tickets -----> approved GitHub specs, slices and blocking edges
 implement ----------------> tdd -> codebase-design
-          \---------------> code-review -> caveman-review (finding text)
+          \---------------> caveman-review (Standards/Spec analysis + findings)
           \---------------> caveman-commit (authorized commit message only)
 triage -------------------> grilling + domain-modeling, when needed
 improve-codebase-architecture -> codebase-design + grilling + domain-modeling
@@ -88,13 +95,14 @@ wayfinder ----------------> research / prototype / grilling + domain-modeling
 `diagnosing-bugs` supplies the native reproduction/regression loop.
 `handoff` carries references to another session; `resolving-merge-conflicts`
 handles an already authorized merge/rebase. `setup-matt-pocock-skills` owns
-initial configuration. All referenced packet skills are installed.
+initial configuration and optional reconfiguration; it is not part of normal
+configured workflows. All referenced packet skills are installed.
 
-Matt's `code-review` owns the evidence and Standards/Spec checks; it calls
-`caveman-review` once to render completed findings, without a reverse call.
-Architecture review summaries use the same style but retain necessary rationale.
-`caveman-commit` writes messages only; the authorized caller owns git operations.
-Neither formatter fixes code, publishes review comments, stages files or commits.
+`caveman-review` collects the complete evidence and performs Standards/Spec
+checks before rendering findings. It can format supplied completed findings
+without repeating that analysis. Architecture summaries retain necessary
+rationale. `caveman-commit` writes messages only; the authorized caller owns
+git operations. Neither skill fixes code, publishes reviews, stages or commits.
 
 ## Installation and discovery
 
@@ -104,7 +112,7 @@ For an explicitly approved refresh in a separate worktree, the selection is:
 ```bash
 DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add \
   https://github.com/mattpocock/skills --agent github-copilot --copy --yes \
-  --skill ask-matt code-review codebase-design diagnosing-bugs \
+  --skill ask-matt codebase-design diagnosing-bugs \
   domain-modeling grill-me grill-with-docs grilling handoff implement \
   improve-codebase-architecture prototype research resolving-merge-conflicts \
   setup-matt-pocock-skills tdd to-spec to-tickets triage wayfinder
@@ -130,7 +138,7 @@ Start Copilot in this checkout/worktree, or reload skills if supported:
 copilot skill list --json
 ```
 
-Expect **25 project skills**: these 22 plus `notch`, `macos-patterns`, and
+Expect **24 project skills**: these 21 plus `notch`, `macos-patterns`, and
 `swiftui-expert-skill`. Global plugins may add other entries. In particular,
 `handoff` can collide with a global skill: confirm the project source path
 before invoking it, not an unrelated plugin with the same name.

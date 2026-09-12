@@ -1,14 +1,19 @@
 # caveman-review
 
-One-line PR comments. Location, problem, fix. No throat-clearing.
+Read-only Standards/Spec review with concise findings. Location, problem, fix.
 
 ## What it does
 
-Generates code review comments in `L<line>: <severity> <problem>. <fix>.` format. One line per finding. Severity emoji: 🔴 bug, 🟡 risk, 🔵 nit, ❓ question. Drops "I noticed that...", hedging, and restating what the diff already shows. Keeps exact line numbers, backticked symbols, and concrete fixes.
+The local adaptation collects committed or working-tree evidence, including
+new files, and assesses repository standards and the approved spec separately.
+It reports findings in `L<line>: <severity> <problem>. <fix>.` format, preserving
+exact locations and symbols. Severity: 🔴 bug, 🟡 risk, 🔵 nit, ❓ question.
+It can also format completed findings supplied explicitly by another workflow
+without repeating that analysis.
 
 Auto-clarity: drops terse mode for CVE-class security findings, architectural disagreements, and onboarding contexts where the author needs the *why*. Resumes terse for the rest.
 
-Output only — does not approve, request changes, or run linters.
+Read-only — does not change code, approve, request changes, or run linters.
 
 ## How to invoke
 
@@ -30,5 +35,6 @@ L107: ❓ q: why drop the cache here? Reads on next request will miss.
 ## See also
 
 - [`SKILL.md`](./SKILL.md) — full LLM-facing instructions
+- [`REVIEW-PROCESS.md`](./REVIEW-PROCESS.md) — scope, evidence and two-axis analysis
 - [Upstream Caveman README](https://github.com/juliusbrussee/caveman/blob/15581d14007fd01fb3f132016741962f34936ca2/README.md) — source overview, not additional installation instructions
 - [Local packet guide](../README.md) — repository routing and boundaries

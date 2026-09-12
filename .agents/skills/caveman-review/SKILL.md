@@ -1,7 +1,8 @@
 ---
 name: caveman-review
 description: >
-  Compressed code review - one line per finding with location, problem and fix.
+  Read-only review of committed or working-tree changes against repository
+  standards and the approved spec, with concise location/problem/fix findings.
   Use for /caveman-review, "review this PR", or "review the diff".
 ---
 
@@ -9,12 +10,12 @@ Write code review comments terse and actionable. One line per finding. Location,
 
 ## Notch Pocket integration
 
-Read `AGENTS.md`. This skill formats evidence-backed findings; it does not
-replace the review itself. Reuse the scope and findings supplied by the
-`code-review` workflow, preserving its Standards and Spec sections. For a
-direct request, establish the diff/file scope first. Do not recursively call
-`code-review`, rerun an already completed review, or invent findings to fill
-the format. Preserve uncertainty and explain architectural trade-offs fully.
+Read `AGENTS.md`, then follow [REVIEW-PROCESS.md](REVIEW-PROCESS.md) to collect
+the complete diff/new-file evidence and assess Standards and Spec separately.
+This is the packet's single review entry point, not just a formatter. If a
+caller explicitly supplies completed findings for formatting, reuse that
+analysis rather than reviewing it twice. Preserve uncertainty and explain
+architectural trade-offs fully; never invent findings to fill the format.
 
 ## Rules
 

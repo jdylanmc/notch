@@ -23,12 +23,12 @@ The route most work travels. You have an idea and want it built.
    - **Yes** → **`/to-spec`** (turn the thread into a spec), then **`/to-tickets`** to split it into tracer-bullet tickets, each declaring its **blocking edges**. On a local tracker that's one file per ticket under `.scratch/<feature>/issues/`, worked blockers-first by hand; on a real tracker the edges become native blocking links, so any ticket whose blockers are done can be grabbed: kick off **`/implement`** per ticket, **`/clear`ing context between each one**. Each ticket is self-contained, so the last one's context is disposable.
    - **No** → **`/implement`** right here, in the same context window.
 
-   Either way, **`/implement`** uses **`/tdd`**, then **`/code-review`** for the
-   Standards/Spec analysis. That workflow routes its findings through
-   **`/caveman-review`**. **`/caveman-commit`** supplies the message when a commit
-   is authorized; neither formatter performs git or review-publication actions.
-   Reach for `/tdd` for a concrete test-first change, or `/code-review` for
-   evidence-backed branch, PR or working-tree review.
+   Either way, **`/implement`** uses **`/tdd`**, then **`/caveman-review`** for
+   both Standards/Spec analysis and concise findings. **`/caveman-commit`**
+   supplies the message when a commit is authorized. Review is read-only;
+   neither skill performs git or review-publication actions. Reach for `/tdd`
+   for a concrete test-first change, or `/caveman-review` for evidence-backed
+   branch, PR or working-tree review.
 
 ### Context hygiene
 
