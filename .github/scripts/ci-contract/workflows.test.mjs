@@ -178,6 +178,7 @@ function hostedContract(config, kind) {
           { name: 'Install contract test dependency', run: install },
           { name: 'Test workflow contracts', run: 'npm test --prefix .github/scripts/ci-contract' },
           { name: 'Test PR target policy', run: 'node --test .github/scripts/pr-target-policy.test.cjs' },
+          { name: 'Test local packaging policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'" },
         ]),
       ],
     },
@@ -470,7 +471,27 @@ const mutations = [
   ['helper credentials persisted', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => { c.jobs.validate.steps[0].with['persist-credentials'] = true; }],
   ['helper write permissions', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => { c.permissions.contents = 'write'; }],
   ['helper runtime step', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => { c.jobs.validate.steps.push({ run: `${helper} run inspect` }); }],
-  ['missing policy regression run', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => { c.jobs.test.steps.pop(); }],
+  ['missing policy regression run', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    c.jobs.test.steps = c.jobs.test.steps.filter(({ name }) => name !== 'Test PR target policy');
+  }],
+  ['missing packaging regression run', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    c.jobs.test.steps = c.jobs.test.steps.filter(({ name }) => name !== 'Test local packaging policy');
+  }],
+  ['filtered packaging tests', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    step(c.jobs.test, 'Test local packaging policy').run += ' -k test_success';
+  }],
+  ['skipped packaging tests', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    step(c.jobs.test, 'Test local packaging policy').if = 'false';
+  }],
+  ['ignored packaging failures', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    step(c.jobs.test, 'Test local packaging policy')['continue-on-error'] = true;
+  }],
+  ['masked packaging exit status', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    step(c.jobs.test, 'Test local packaging policy').run += ' || true';
+  }],
+  ['packaging workflow path filter', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    c.on.pull_request.paths = ['scripts/package.py'];
+  }],
 ];
 for (const [name, file, check, mutate] of mutations) {
   test(`reject actual-config mutation: ${name}`, () => {

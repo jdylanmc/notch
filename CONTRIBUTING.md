@@ -112,8 +112,9 @@ rather than assuming external changes reach this product.
 
 ## CI and Packaging Inventory
 
-This is the bounded product-CI slice of [#51](https://github.com/jdylanmc/notch/issues/51),
-not release readiness or closure of the broader issue. The checked-in sources
+This inventories the bounded product-CI and local-packaging slices of
+[#51](https://github.com/jdylanmc/notch/issues/51) under foundation #54,
+not release #9, release readiness, or closure of #51/#54. The checked-in sources
 below are the authority for triggers and behavior; they are not evidence that a
 hosted run or distribution succeeded.
 
@@ -122,8 +123,9 @@ hosted run or distribution succeeded.
 | [App build/test](.github/workflows/cicd.yml) | Pushes to `pocket` and PRs **targeting** `pocket`. Retains all three matrix legs: `macos-15` / `~26.0`, `macos-26` / `^26`, `xcode-27` / `^27`; scheme `notchPocket`, Release build and Debug tests. App tests start the normal app test host on CI. Runner/Xcode availability still needs hosted confirmation. |
 | [SwiftLint](.github/workflows/swiftlint.yml) | `pocket` push/PR, unchanged `SwiftLint` check name and root `.swiftlint.yml`. Non-strict inherited app baseline; do not add strict mode, suppress warnings, or clean up unrelated source to make CI appear clean. |
 | [CodeQL Advanced](.github/workflows/codeql.yml) | `pocket` push/PR; retains Actions, Python, and manual Swift scans, existing permissions, and Monday `31 15 * * 1` UTC schedule. Scheduled runs use GitHub's default-branch semantics, not the push branch filter. Swift still builds the app without signing; a **separate** canonical helper build follows initialization and app extraction, before analysis. |
-| [Native helper](.github/workflows/notch_control.yml) | Unfiltered `pocket` push/PR on `macos-26`, read-only contents, non-persisted checkout credentials, 20-minute timeout. Canonical build, all 29 package tests, and exactly eight Swift lint inputs. No app launch, screenshots, privacy grants, signing secrets, or publication. |
-| [CI contracts](.github/workflows/ci_contract_tests.yml), [tests/package](.github/scripts/ci-contract/) | Unfiltered `pocket` push/PR, read-only contents, non-persisted credentials, five-minute timeout. Node's built-in test runner and one exact-pinned YAML parser inspect actual workflow structure, reject malformed/duplicate YAML, and test deliberately mutated configurations. Workflow `run` blocks are data, never executed by these structural tests. Also runs the existing 22 PR-policy tests. |
+| [Native helper](.github/workflows/notch_control.yml) | Unfiltered `pocket` push/PR on `macos-26`, read-only contents, non-persisted checkout credentials, 20-minute timeout. Canonical build, all 41 package tests, and exactly nine Swift lint inputs. No app launch, screenshots, privacy grants, signing secrets, or publication. |
+| [CI contracts](.github/workflows/ci_contract_tests.yml), [tests/package](.github/scripts/ci-contract/) | Unfiltered `pocket` push/PR, read-only contents, non-persisted credentials, five-minute timeout. Node's built-in test runner and one exact-pinned YAML parser inspect actual workflow structure, reject malformed/duplicate YAML, and test deliberately mutated configurations. Workflow `run` blocks are data, never executed by these structural tests. Also runs the existing 22 PR-policy tests and the named portable local-packaging unittest step; no native packaging or uploads on Ubuntu. |
+| [Local packaging](scripts/package.py), [portable tests](scripts/tests/test_package.py) | Explicit already-built Release app and new DMG paths; Python 3.9+ standard library, existing hash-pinned DMG builder unchanged. Native identity/signature checks, private copy, read-only image verification, exact-input content comparison, owned-device detach, no-clobber promotion. No implicit build/sign/install/launch, secrets, `local.env`, release credentials, or publication. See [usage and missing-dependency recovery](README.md#local-dmg-preparation). |
 | [PR target check](.github/workflows/base_ref_check.yml), [guidance](.github/workflows/base_ref_check_comment.yml) | Existing `pull_request_target` events and check identities remain unchanged: `Fork PR target check` and `Sync PR target guidance comment`. Only `pocket` is an allowed base. Guidance uses its existing comment permissions; product-CI changes do not broaden them. |
 | [Existing PR-policy test workflow](.github/workflows/pr_target_policy_tests.yml) | Retains `Test PR target policy`, its four-file path filter, all-branch PR event, and `pocket` push event. The new contract workflow runs the same suite independently without changing that scope. Policy tests evaluate the existing inline policy script with mocked APIs, not workflow shell blocks or live writes. |
 | [Dependabot](.github/dependabot.yml) | All three existing weekly entries now target `pocket`: GitHub Actions at `/`, pip at `/Configuration/dmg`, Swift at `/`. Ecosystems and cadence unchanged. The isolated contract-test npm dependency is manually maintained; adding a fourth update entry is separate scope. |
@@ -161,7 +163,24 @@ runner. Its install has lifecycle scripts disabled; it does not run tests:
 npm ci --prefix .github/scripts/ci-contract --ignore-scripts --no-audit --no-fund
 npm test --prefix .github/scripts/ci-contract
 node --test .github/scripts/pr-target-policy.test.cjs
+python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'
 ```
+
+Python packaging tests require only Python 3.9+ and its standard library on
+Ubuntu or macOS. Native DMG dependency recovery separately needs an
+already-installed Python 3.10+ interpreter for pinned `dmgbuild==1.6.7`;
+system `python3` may be too old. Use a fresh ignored environment, preserve
+existing ones, and retain all exact pins/hashes with any configured package
+mirror. See [recovery examples](README.md#local-dmg-preparation).
+Tests mock every native subprocess, use disposable fixtures
+under ignored `.build/`, and never invoke the DMG dependency stack or a developer
+app. `-B` avoids `__pycache__`. The workflow contract protects the exact named
+unfiltered command, including failures, without weakening existing test scope.
+Attribute regressions mock the public macOS `libSystem` ABI: platform selection
+without `os.listxattr`, descriptor versus no-follow link reads, exact binary
+values/names, empty and short reads, native errno and missing API failures.
+Ubuntu fixtures retain the standard-library `os` attribute path. These portable
+checks do not replace parent-owned native attribute and signed-DMG proof.
 
 The package-local `.gitignore` excludes only its generated `/node_modules/`.
 Use the ordinary package install above; keep the manifest and lockfile tracked.
@@ -175,8 +194,61 @@ Report inherited lint warnings rather than changing the baseline. In an
 orchestrated delivery, the parent reconciles authored changes, runs the declared
 local gates and independent review, then observes actual hosted PR checks and
 shepherds the PR. These are separate evidence gates, not claims supplied by
-documentation or static tests. No app runtime validation or release is implied
-by this CI-only slice.
+documentation or static tests. For the local packaging slice, the parent also
+builds a fresh signed Release candidate with
+`CONFIGURATION=Release SIGN_IDENTITY='notch-pocket Local' scripts/build.sh`,
+then runs `python3 -B scripts/package.py --app /absolute/build-products/Release/notch-pocket.app --output "$PWD/.build/packages/notch-pocket.dmg"`
+with actual explicit paths and an existing output parent. The build script's
+normal local signing settings still apply; the packager neither reads them nor
+repairs signatures. See [prerequisites/recovery](README.md#local-dmg-preparation).
+No native checks run during authoring. After reconciliation, retain private
+evidence of native image creation, read-only mounted exact-input content and
+signature verification, successful detach, cleanup, and checksum. Do not touch
+the installed app or user data. Mock tests are not that native proof.
+
+The parent owns independent review, a PR targeting `pocket`, and required
+Shepherd/hosted checks, or reports the exact blocker. User merges only; no
+closing #51/#54, releases, notarization, Apple uploads, or publication is
+authorized by this local slice.
+
+### Local packaging outcome contract
+
+`scripts/package.py --app ABSOLUTE_APP --output ABSOLUTE_NEW_DMG` emits one
+success JSON line only after verification, owned detach and cleanup succeed.
+The DMG need not be byte-for-byte reproducible across creation times; its
+reported SHA-256 identifies this verified artifact.
+
+| Exit | Error identifiers |
+| --- | --- |
+| 0 | `ok: true`, `status: "verified"`; exact paths, bundle identities, `sha256`, `size_bytes`, `app_inventory_sha256`, `mount: "detached"`, `distribution: "local-only"` |
+| 2 | `invalid_arguments` |
+| 3 | `invalid_input` (path, bundle identity, executable, unsafe links) |
+| 4 | `missing_tool`, `unsupported_platform` |
+| 5 | `signature_failed` |
+| 6 | `package_failed` |
+| 7 | `verification_failed`, `source_changed` |
+| 8 | `cleanup_failed` (takes precedence over an earlier failure, recorded as `cause`) |
+| 9 | `output_exists`, `promotion_failed` |
+| 10 | `io_error` |
+| 130 | `interrupted` |
+
+Errors go to stderr as `ok: false`, `error`, `message`, and relevant residue
+fields (`staging`, `mount`, `device`, `ownership`, `published_output`), without
+native logs or a success checksum. An ambiguous attach, failed detach, or
+unresolved cleanup preserves named private artifacts; never guess a device,
+force-detach another mount, or recursively delete mounted contents. A promoted
+output with failed final cleanup remains explicitly partial and is never
+overwritten on retry. Filesystem hard-link support in the output directory is
+required for atomic no-clobber promotion; unsupported filesystems fail safely.
+
+SIGINT/SIGTERM during owned cleanup are latched, not ignored: safe cleanup
+finishes without another detach attempt. Cancellation of an otherwise successful
+invocation prevents promotion and reports `interrupted`, with the retained
+candidate's `staging` path; cleanup failure takes precedence and retains its
+cause and residue. If cancellation interrupts promotion after the hard link was
+created, `published_output` is recovered only from the retained regular
+candidate's matching device/inode, never output existence or a symlink target.
+Neither an owned partial output nor a competing output is deleted.
 
 ### Project versus distribution artifact
 

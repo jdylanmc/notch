@@ -154,6 +154,62 @@ The test script forwards arguments.
 `CONFIGURATION=Release scripts/build.sh` selects a Release build, not packaging,
 notarization, or publication.
 
+### Local packaging (#51 slice under #54)
+
+After author/parent reconciliation, build Release separately with the existing
+script, then consume that exact product. Do not derive `notch-pocket.app` from
+the scheme name or select a guessed newest build:
+
+```bash
+CONFIGURATION=Release SIGN_IDENTITY='notch-pocket Local' scripts/build.sh
+mkdir -p .build/packages
+python3 -B scripts/package.py \
+  --app '/absolute/build-products/Release/notch-pocket.app' \
+  --output "$PWD/.build/packages/notch-pocket.dmg"
+python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'
+```
+
+Replace the input placeholder with the actual Release build product.
+`scripts/package.py` is a Python 3.9+ standard-library command, not another
+build/signing configuration. It never sources `local.env`, inspects keychain
+secrets, signs, installs or launches. Strict verification must accept the app's
+existing local/ad-hoc signatures and the expected app/helper identifiers.
+It preserves source bytes/modes and legitimate internal symlinks in private
+staging, rejects external app links, compares the read-only mounted app to the
+exact unchanged input, and detaches only its reported owned device. The DMG's
+Applications symlink does not install anything.
+Extended-attribute inventory uses public macOS `libSystem` APIs via `ctypes`
+(descriptor reads and `XATTR_NOFOLLOW` for links), not Linux-only `os` APIs.
+Keep exact names/binary values and explicit failures; no empty-success fallback.
+
+Output requires canonical absolute paths, an existing user-owned parent without
+group/world write, and a new `.dmg` outside the source app. Native tools run with
+deadlines; unknown attach ownership or cleanup failures preserve and report the
+exact private staging path. Never guess a mount, force-detach other devices,
+or recursively remove mounted contents. Promotion is atomic and no-clobber;
+success identity/checksum output follows verification and successful cleanup.
+See [usage, prerequisites and isolated missing-dependency recovery](README.md#local-dmg-preparation)
+and the [exit/residue contract](CONTRIBUTING.md#local-packaging-outcome-contract).
+Keep the existing DMG builder/settings/background and hash pins unchanged.
+Install its dependencies only after the chosen command reports them missing,
+using an already-installed Python 3.10+ interpreter in a fresh ignored
+`.build/package-venv-*` (for example, `python3.14` if installed). The pinned
+`dmgbuild==1.6.7` needs Python 3.10+ even though the standard-library packager
+and tests support 3.9+. Preserve older environments, including failed setups;
+no global installs or lock updates. A configured package mirror may supply the
+same exact hash-pinned dependencies, not relax the interpreter minimum.
+
+The canonical Python tests run in the existing Ubuntu contract workflow using
+mocked native operations and disposable ignored `.build/` fixtures. No real
+mounts, developer apps, nested DMG dependencies, or additional packages belong
+in those tests. They are not native proof. The parent owns all declared app,
+helper, contract/policy and Python gates, then fresh signed Release packaging,
+read-only content/signature/mount/detach evidence and private artifact cleanup.
+Preserve the installed app and user data. Parent owns the `pocket` PR and
+required Shepherd/hosted evidence or an exact blocker; only the user merges.
+This does not close #51/#54 or authorize release #9, Developer ID distribution,
+notarization, Apple uploads or other publication.
+
 The lint script and `pocket` push/PR SwiftLint workflow use `.swiftlint.yml`.
 Install SwiftLint with `brew install swiftlint` if missing. Preserve the
 non-strict inherited app baseline; report existing warnings without suppressing

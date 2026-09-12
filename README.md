@@ -66,6 +66,96 @@ Do not run the inherited public-release workflows as part of local setup:
 they perform remote writes/uploads and do not establish distribution readiness.
 Only the user approves merges and releases.
 
+### Local DMG preparation
+
+This is the **local packaging slice of #51 under #54**, not completion of either
+issue, release #9, or permission to distribute. Python **3.9+** orchestrates the
+existing DMG builder; it never builds, signs, loads `scripts/local.env`, installs,
+launches, notarizes, or publishes an app.
+
+Build Release separately using the existing script, then supply the **exact**
+build product path (not a guessed newest app). For example, when the established
+local certificate is configured:
+
+```bash
+CONFIGURATION=Release SIGN_IDENTITY='notch-pocket Local' scripts/build.sh
+mkdir -p .build/packages
+python3 -B scripts/package.py \
+  --app '/absolute/build-products/Release/notch-pocket.app' \
+  --output "$PWD/.build/packages/notch-pocket.dmg"
+```
+
+Replace the input placeholder with that build's actual product. A bundle does
+not reliably encode its build configuration: Release provenance is supplied by
+the separate build, not inferred by the packager. Local/ad-hoc signatures are
+accepted only when strict native verification succeeds for both app and embedded
+helper. This is **not Developer ID or notarized distribution**.
+
+Native packaging requires macOS, `codesign`, `ditto`, `hdiutil`, Bash,
+`PlistBuddy`, and `python3`/`dmgbuild` on `PATH`. Run the chosen command first.
+**Only if it reports missing DMG dependencies**, recover using the existing
+hash-pinned requirements in a new isolated, ignored environment, then retry.
+The packager and portable tests need only Python **3.9+**, but the pinned
+`dmgbuild==1.6.7` requires Python **3.10+**. Choose an already-installed
+interpreter meeting that dependency minimum; do not assume system `python3`
+does. For example, **if `python3.14` is installed** and the environment path is
+new:
+
+```bash
+python3.14 -m venv .build/package-venv-py314
+.build/package-venv-py314/bin/python3 -m pip install --require-hashes -r Configuration/dmg/requirements.txt
+PATH="$PWD/.build/package-venv-py314/bin:$PATH" python3 -B scripts/package.py \
+  --app '/absolute/build-products/Release/notch-pocket.app' \
+  --output "$PWD/.build/packages/notch-pocket.dmg"
+```
+
+Use your configured package mirror if direct package downloads are unavailable;
+retain `--require-hashes` and every exact pin. A mirror does not change the
+required Python version. For another installed Python 3.10+ interpreter, adjust
+the interpreter and fresh environment path consistently in all commands.
+Do not replace an existing environment (including a failed dependency setup),
+install globally, update pins, or read another checkout's local settings.
+Use canonical absolute paths without symlink
+components or `..`; the output parent must already exist, be user-owned, and
+not group/world-writable. Output must be new and outside the input app.
+
+The command verifies `notch-pocket.app`/`notch-pocket`,
+`com.jdylanmc.notchpocket`, and the embedded
+`com.jdylanmc.notchpocket.XPCHelper`. It stages privately beside the output,
+preserves signed bytes/modes and internal framework symlinks, verifies the DMG,
+mounts it **read-only without opening Finder**, and compares mounted app files,
+symlinks, modes, extended attributes, and signatures against the input.
+On macOS, Python's standard-library `ctypes` reads extended attributes through
+the public `libSystem` descriptor APIs and `XATTR_NOFOLLOW` link APIs, including
+binary values and the link's own attributes. Missing APIs or read errors fail
+explicitly; they never become an empty inventory. No extra Python dependency
+is required.
+It checks the source did not change, detaches only its reported owned device,
+then promotes the DMG atomically without overwriting. The image's `/Applications`
+symlink is layout, **not an installation**.
+
+Success is one JSON line on stdout with `ok: true`, `status: "verified"`, exact
+paths, bundle identities, SHA-256, byte size, input-inventory SHA-256,
+`mount: "detached"` and `distribution: "local-only"`. Failures produce one JSON
+line on stderr and a nonzero status; no success checksum is emitted. Cleanup
+failure preserves/reports the private `.notch-package-*` staging path and any
+known owned device/mount. Unresolved attach output never licenses a guessed
+detach. Do not recursively delete reported staging or force-detach mounts;
+resolve the exact residue before retrying with a new output. If promotion
+succeeded but final cleanup failed, `published_output` names that **partial
+outcome**, not a successful command.
+
+Portable policy tests never invoke native tools or a developer app:
+
+```bash
+python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'
+```
+
+Tests use mocked native operations and disposable fixtures under ignored
+`.build/`. They do not prove native signing, DMG creation, or mount behavior.
+The [validation boundaries](CONTRIBUTING.md#safe-validation-boundaries) require
+separate parent-owned native proof after author reconciliation.
+
 ### Product CI
 
 App build/test, SwiftLint, CodeQL, native-helper validation, and CI contract
@@ -73,7 +163,8 @@ tests run for pushes to `pocket` and PRs targeting `pocket`. The app retains its
 three-leg Xcode matrix. Helper CI runs its canonical build, all 41 package tests,
 and nine-file lint without launching the app or requesting privacy grants.
 Contract checks use Node.js 22+ with an isolated, pinned YAML parser and also run
-the existing 22 PR-policy tests.
+the existing 22 PR-policy tests plus the portable local-packaging unittest command.
+CI does not build or upload a DMG.
 
 See the [CI and packaging inventory](CONTRIBUTING.md#ci-and-packaging-inventory)
 for source evidence, safe commands, generated dependency handling, and deferred
