@@ -258,13 +258,16 @@ final class IdentityCompatibilityTests: XCTestCase {
     func testAppAndEmbeddedHelperIdentity() throws {
         let app = Bundle.main
         XCTAssertEqual(app.bundleIdentifier, "com.jdylanmc.notchpocket")
+        XCTAssertEqual(app.object(forInfoDictionaryKey: "CFBundleName") as? String, "Notch Pocket")
         XCTAssertEqual(app.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String, "Notch Pocket")
+        XCTAssertEqual(app.releaseVersionNumber, "0.1")
         XCTAssertEqual(app.executableURL?.lastPathComponent, "notch-pocket")
         XCTAssertEqual(app.bundleURL.lastPathComponent, "notch-pocket.app")
 
         let helperURL = app.bundleURL.appendingPathComponent("Contents/XPCServices/notchPocketXPCHelper.xpc")
         let helper = try XCTUnwrap(Bundle(url: helperURL))
         XCTAssertEqual(helper.bundleIdentifier, "com.jdylanmc.notchpocket.XPCHelper")
+        XCTAssertEqual(helper.releaseVersionNumber, app.releaseVersionNumber)
         XCTAssertEqual(helper.executableURL?.lastPathComponent, "notchPocketXPCHelper")
         XCTAssertEqual(Bundle(for: Self.self).bundleIdentifier, "com.jdylanmc.notchpocket.tests")
         XCTAssertEqual(String(reflecting: NotchPocketApp.self), "notchPocket.NotchPocketApp")

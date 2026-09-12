@@ -5,7 +5,6 @@
 //  Created by Richard Kunkli on 07/08/2024.
 //
 
-import Defaults
 import SwiftUI
 
 struct AboutView: View {
@@ -18,7 +17,7 @@ struct AboutView: View {
                     HStack {
                         Text("Release name")
                         Spacer()
-                        Text(Defaults[.releaseName])
+                        Text(verbatim: "Notch Pocket")
                             .foregroundStyle(.secondary)
                     }
                     HStack {
