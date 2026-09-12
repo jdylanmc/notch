@@ -10,8 +10,14 @@ inherited integrations remain in the source; their presence is not a broader
 support commitment or a roadmap for new features.
 
 <p align="center">
-  <img src="notchPocket/Assets.xcassets/logo2.imageset/NotchPocket%20icon.png" alt="Notch Pocket, using the original upstream artwork" width="150" />
+  <img src="notchPocket/Assets.xcassets/logo2.imageset/NotchPocket%20icon.png" alt="Notch Pocket utility pocket icon" width="150" />
 </p>
+
+The original utility-pocket icon is maintained in
+[`Configuration/icon/notch-pocket.svg`](Configuration/icon/notch-pocket.svg).
+Its transparent 1024-pixel render supplies the macOS `AppIcon` sizes and the
+`logo2` image used by onboarding and the existing icon picker. The status-bar
+symbol is separate and unchanged.
 
 ## Availability
 

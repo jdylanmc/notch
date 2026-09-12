@@ -668,7 +668,12 @@ notchPocket/components/Onboarding/WelcomeView.swift are consolidated here.
 The inherited translation project's historical URL is
 https://crowdin.com/project/boring-notch (not this fork's translation service).
 
-Retained original icon artwork in notchPocket/Assets.xcassets is credited to
+The current AppIcon and logo2 assets are original Notch Pocket utility-pocket
+artwork, with editable source in Configuration/icon/notch-pocket.svg. They
+replace the inherited app icon; the supplied reference informed the direction
+but was not copied into the app.
+
+Other retained original icon artwork in notchPocket/Assets.xcassets is credited to
 @maxtron95: https://github.com/maxtron95. Renaming resource files does not
 transfer authorship. The upstream website was credited to @himanshhhhuv:
 https://github.com/himanshhhhuv. The upstream team wordmark, formerly
