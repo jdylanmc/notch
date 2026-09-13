@@ -1,17 +1,13 @@
 ---
 name: triage
-description: Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs.
-disable-model-invocation: true
+description: "Human or human-started Joe-mode only. Classify selected issues and external PRs, verify claims, and prepare agent-ready briefs while preserving tracker-change and human-decision gates."
+disable-model-invocation: false
+user-invocable: true
 ---
 
 # Triage
 
-Before using the tracker, read `docs/agents/issue-tracker.md` and
-`docs/agents/triage-labels.md`; before code exploration, read
-`docs/agents/domain.md`. Preserve existing priority/area labels and issue
-relationships. Repository approval and phase boundaries apply to reproduction,
-app launch, tests, tracker writes and issue closure; a triage label is not
-execution or merge authorization.
+Use [doctrine selection and application](../doctrine/APPLY.md), preserving explicit choices. With none, consider `debugging` for causal investigation and `documentation` for agent briefs. Pass the scoped packet with a work handoff. Reading/testing a submitted PR is not permission to create or change one; separately authorized PR-producing work requires `worktrees`.
 
 Move issues on the project issue tracker through a small state machine of triage roles.
 
@@ -47,13 +43,16 @@ For a PR, the same states read against the attached code: `ready-for-agent` mean
 
 Every triaged issue should carry exactly one category role and one state role. If state roles conflict, flag it and ask the maintainer before doing anything else.
 
-These are canonical role names. The actual label strings used in the issue tracker may differ. The mapping should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
+These are canonical role names. The actual label strings used in the issue tracker may differ. The mapping should have been provided to you. If not, tell the user to run `/setup`.
 
 State transitions: an unlabeled issue normally goes to `needs-triage` first; from there it moves to `needs-info`, `ready-for-agent`, `ready-for-human`, or `wontfix`. `needs-info` returns to `needs-triage` once the reporter replies. The maintainer can override at any time; flag transitions that look unusual and ask before proceeding.
 
 ## Invocation
 
-The maintainer invokes `/triage` and describes what they want in natural language. Interpret the request and act. Examples:
+The maintainer invokes `/triage`, or human-started Joe-mode supplies a selected
+backlog scope and current owner. Follow the [invocation contract](../setup/INVOCATION.md);
+Joe's authority does not waive the explicit tracker/decision gates below.
+Interpret the scoped request. Examples:
 
 - "Show me anything that needs my attention"
 - "Let's look at #42" (issue or PR)
@@ -64,8 +63,7 @@ The maintainer invokes `/triage` and describes what they want in natural languag
 
 Query the issue tracker and present three buckets, oldest first:
 
-1. **No triage state**: none of the five configured state labels is present,
-   even if priority, area, or other labels already exist.
+1. **Unlabeled**: never triaged.
 2. **`needs-triage`**: evaluation in progress.
 3. **`needs-info` with reporter activity since the last triage notes**: needs re-evaluation.
 
@@ -79,9 +77,15 @@ Show counts and a one-line summary per item. Let the maintainer pick.
 
 2. **Recommend.** Tell the maintainer your category and state recommendation with reasoning, plus a brief codebase summary relevant to the request (including whether it's already implemented). Wait for direction.
 
-3. **Verify the claim.** Before any grilling, check that the claim holds up. For a bug, reproduce it from the reporter's steps. For a PR, confirm the diff does what it claims: check it out, run the relevant tests or commands. Report what happened: confirmed (with code path), failed, or insufficient detail (a strong `needs-info` signal). A confirmed verification makes a much stronger agent brief.
+3. **Verify the claim.** Before any interrogation, check that the claim holds up. For a bug, reproduce it from the reporter's steps. For a PR, confirm the diff does what it claims: check it out, run the relevant tests or commands. Report what happened: confirmed (with code path), failed, or insufficient detail (a strong `needs-info` signal). A confirmed verification makes a much stronger agent brief.
 
-4. **Grill (if needed).** If the request needs fleshing out, call the Skill tool twice, for "grilling" and "domain-modeling", and grill it into shape a round of questions at a time, sharpening domain terms and updating `CONTEXT.md`/ADRs inline as decisions land.
+4. **Clarify (if needed).** Ask a focused missing-detail question directly.
+   For material unknowns, give [Discovery](../discovery/SKILL.md) a bounded
+   question and evidence; it may use Interrogate internally. Under Joe-mode,
+   return the question to that controller rather than starting a competing
+   interview. Do not call Interrogate independently or write domain records
+   as an interview side effect. Any later [domain recording](../domain-modeling/SKILL.md)
+   needs confirmed decisions and explicitly agreed destinations.
 
 5. **Apply the outcome:**
    - `ready-for-agent`: post an agent brief comment ([AGENT-BRIEF.md](AGENT-BRIEF.md)).
@@ -93,9 +97,15 @@ Show counts and a one-line summary per item. Let the maintainer pick.
      - **Rejected (enhancement)**: write to `.out-of-scope/`, link to it from a comment, then close ([OUT-OF-SCOPE.md](OUT-OF-SCOPE.md)).
    - `needs-triage`: apply the role. Optional comment if there's partial progress.
 
+Before applying tracker or repository changes, confirm the exact proposed
+outcome with the human; reuse their explicit direction without asking them to
+choose again. Use [Changelog](../changelog/SKILL.md) for authorized file changes
+and noteworthy outcomes, not an entry for every triage comment. Local
+knowledge-base writes retain their destination/ownership gates.
+
 ## Quick state override
 
-If the maintainer says "move #42 to ready-for-agent", trust them and apply the role directly. Confirm what you're about to do (role changes, comment, close), then act. Skip grilling. If moving to `ready-for-agent` without a grilling session, ask whether they want to write an agent brief.
+If the maintainer says "move #42 to ready-for-agent", trust them and apply the role directly. Confirm what you're about to do (role changes, comment, close), then act. Skip interrogation. If moving to `ready-for-agent` without an interrogation session, ask whether they want to write an agent brief.
 
 ## Needs-info template
 
@@ -113,7 +123,7 @@ If the maintainer says "move #42 to ready-for-agent", trust them and apply the r
 - question 2
 ```
 
-Capture everything resolved during grilling under "established so far" so the work isn't lost. Questions must be specific and actionable, not "please provide more info".
+Capture everything resolved during interrogation under "established so far" so the work isn't lost. Questions must be specific and actionable, not "please provide more info".
 
 ## Resuming a previous session
 
