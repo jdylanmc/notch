@@ -10,6 +10,7 @@ const xcodebuild = 'mxcl/xcodebuild';
 const codeql = 'github/codeql-action';
 const helper = 'bash scripts/notch-control/control.sh';
 const install = 'npm ci --prefix .github/scripts/ci-contract --ignore-scripts --no-audit --no-fund';
+const wrapperTests = "python3 -B -m unittest discover -s scripts/tests -p 'test_build_wrappers.py'";
 
 function parse(source) {
   const document = parseDocument(source, { version: '1.2', strict: true, uniqueKeys: true });
@@ -73,6 +74,7 @@ function appContract(config) {
   assert.equal(job['continue-on-error'], undefined);
   assert.deepEqual(job.steps, [
     { name: 'Checkout', uses: pinnedAction(job, 'Checkout', checkout) },
+    { name: 'Test build wrapper contracts', run: wrapperTests },
     ...[['Build', 'build', 'release'], ['Test', 'test', 'debug']].map(([name, action, configuration]) => ({
       name, uses: pinnedAction(job, name, xcodebuild), with: {
         xcode: '${{ matrix.xcode }}', platform: 'macOS', scheme: 'notchPocket',
@@ -448,6 +450,18 @@ const mutations = [
   ['wildcard push', 'cicd', appContract, (c) => { c.on.push.branches = ['*']; }],
   ['lost app matrix leg', 'cicd', appContract, (c) => { c.jobs.build.strategy.matrix.include.pop(); }],
   ['skipped app tests', 'cicd', appContract, (c) => { step(c.jobs.build, 'Test').if = 'false'; }],
+  ['missing build wrapper contracts', 'cicd', appContract, (c) => {
+    c.jobs.build.steps = c.jobs.build.steps.filter(({ name }) => name !== 'Test build wrapper contracts');
+  }],
+  ['skipped build wrapper contracts', 'cicd', appContract, (c) => {
+    step(c.jobs.build, 'Test build wrapper contracts').if = 'false';
+  }],
+  ['ignored build wrapper failures', 'cicd', appContract, (c) => {
+    step(c.jobs.build, 'Test build wrapper contracts')['continue-on-error'] = true;
+  }],
+  ['masked build wrapper exit status', 'cicd', appContract, (c) => {
+    step(c.jobs.build, 'Test build wrapper contracts').run += ' || true';
+  }],
   ['changed CodeQL schedule', 'codeql', codeqlContract, (c) => { c.on.schedule = []; }],
   ['lost scan language', 'codeql', codeqlContract, (c) => { c.jobs.analyze.strategy.matrix.include.shift(); }],
   ['lost scan permission', 'codeql', codeqlContract, (c) => { delete c.jobs.analyze.permissions['security-events']; }],

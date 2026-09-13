@@ -76,6 +76,10 @@ fi
 export SIGN_ARGS
 
 xcb() {
+  # Bash 3.2 treats an empty named array as unset under nounset.
+  if [[ ${#SIGN_ARGS[@]} -gt 0 ]]; then
+    set -- "${SIGN_ARGS[@]}" "$@"
+  fi
   xcodebuild -scheme "$SCHEME" -configuration "$CONFIGURATION" -destination "$DESTINATION" \
-    "${SIGN_ARGS[@]}" "$@"
+    "$@"
 }
