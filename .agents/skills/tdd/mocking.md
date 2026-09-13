@@ -7,11 +7,15 @@ Mock at **system boundaries** only:
 - Time/randomness
 - File system (sometimes)
 
-Don't mock:
+Don't replace behavior inside the seam under test:
 
-- Your own classes/modules
-- Internal collaborators
-- Anything you control
+- The component whose real behavior the test should exercise
+- Internal collaborators merely to assert their calls or structure
+- Side effects needed to exercise the agreed contract
+
+An adapter owned by your project may still represent a system boundary. A
+controlled double is appropriate there when it preserves the relevant contract;
+ownership of the adapter alone does not make it an internal implementation detail.
 
 ## Designing for Mockability
 
@@ -21,26 +25,16 @@ At system boundaries, design interfaces that are easy to mock:
 
 Pass external dependencies in rather than creating them internally:
 
-The Swift examples use hypothetical domain types. Replace them with the
-repository's actual interfaces rather than adding a payment integration.
-
-```swift
-protocol PaymentClient {
-    func charge(amount: Int) async throws -> PaymentReceipt
-}
-
+```typescript
 // Easy to mock
-func processPayment(
-    order: Order,
-    client: any PaymentClient
-) async throws -> PaymentReceipt {
-    try await client.charge(amount: order.total)
+function processPayment(order, paymentClient) {
+  return paymentClient.charge(order.total);
 }
 
 // Hard to mock
-func processPayment(order: Order) async throws -> PaymentReceipt {
-    let client = LivePaymentClient()
-    return try await client.charge(amount: order.total)
+function processPayment(order) {
+  const client = new StripeClient(process.env.STRIPE_KEY);
+  return client.charge(order.total);
 }
 ```
 
@@ -48,20 +42,18 @@ func processPayment(order: Order) async throws -> PaymentReceipt {
 
 Create specific functions for each external operation instead of one generic function with conditional logic:
 
-```swift
-import Foundation
-
+```typescript
 // GOOD: Each function is independently mockable
-protocol StoreClient {
-    func user(id: UUID) async throws -> User
-    func orders(userID: UUID) async throws -> [Order]
-    func createOrder(_ draft: OrderDraft) async throws -> Order
-}
+const api = {
+  getUser: (id) => fetch(`/users/${id}`),
+  getOrders: (userId) => fetch(`/users/${userId}/orders`),
+  createOrder: (data) => fetch('/orders', { method: 'POST', body: data }),
+};
 
 // BAD: Mocking requires conditional logic inside the mock
-protocol GenericTransport {
-    func request(_ request: URLRequest) async throws -> Data
-}
+const api = {
+  fetch: (endpoint, options) => fetch(endpoint, options),
+};
 ```
 
 The SDK approach means:
@@ -69,6 +61,3 @@ The SDK approach means:
 - No conditional logic in test setup
 - Easier to see which endpoints a test exercises
 - Type safety per endpoint
-
-This is a preference for the domain-facing seam, not a prohibition on a shared
-low-level transport behind it.

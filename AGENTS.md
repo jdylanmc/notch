@@ -371,21 +371,31 @@ does not authorize that inherited workflow or notarization.
 
 ## Agent skills
 
-Imported skills supplement, not override, this repository's scope, verification
-and approval rules. They do not authorize merges, releases or bypassing #54.
-Before using the imported workflow packet, read its
+The project includes the user's complete personal workflow packet, including
+`joe-mode`, alongside retained legacy workflows and the separate macOS skills.
+The personal versions replace `domain-modeling`, `handoff`, `research`, `tdd`
+and `triage` in place. Read the [source and replacement record](.agents/skills/README.md).
+Keep the personal copies verbatim; do not restore the older adaptations over
+them or refresh unrelated skills.
+
+Skills supplement, not override, this repository's scope, verification and
+approval rules. They do not authorize merges, releases or bypassing #54.
+Before using a workflow, read its
 [operating boundaries](.agents/skills/README.md#repository-setup-and-boundaries)
 and the relevant configuration below. Use project-local skills when names
 overlap with global plugins; confirm the source path rather than invoking an
 unrelated workflow. Delegation remains subject to the active harness and task,
-not mandatory merely because an imported recipe suggests sub-agents.
+not mandatory merely because a recipe suggests sub-agents. Installation does
+not activate Joe-mode, run Setup, create another controller, or grant runtime
+tools. Respect the personal packet's [caller contracts](.agents/skills/setup/INVOCATION.md).
 
-Use the project `caveman-review` as the single review entry point, owning
-complete evidence collection and separate Standards/Spec checks.
+Personal workflows use their Roast/Ship/Shepherd and shared commit-style flow.
+Retained legacy workflows keep `caveman-review` as their review entry point and
+`caveman-commit` for authorized commit messages. Keep complete evidence and
+independent Standards/Spec checks; review format does not replace those gates.
 Retain full rationale when terse output would obscure a risk or design trade-off.
-Use `caveman-commit` for authorized commit messages. Review is read-only and
-commit-message generation is output-only; neither stages, commits, publishes
-reviews or grants git authority.
+Review is read-only and commit-message generation is output-only; neither
+alone stages, commits, publishes reviews or grants git authority.
 
 ### Issue tracker
 GitHub Issues in `jdylanmc/notch`, using `gh`.
