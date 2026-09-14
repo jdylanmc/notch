@@ -44,14 +44,20 @@ The owner-approved product record establishes:
 - current conditions and a useful forecast;
 - multiple independently configured weather widgets;
 - a manually selected location or opt-in current location for each widget;
+- approximate location is sufficient, and manual postal-code input is acceptable;
 - weather is independent of Microsoft Graph;
 - shared dashboard/tab/layout code belongs to the widget lane, not this feature
   slice.
 
-The following remain product decisions, not implementation assumptions:
+The following remains a product decision, not an implementation assumption:
 
-- whether exact current coordinates may be persisted;
 - final widget footprints and presentation.
+
+The owner did not directly answer whether exact current coordinates may be
+persisted. The bounded engineering default is to persist manual place selections
+but only the mode for Current Location, resolving a fresh authorized position
+after launch. This avoids retaining precise location data and stale travel
+positions while honoring the approved approximate-location requirement.
 
 ## Focused provider comparison
 
@@ -98,8 +104,9 @@ production cost.
 
 Manual locations and current location must remain separate choices:
 
-- **Manual:** resolve a user-entered place to a stable display name, coordinate,
-  and timezone. This path must not request device location permission.
+- **Manual:** resolve a user-entered city or country-qualified postal code to a
+  stable display name, coordinate, and timezone. This path must not request
+  device location permission.
 - **Current:** request Core Location permission only after the user selects
   “Current Location” for a widget. Apple recommends requesting authorization
   immediately before the feature needs it, not at app launch. On macOS,
@@ -110,9 +117,10 @@ Manual locations and current location must remain separate choices:
 - **Denied/restricted:** affect only widgets configured for current location.
   Manual widgets continue working and the affected widget offers a manual
   location path; it must not repeatedly prompt.
-- **Persistence:** persist manual location identity/coordinate/timezone. Do not
-  persist exact current coordinates until the owner explicitly chooses that
-  privacy behavior; they can be resolved per authorized session instead.
+- **Persistence:** persist manual location identity/coordinate/timezone. For
+  Current Location, persist only the selected mode and resolve a fresh
+  authorized position after launch. This is the conservative engineering
+  default rather than a verbatim owner decision about coordinate persistence.
 
 Adding current-location support later requires the macOS location usage
 description and an authorized project/entitlement change. The current app
@@ -207,10 +215,12 @@ response, location prompting, denial recovery, sleep/wake refresh, and
 attribution display requires a separately authorized real-machine phase. Unit
 tests cannot prove those integrations.
 
-## Exact unresolved choices
+## Location decision boundary
 
-1. **Current-location persistence:** whether exact coordinates are retained
-   between launches.
+The owner explicitly accepted approximate weather location and offered manual
+postal-code input. Exact Current Location persistence was not answered directly.
+The bounded engineering default therefore keeps manual selections but does not
+retain exact Current Location coordinates between launches.
 
 ## Provider decision
 
@@ -265,15 +275,15 @@ the presentation boundary.
 for up to 6 hours and label it with its age. After 6 hours, show unavailable
 with retry. Weather data does not persist across app relaunch.
 
-Current-coordinate persistence remains the final product question in this
-bounded weather flow. It should not reopen the confirmed provider,
-manual/current-per-widget, forecast, units, refresh, or stale decisions.
+The conservative Current Location persistence default does not reopen the
+confirmed provider, manual/current-per-widget, forecast, units, refresh, or
+stale decisions.
 
 ## Next bounded action
 
-Resolve whether exact current-location coordinates persist between launches.
-Then reconcile and independently review the completed pure weather core before
-authorizing a separate WeatherKit adapter/location slice. That later slice owns
+Reconcile and independently review the completed pure weather core. A separate
+approved WeatherKit adapter/location slice may then specify manual city/postal
+resolution and fresh opt-in Current Location behavior. That later slice owns
 provider mapping and permission behavior; it must not touch shared
 dashboard/tab/layout code.
 

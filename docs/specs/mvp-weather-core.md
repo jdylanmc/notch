@@ -10,7 +10,8 @@ runtime validation are excluded.
 
 - Provider: native WeatherKit; an Apple Developer account is available.
 - Locations: every widget independently selects a manual location or opt-in
-  current location.
+  current location. Approximate location is sufficient, and manual city/postal
+  selection is acceptable.
 - Forecast: current conditions, up to 24 hourly records, and up to 7 daily
   records. Carry readily available WeatherKit values only when they support this
   contract; do not expand into minute forecasts, alerts, air quality, or
@@ -25,8 +26,10 @@ runtime validation are excluded.
 
 After a refresh failure, an in-memory snapshot remains stale-but-displayable for
 up to 6 hours with its age visible. After 6 hours it becomes unavailable with
-retry. Weather snapshots do not persist across relaunch. Persistence of exact
-current coordinates remains unresolved.
+retry. Weather snapshots do not persist across relaunch. Manual place selections
+may persist. For Current Location, the bounded engineering default persists only
+the mode and resolves a fresh authorized position after launch; the owner did
+not directly answer exact-coordinate persistence.
 
 ## Core interface
 
