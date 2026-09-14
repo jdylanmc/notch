@@ -18,9 +18,12 @@ enum NotchState {
     case open
 }
 
-enum NotchViews {
+enum NotchViews: Hashable, Identifiable {
+    case dashboard
     case home
     case shelf
+
+    var id: Self { self }
 }
 
 enum DownloadIndicatorStyle: String, Defaults.Serializable {

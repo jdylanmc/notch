@@ -16,6 +16,7 @@ final class NotchPocketViewModel: NSObject, ObservableObject {
     let animationLibrary: NotchPocketAnimations = .init()
     let animation: Animation?
     let dropInteraction = DropInteractionState()
+    let dashboardEditOwnerID = UUID()
 
     @Published private(set) var notchState: NotchState = .closed
     var cancellables: Set<AnyCancellable> = []
@@ -42,6 +43,11 @@ final class NotchPocketViewModel: NSObject, ObservableObject {
     func destroy() {
         cancellables.forEach { $0.cancel() }
         cancellables.removeAll()
+    }
+
+    @MainActor
+    func releaseDashboardEditOwnership() {
+        DashboardRuntime.ownerDidTearDown(ownerID: dashboardEditOwnerID)
     }
 
     init(screenUUID: String? = nil) {

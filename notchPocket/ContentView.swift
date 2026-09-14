@@ -566,6 +566,11 @@ struct ContentView: View {
                             .frame(width: 336)
                     } else {
                         switch coordinator.currentView {
+                        case .dashboard:
+                            DashboardView(
+                                ownerID: vm.dashboardEditOwnerID,
+                                dropInteraction: vm.dropInteraction
+                            )
                         case .home:
                             NotchHomeView(
                                 albumArtNamespace: albumArtNamespace,

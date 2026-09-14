@@ -501,12 +501,13 @@ and migration requirements:
 - **Settings/data:** `models/Constants.swift` persists `"notchPocketShelf"`
   (default `true`). `ShelfPersistenceService` uses `notchPocket/Shelf` beneath
   the app's Application Support directory. Other settings keys are unchanged.
-  **Before launching over an earlier development build**, quit the app, back up
-  its container/preferences and shelf contents, then explicitly migrate the
-  previous shelf directory and preference value to these names. Check for
-  destination conflicts, preserve security-scoped bookmarks and file contents,
-  and verify the result before cleanup. Do not reset or delete data. There is
-  no automatic legacy-directory discovery or migration in the app.
+  Routine pre-1.0 development validation does not require a backup. **When
+  intentionally migrating an earlier development build's data to these owned
+  names**, quit the app, back up its container/preferences and shelf contents,
+  then explicitly migrate the previous shelf directory and preference value.
+  Check for destination conflicts, preserve security-scoped bookmarks and file
+  contents, and verify the result before cleanup. Do not reset or delete data.
+  There is no automatic legacy-directory discovery or migration in the app.
 - **Runtime identifiers:** the settings window ID is
   `"NotchPocketSettingsWindow"`; sharing uses
   `"com.notchPocket.sharingDidFinish"` and camera errors use
@@ -560,6 +561,13 @@ influenced data. They are displayed, never executed, and never treated as
 instructions.
 
 ## Verification expectations
+
+For routine development before 1.0, build, test, and runtime validation do not
+require a private-data backup; the human accepts development-build regression
+and data risk. This waiver does not authorize intentional data reset or
+deletion, bundle-identity or data-path changes, privacy-control changes, signing
+changes, release actions, or weaker review and evidence. An explicitly requested
+backup or migration remains a separate prerequisite.
 
 Before reporting a change complete:
 
