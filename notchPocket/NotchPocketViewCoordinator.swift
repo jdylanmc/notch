@@ -41,6 +41,30 @@ struct ExpandedItem {
     var browser: BrowserType = .chromium
 }
 
+enum NotchTabPreferencePolicy {
+    static func rememberLastTab(
+        whenAlwaysShowTabsChangesTo alwaysShowTabs: Bool,
+        currentValue: Bool
+    ) -> Bool {
+        alwaysShowTabs ? currentValue : false
+    }
+
+    static func alwaysShowTabs(
+        whenRememberLastTabChangesTo rememberLastTab: Bool,
+        currentValue: Bool
+    ) -> Bool {
+        rememberLastTab ? true : currentValue
+    }
+
+    static func currentViewWhenHidingTabs(
+        currentView: NotchViews,
+        shelfIsEmpty: Bool,
+        openShelfByDefault: Bool
+    ) -> NotchViews {
+        shelfIsEmpty || !openShelfByDefault ? .home : currentView
+    }
+}
+
 @MainActor
 final class NotchPocketViewCoordinator: ObservableObject {
     static let shared = NotchPocketViewCoordinator()
@@ -56,9 +80,17 @@ final class NotchPocketViewCoordinator: ObservableObject {
     @AppStorage("alwaysShowTabs") var alwaysShowTabs: Bool = true {
         didSet {
             if !alwaysShowTabs {
-                openLastTabByDefault = false
-                if ShelfStateViewModel.shared.isEmpty || !Defaults[.openShelfByDefault] {
-                    currentView = .home
+                openLastTabByDefault = NotchTabPreferencePolicy.rememberLastTab(
+                    whenAlwaysShowTabsChangesTo: alwaysShowTabs,
+                    currentValue: openLastTabByDefault
+                )
+                let nextView = NotchTabPreferencePolicy.currentViewWhenHidingTabs(
+                    currentView: currentView,
+                    shelfIsEmpty: ShelfStateViewModel.shared.isEmpty,
+                    openShelfByDefault: Defaults[.openShelfByDefault]
+                )
+                if nextView != currentView {
+                    currentView = nextView
                 }
             }
         }
@@ -67,7 +99,10 @@ final class NotchPocketViewCoordinator: ObservableObject {
     @AppStorage("openLastTabByDefault") var openLastTabByDefault: Bool = false {
         didSet {
             if openLastTabByDefault {
-                alwaysShowTabs = true
+                alwaysShowTabs = NotchTabPreferencePolicy.alwaysShowTabs(
+                    whenRememberLastTabChangesTo: openLastTabByDefault,
+                    currentValue: alwaysShowTabs
+                )
             }
         }
     }

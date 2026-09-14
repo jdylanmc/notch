@@ -217,7 +217,7 @@ final class DashboardWidgetInteractionTests: XCTestCase {
         XCTAssertEqual(
             NotchHeaderNavigationPolicy.presentation(
                 alwaysShowTabs: false,
-                shelfEnabled: false,
+                shelfEnabled: true,
                 shelfIsEmpty: true,
                 currentView: .home
             ),
@@ -237,6 +237,18 @@ final class DashboardWidgetInteractionTests: XCTestCase {
         )
     }
 
+    func testDisabledShelfWithRetainedContentKeepsCompactNavigation() {
+        XCTAssertEqual(
+            NotchHeaderNavigationPolicy.presentation(
+                alwaysShowTabs: false,
+                shelfEnabled: false,
+                shelfIsEmpty: false,
+                currentView: .home
+            ),
+            .dashboardShortcut
+        )
+    }
+
     func testShelfContentPreservesExistingFullNavigationBehavior() {
         XCTAssertEqual(
             NotchHeaderNavigationPolicy.presentation(
@@ -246,6 +258,43 @@ final class DashboardWidgetInteractionTests: XCTestCase {
                 currentView: .shelf
             ),
             .tabs
+        )
+    }
+
+    func testDisablingAlwaysShowTabsDisablesRememberLastTab() {
+        XCTAssertFalse(
+            NotchTabPreferencePolicy.rememberLastTab(
+                whenAlwaysShowTabsChangesTo: false,
+                currentValue: true
+            )
+        )
+    }
+
+    func testEnablingRememberLastTabEnablesAlwaysShowTabs() {
+        XCTAssertTrue(
+            NotchTabPreferencePolicy.alwaysShowTabs(
+                whenRememberLastTabChangesTo: true,
+                currentValue: false
+            )
+        )
+    }
+
+    func testHidingTabsPreservesShelfSelectionOnlyWhenConfigured() {
+        XCTAssertEqual(
+            NotchTabPreferencePolicy.currentViewWhenHidingTabs(
+                currentView: .shelf,
+                shelfIsEmpty: false,
+                openShelfByDefault: true
+            ),
+            .shelf
+        )
+        XCTAssertEqual(
+            NotchTabPreferencePolicy.currentViewWhenHidingTabs(
+                currentView: .shelf,
+                shelfIsEmpty: false,
+                openShelfByDefault: false
+            ),
+            .home
         )
     }
 
