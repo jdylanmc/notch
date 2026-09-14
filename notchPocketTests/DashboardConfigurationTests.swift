@@ -37,6 +37,31 @@ final class DashboardConfigurationTests: XCTestCase {
         XCTAssertEqual(store.load(), .missing)
     }
 
+    func testWidgetKindUsesSingleStringPersistenceRepresentation() throws {
+        let configuration = DashboardConfiguration(
+            revision: 0,
+            instances: [
+                .shelfSummary(
+                    position: .init(column: 0, row: 0),
+                    footprint: .init(columns: 1, rows: 1)
+                )
+            ]
+        )
+
+        let encoded = try JSONEncoder().encode(configuration)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        let instances = try XCTUnwrap(object["instances"] as? [[String: Any]])
+        XCTAssertEqual(instances.first?["kind"] as? String, "shelfSummary")
+
+        let futureKind = try JSONDecoder().decode(
+            DashboardWidgetKind.self,
+            from: Data(#""futureWidget""#.utf8)
+        )
+        XCTAssertEqual(futureKind.rawValue, "futureWidget")
+    }
+
     func testSaveAdvancesRevisionAndRejectsStaleWriter() throws {
         let dataStore = MemoryDataStore()
         let store = DashboardConfigurationStore(dataStore: dataStore)

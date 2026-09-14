@@ -36,6 +36,16 @@ struct DashboardWidgetKind: RawRepresentable, Codable, Equatable, Hashable, Send
     static let shelfSummary = DashboardWidgetKind(rawValue: "shelfSummary")
 
     let rawValue: String
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        rawValue = try container.decode(String.self)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 struct DashboardGridPosition: Codable, Equatable, Sendable {
