@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CAC000062026091200000001 /* GraphCalendarPayloadDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000072026091200000001 /* GraphCalendarPayloadDecoder.swift */; };
+		CAC000042026091200000001 /* GraphCalendarCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000052026091200000001 /* GraphCalendarCore.swift */; };
+		CAC000012026091200000001 /* CalendarCoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000022026091200000001 /* CalendarCoreModels.swift */; };
 		07FE456E7AEA085D9FCA6D97 /* MeetingLinkDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9B2A5E5F4D28F1DD9CD0B09 /* MeetingLinkDetector.swift */; };
 		D1A360012F00000100000001 /* WeatherCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A360022F00000100000001 /* WeatherCore.swift */; };
 		1100290C2E847E2800035A57 /* NSItemProvider+LoadHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1100290B2E847E2800035A57 /* NSItemProvider+LoadHelpers.swift */; };
@@ -220,6 +223,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		CAC000072026091200000001 /* GraphCalendarPayloadDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphCalendarPayloadDecoder.swift; sourceTree = "<group>"; };
+		CAC000052026091200000001 /* GraphCalendarCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphCalendarCore.swift; sourceTree = "<group>"; };
+		CAC000022026091200000001 /* CalendarCoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarCoreModels.swift; sourceTree = "<group>"; };
 		0268933F488E47DFB58E48CF /* VisualEffectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualEffectView.swift; sourceTree = "<group>"; };
 		D1A360022F00000100000001 /* WeatherCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherCore.swift; sourceTree = "<group>"; };
 		033B8885979E4EA1A78E8ADC /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
@@ -438,6 +444,16 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		CAC000032026091200000001 /* CalendarCore */ = {
+			isa = PBXGroup;
+			children = (
+				CAC000022026091200000001 /* CalendarCoreModels.swift */,
+				CAC000052026091200000001 /* GraphCalendarCore.swift */,
+				CAC000072026091200000001 /* GraphCalendarPayloadDecoder.swift */,
+			);
+			path = CalendarCore;
+			sourceTree = "<group>";
+		};
 		1113ABB82E80E27000EC13B2 /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -724,6 +740,7 @@
 		14CEF4142C5CAED300855D72 /* notchPocket */ = {
 			isa = PBXGroup;
 			children = (
+				CAC000032026091200000001 /* CalendarCore */,
 				11F748672EC9AC9600F841DB /* XPCHelperClient */,
 				116398942DF5D6B40052E6AF /* Providers */,
 				14288DE22C6E016F00B9F80C /* observers */,
@@ -1104,6 +1121,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				D1A360012F00000100000001 /* WeatherCore.swift in Sources */,
+				CAC000012026091200000001 /* CalendarCoreModels.swift in Sources */,
+				CAC000042026091200000001 /* GraphCalendarCore.swift in Sources */,
+				CAC000062026091200000001 /* GraphCalendarPayloadDecoder.swift in Sources */,
 				115C12EC2ED3D003009754CA /* OpenNotchOSD.swift in Sources */,
 				14C08BB92C8DE4B1000F8AA0 /* NotchPocketCalendar.swift in Sources */,
 				5955950D2E900ED800C66711 /* ApplicationRelauncher.swift in Sources */,
