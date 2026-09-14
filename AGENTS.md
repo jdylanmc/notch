@@ -372,7 +372,8 @@ does not authorize that inherited workflow or notarization.
 ## Agent skills
 
 The project includes the user's complete personal workflow packet, including
-`joe-mode`, alongside retained legacy workflows and the separate macOS skills.
+`joe-mode`, `joe-mode-paseo` and `chart-a-course`, alongside retained legacy
+workflows and the separate macOS skills.
 The personal versions replace `domain-modeling`, `handoff`, `research`, `tdd`
 and `triage` in place. Read the [source and replacement record](.agents/skills/README.md).
 Keep the personal copies verbatim; do not restore the older adaptations over
@@ -387,7 +388,10 @@ overlap with global plugins; confirm the source path rather than invoking an
 unrelated workflow. Delegation remains subject to the active harness and task,
 not mandatory merely because a recipe suggests sub-agents. Installation does
 not activate Joe-mode, run Setup, create another controller, or grant runtime
-tools. Respect the personal packet's [caller contracts](.agents/skills/setup/INVOCATION.md).
+tools. The Paseo adapter requires explicit human activation, runtime capability
+checks and reconciliation with the existing repository owner; installing it
+does not transfer that ownership or start a heartbeat. Respect the personal
+packet's [caller contracts](.agents/skills/setup/INVOCATION.md).
 
 Personal workflows use their Roast/Ship/Shepherd and shared commit-style flow.
 Retained legacy workflows keep `caveman-review` as their review entry point and
