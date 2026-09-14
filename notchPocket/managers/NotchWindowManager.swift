@@ -98,6 +98,7 @@ final class NotchWindowManager {
 
         if shouldCleanupMulti {
             for (uuid, context) in contexts {
+                context.viewModel.releaseDashboardEditOwnership()
                 context.window?.close()
                 if let window = context.window {
                     NotchSpaceManager.shared.notchSpace.windows.remove(window)
@@ -106,6 +107,7 @@ final class NotchWindowManager {
                 contexts.removeValue(forKey: uuid)
             }
         } else if let window = primaryWindow {
+            primaryViewModel.releaseDashboardEditOwnership()
             window.close()
             NotchSpaceManager.shared.notchSpace.windows.remove(window)
             if let obs = windowScreenDidChangeObserver {
@@ -179,6 +181,7 @@ final class NotchWindowManager {
 
             // Remove windows for screens that no longer exist
             for uuid in contexts.keys where !currentScreenUUIDs.contains(uuid) {
+                contexts[uuid]?.viewModel.releaseDashboardEditOwnership()
                 if let window = contexts[uuid]?.window {
                     window.close()
                     NotchSpaceManager.shared.notchSpace.windows.remove(window)

@@ -29,6 +29,11 @@ enum DashboardEditResult: Equatable {
     case failure(DashboardEditError)
 }
 
+enum DashboardOwnerLifecycleEvent: Equatable {
+    case contentDidDisappear
+    case ownerDidTearDown
+}
+
 @MainActor
 final class DashboardController: ObservableObject {
     @Published private(set) var committedConfiguration: DashboardConfiguration?
@@ -203,8 +208,11 @@ final class DashboardController: ObservableObject {
         }
     }
 
-    func ownerDidDisappear(ownerID: UUID) {
-        if editSession?.ownerID == ownerID {
+    func handleOwnerLifecycleEvent(
+        _ event: DashboardOwnerLifecycleEvent,
+        ownerID: UUID
+    ) {
+        if event == .ownerDidTearDown, editSession?.ownerID == ownerID {
             editSession = nil
         }
     }

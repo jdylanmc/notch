@@ -45,6 +45,11 @@ final class NotchPocketViewModel: NSObject, ObservableObject {
         cancellables.removeAll()
     }
 
+    @MainActor
+    func releaseDashboardEditOwnership() {
+        DashboardRuntime.ownerDidTearDown(ownerID: dashboardEditOwnerID)
+    }
+
     init(screenUUID: String? = nil) {
         animation = animationLibrary.animation
 

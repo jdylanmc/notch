@@ -79,6 +79,25 @@ final class DashboardControllerTests: XCTestCase {
         XCTAssertEqual(featureState.value, 2)
     }
 
+    func testSharedTabChangeDoesNotReleaseOwnerDraft() {
+        let controller = makeController()
+        XCTAssertEqual(controller.beginEditing(ownerID: ownerA), .success)
+
+        controller.handleOwnerLifecycleEvent(.contentDidDisappear, ownerID: ownerA)
+
+        XCTAssertEqual(controller.editSession?.ownerID, ownerA)
+    }
+
+    func testOwnerTeardownReleasesDraft() {
+        let controller = makeController()
+        XCTAssertEqual(controller.beginEditing(ownerID: ownerA), .success)
+
+        controller.handleOwnerLifecycleEvent(.ownerDidTearDown, ownerID: ownerA)
+
+        XCTAssertNil(controller.editSession)
+        XCTAssertEqual(controller.beginEditing(ownerID: ownerB), .success)
+    }
+
     func testInvalidMutationLeavesPriorDraftUnchanged() {
         let instance = DashboardWidgetInstance.shelfSummary(
             position: .init(column: 0, row: 0),

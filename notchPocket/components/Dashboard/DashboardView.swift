@@ -6,8 +6,21 @@
 import SwiftUI
 
 @MainActor
-private enum DashboardRuntime {
-    static let controller = DashboardController(store: .live())
+enum DashboardRuntime {
+    private static var storedController: DashboardController?
+
+    static var controller: DashboardController {
+        if let storedController {
+            return storedController
+        }
+        let controller = DashboardController(store: .live())
+        storedController = controller
+        return controller
+    }
+
+    static func ownerDidTearDown(ownerID: UUID) {
+        storedController?.handleOwnerLifecycleEvent(.ownerDidTearDown, ownerID: ownerID)
+    }
 }
 
 @MainActor
@@ -85,7 +98,7 @@ struct DashboardView: View {
             content
         }
         .onDisappear {
-            controller.ownerDidDisappear(ownerID: ownerID)
+            controller.handleOwnerLifecycleEvent(.contentDidDisappear, ownerID: ownerID)
         }
     }
 
