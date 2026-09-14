@@ -22,15 +22,42 @@ private actor CancelOnThirdTransport: GraphCalendarTransport {
 
     func receivedRequests() -> [GraphCalendarRequest] { requests }
 }
+private enum StubBehavior {
+    case events([CalendarCoreEvent])
+    case expectedFailure(CalendarCoreExpectedFailure)
+    case cancellation
+    case unexpectedFailure
+}
+private enum TestError: Error {
+    case unexpected
+}
+private actor StubProvider: CalendarCoreProviding {
+    private let behaviorByAccount: [CalendarAccountID: StubBehavior]
 
-final class GraphCalendarProviderTests: XCTestCase {
-    private enum StubBehavior {
-        case events([CalendarCoreEvent])
-        case graphFailure(GraphCalendarError)
-        case cancellation
-        case unexpectedFailure
+    init(behaviorByAccount: [CalendarAccountID: StubBehavior]) { self.behaviorByAccount = behaviorByAccount }
+
+    func calendars(for account: CalendarAccountID) async throws -> [CalendarCoreCalendar] { [] }
+
+    func events(
+        for account: CalendarAccountID,
+        calendars: [CalendarIdentity],
+        interval: CalendarQueryInterval
+    ) async throws -> [CalendarCoreEvent] {
+        switch behaviorByAccount[account] {
+        case .events(let events):
+            return events
+        case .expectedFailure(let error):
+            throw error
+        case .cancellation:
+            throw CancellationError()
+        case .unexpectedFailure:
+            throw TestError.unexpected
+        case nil:
+            throw GraphCalendarError.notFound
+        }
     }
-
+}
+final class GraphCalendarProviderTests: XCTestCase {
     private actor RecordingTransport: GraphCalendarTransport {
         private var responses: [GraphCalendarTransportResponse]
         private(set) var requests: [GraphCalendarRequest] = []
@@ -48,41 +75,6 @@ final class GraphCalendarProviderTests: XCTestCase {
         func receivedRequests() -> [GraphCalendarRequest] {
             requests
         }
-    }
-
-    private actor StubProvider: CalendarCoreProviding {
-        private let behaviorByAccount: [CalendarAccountID: StubBehavior]
-
-        init(behaviorByAccount: [CalendarAccountID: StubBehavior]) {
-            self.behaviorByAccount = behaviorByAccount
-        }
-
-        func calendars(for account: CalendarAccountID) async throws -> [CalendarCoreCalendar] {
-            []
-        }
-
-        func events(
-            for account: CalendarAccountID,
-            calendars: [CalendarIdentity],
-            interval: CalendarQueryInterval
-        ) async throws -> [CalendarCoreEvent] {
-            switch behaviorByAccount[account] {
-            case .events(let events):
-                return events
-            case .graphFailure(let error):
-                throw error
-            case .cancellation:
-                throw CancellationError()
-            case .unexpectedFailure:
-                throw TestError.unexpected
-            case nil:
-                throw GraphCalendarError.notFound
-            }
-        }
-    }
-
-    private enum TestError: Error {
-        case unexpected
     }
 
     private func account(_ id: String = "account") throws -> CalendarAccountID {
@@ -313,13 +305,18 @@ final class GraphCalendarProviderTests: XCTestCase {
         XCTAssertNotEqual(events[0].identity, events[1].identity)
     }
 
-    func testCoordinatorPreservesInputOrderAndIndependentOutcomes() async throws {
+    func testCoordinatorIsolatesNonGraphExpectedFailureInOrder() async throws {
         let firstAccount = try account("first")
-        let secondAccount = try account("second")
+        let secondAccount = try CalendarAccountID(
+            provider: CalendarProviderID("eventkit"), externalID: "second"
+        )
         let thirdAccount = try account("third")
         let firstCalendar = try calendar(account: firstAccount, id: "calendar")
         let secondCalendar = try calendar(account: secondAccount, id: "calendar")
         let thirdCalendar = try calendar(account: thirdAccount, id: "calendar")
+        let expectedFailure = CalendarCoreExpectedFailure.provider(
+            provider: secondAccount.provider, code: "unavailable"
+        )
         let event = CalendarCoreEvent(
             identity: try CalendarEventIdentity(calendar: firstCalendar, externalID: "event"),
             title: "Event",
@@ -339,7 +336,7 @@ final class GraphCalendarProviderTests: XCTestCase {
             provider: StubProvider(
                 behaviorByAccount: [
                     firstAccount: .events([event]),
-                    secondAccount: .graphFailure(.forbidden),
+                    secondAccount: .expectedFailure(expectedFailure),
                     thirdAccount: .events([])
                 ]
             )
@@ -354,7 +351,7 @@ final class GraphCalendarProviderTests: XCTestCase {
 
         XCTAssertEqual(outcomes.map(\.account), [firstAccount, secondAccount, thirdAccount])
         XCTAssertEqual(outcomes[0], .success(account: firstAccount, events: [event]))
-        XCTAssertEqual(outcomes[1], .failure(account: secondAccount, error: .forbidden))
+        XCTAssertEqual(outcomes[1], .failure(account: secondAccount, error: expectedFailure))
         XCTAssertEqual(outcomes[2], .success(account: thirdAccount, events: []))
     }
 
@@ -422,7 +419,10 @@ final class GraphCalendarProviderTests: XCTestCase {
 
         XCTAssertEqual(outcomes.count, 3)
         XCTAssertEqual(outcomes[0].account, firstAccount)
-        XCTAssertEqual(outcomes[1], .failure(account: secondAccount, error: .invalidPayload))
+        XCTAssertEqual(
+            outcomes[1],
+            .failure(account: secondAccount, error: .graph(.invalidPayload))
+        )
         XCTAssertEqual(outcomes[2].account, thirdAccount)
         XCTAssertEqual(receivedRequests.map(\.account), [firstAccount, secondAccount, thirdAccount])
     }

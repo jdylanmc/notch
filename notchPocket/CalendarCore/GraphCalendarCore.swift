@@ -90,9 +90,14 @@ struct CalendarAccountEventRequest: Equatable, Sendable {
     let calendars: [CalendarIdentity]
 }
 
+enum CalendarCoreExpectedFailure: Error, Equatable, Sendable {
+    case graph(GraphCalendarError)
+    case provider(provider: CalendarProviderID, code: String)
+}
+
 enum CalendarAccountEventOutcome: Equatable, Sendable {
     case success(account: CalendarAccountID, events: [CalendarCoreEvent])
-    case failure(account: CalendarAccountID, error: GraphCalendarError)
+    case failure(account: CalendarAccountID, error: CalendarCoreExpectedFailure)
 
     var account: CalendarAccountID {
         switch self {
@@ -127,8 +132,10 @@ struct CalendarCoreCoordinator: Sendable {
                 outcomes.append(.success(account: request.account, events: events))
             } catch is CancellationError {
                 throw CancellationError()
-            } catch let error as GraphCalendarError {
+            } catch let error as CalendarCoreExpectedFailure {
                 outcomes.append(.failure(account: request.account, error: error))
+            } catch let error as GraphCalendarError {
+                outcomes.append(.failure(account: request.account, error: .graph(error)))
             }
         }
 
