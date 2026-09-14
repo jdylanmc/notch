@@ -13,10 +13,11 @@ struct NotchPocketHeader: View {
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = NotchPocketViewCoordinator.shared
     @StateObject var shelfState = ShelfStateViewModel.shared
+    @Default(.notchPocketShelf) private var shelfEnabled
     var body: some View {
         HStack(spacing: 0) {
             HStack {
-                if (!shelfState.isEmpty || coordinator.alwaysShowTabs) && Defaults[.notchPocketShelf] {
+                if coordinator.alwaysShowTabs || (shelfEnabled && !shelfState.isEmpty) {
                     TabSelectionView()
                 } else if vm.notchState == .open {
                     EmptyView()

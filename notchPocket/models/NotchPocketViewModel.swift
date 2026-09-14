@@ -16,6 +16,7 @@ final class NotchPocketViewModel: NSObject, ObservableObject {
     let animationLibrary: NotchPocketAnimations = .init()
     let animation: Animation?
     let dropInteraction = DropInteractionState()
+    let dashboardEditOwnerID = UUID()
 
     @Published private(set) var notchState: NotchState = .closed
     var cancellables: Set<AnyCancellable> = []

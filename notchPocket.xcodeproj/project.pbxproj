@@ -10,6 +10,18 @@
 		CAC000062026091200000001 /* GraphCalendarPayloadDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000072026091200000001 /* GraphCalendarPayloadDecoder.swift */; };
 		CAC000042026091200000001 /* GraphCalendarCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000052026091200000001 /* GraphCalendarCore.swift */; };
 		CAC000012026091200000001 /* CalendarCoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000022026091200000001 /* CalendarCoreModels.swift */; };
+		D45000012F91000100000001 /* DashboardConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = D45000022F91000100000001 /* DashboardConfiguration.swift */; };
+		D45000032F91000100000001 /* DashboardConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D45000042F91000100000001 /* DashboardConfigurationStore.swift */; };
+		D45000062F91000100000001 /* DashboardLayoutEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D45000072F91000100000001 /* DashboardLayoutEngine.swift */; };
+		D45000082F91000100000001 /* DashboardController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D45000092F91000100000001 /* DashboardController.swift */; };
+		D450000A2F91000100000001 /* DashboardDefaultsConfigurationDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D450000B2F91000100000001 /* DashboardDefaultsConfigurationDataStore.swift */; };
+		D450000C2F91000100000001 /* DashboardEditGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = D450000D2F91000100000001 /* DashboardEditGeometry.swift */; };
+		D450000E2F91000100000001 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D450000F2F91000100000001 /* DashboardView.swift */; };
+		D45000102F91000100000001 /* ShelfSummaryWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = D45000112F91000100000001 /* ShelfSummaryWidget.swift */; };
+		D45000122F91000100000001 /* DashboardWidgetCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D45000132F91000100000001 /* DashboardWidgetCard.swift */; };
+		D45000142F91000100000001 /* ShelfSummaryWidgetPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = D45000152F91000100000001 /* ShelfSummaryWidgetPolicy.swift */; };
+		D45000162F91000100000001 /* DashboardWidgetInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = D45000172F91000100000001 /* DashboardWidgetInteraction.swift */; };
+		D45000182F91000100000001 /* DashboardWidgetEditCommitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D45000192F91000100000001 /* DashboardWidgetEditCommitter.swift */; };
 		07FE456E7AEA085D9FCA6D97 /* MeetingLinkDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9B2A5E5F4D28F1DD9CD0B09 /* MeetingLinkDetector.swift */; };
 		D1A360012F00000100000001 /* WeatherCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A360022F00000100000001 /* WeatherCore.swift */; };
 		1100290C2E847E2800035A57 /* NSItemProvider+LoadHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1100290B2E847E2800035A57 /* NSItemProvider+LoadHelpers.swift */; };
@@ -226,6 +238,18 @@
 		CAC000072026091200000001 /* GraphCalendarPayloadDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphCalendarPayloadDecoder.swift; sourceTree = "<group>"; };
 		CAC000052026091200000001 /* GraphCalendarCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphCalendarCore.swift; sourceTree = "<group>"; };
 		CAC000022026091200000001 /* CalendarCoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarCoreModels.swift; sourceTree = "<group>"; };
+		D45000022F91000100000001 /* DashboardConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardConfiguration.swift; sourceTree = "<group>"; };
+		D45000042F91000100000001 /* DashboardConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardConfigurationStore.swift; sourceTree = "<group>"; };
+		D45000072F91000100000001 /* DashboardLayoutEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardLayoutEngine.swift; sourceTree = "<group>"; };
+		D45000092F91000100000001 /* DashboardController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardController.swift; sourceTree = "<group>"; };
+		D450000B2F91000100000001 /* DashboardDefaultsConfigurationDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardDefaultsConfigurationDataStore.swift; sourceTree = "<group>"; };
+		D450000D2F91000100000001 /* DashboardEditGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardEditGeometry.swift; sourceTree = "<group>"; };
+		D450000F2F91000100000001 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		D45000112F91000100000001 /* ShelfSummaryWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfSummaryWidget.swift; sourceTree = "<group>"; };
+		D45000132F91000100000001 /* DashboardWidgetCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWidgetCard.swift; sourceTree = "<group>"; };
+		D45000152F91000100000001 /* ShelfSummaryWidgetPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfSummaryWidgetPolicy.swift; sourceTree = "<group>"; };
+		D45000172F91000100000001 /* DashboardWidgetInteraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWidgetInteraction.swift; sourceTree = "<group>"; };
+		D45000192F91000100000001 /* DashboardWidgetEditCommitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardWidgetEditCommitter.swift; sourceTree = "<group>"; };
 		0268933F488E47DFB58E48CF /* VisualEffectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualEffectView.swift; sourceTree = "<group>"; };
 		D1A360022F00000100000001 /* WeatherCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherCore.swift; sourceTree = "<group>"; };
 		033B8885979E4EA1A78E8ADC /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
@@ -454,6 +478,24 @@
 			path = CalendarCore;
 			sourceTree = "<group>";
 		};
+		D45000052F91000100000001 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				D45000042F91000100000001 /* DashboardConfigurationStore.swift */,
+				D45000072F91000100000001 /* DashboardLayoutEngine.swift */,
+				D45000092F91000100000001 /* DashboardController.swift */,
+				D450000B2F91000100000001 /* DashboardDefaultsConfigurationDataStore.swift */,
+				D450000D2F91000100000001 /* DashboardEditGeometry.swift */,
+				D450000F2F91000100000001 /* DashboardView.swift */,
+				D45000112F91000100000001 /* ShelfSummaryWidget.swift */,
+				D45000132F91000100000001 /* DashboardWidgetCard.swift */,
+				D45000152F91000100000001 /* ShelfSummaryWidgetPolicy.swift */,
+				D45000172F91000100000001 /* DashboardWidgetInteraction.swift */,
+				D45000192F91000100000001 /* DashboardWidgetEditCommitter.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
 		1113ABB82E80E27000EC13B2 /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -660,6 +702,7 @@
 		1471639B2C5D362F0068B555 /* components */ = {
 			isa = PBXGroup;
 			children = (
+				D45000052F91000100000001 /* Dashboard */,
 				11985BDF2F37A3C800F81585 /* OSD */,
 				AA01NDW22E7A0001 /* NotificationDebugWindow.swift */,
 				B141C23B2CA5F50900AC8CC8 /* Onboarding */,
@@ -808,6 +851,7 @@
 			isa = PBXGroup;
 			children = (
 				D1A360022F00000100000001 /* WeatherCore.swift */,
+				D45000022F91000100000001 /* DashboardConfiguration.swift */,
 				11F748812ECB07A400F841DB /* MusicControlButton.swift */,
 				118D1FD02E98FF5F00A2FF63 /* SharingStateManager.swift */,
 				1163988E2DF5CC870052E6AF /* CalendarModel.swift */,
@@ -1124,6 +1168,18 @@
 				CAC000012026091200000001 /* CalendarCoreModels.swift in Sources */,
 				CAC000042026091200000001 /* GraphCalendarCore.swift in Sources */,
 				CAC000062026091200000001 /* GraphCalendarPayloadDecoder.swift in Sources */,
+				D45000012F91000100000001 /* DashboardConfiguration.swift in Sources */,
+				D45000032F91000100000001 /* DashboardConfigurationStore.swift in Sources */,
+				D45000062F91000100000001 /* DashboardLayoutEngine.swift in Sources */,
+				D45000082F91000100000001 /* DashboardController.swift in Sources */,
+				D450000A2F91000100000001 /* DashboardDefaultsConfigurationDataStore.swift in Sources */,
+				D450000C2F91000100000001 /* DashboardEditGeometry.swift in Sources */,
+				D450000E2F91000100000001 /* DashboardView.swift in Sources */,
+				D45000102F91000100000001 /* ShelfSummaryWidget.swift in Sources */,
+				D45000122F91000100000001 /* DashboardWidgetCard.swift in Sources */,
+				D45000142F91000100000001 /* ShelfSummaryWidgetPolicy.swift in Sources */,
+				D45000162F91000100000001 /* DashboardWidgetInteraction.swift in Sources */,
+				D45000182F91000100000001 /* DashboardWidgetEditCommitter.swift in Sources */,
 				115C12EC2ED3D003009754CA /* OpenNotchOSD.swift in Sources */,
 				14C08BB92C8DE4B1000F8AA0 /* NotchPocketCalendar.swift in Sources */,
 				5955950D2E900ED800C66711 /* ApplicationRelauncher.swift in Sources */,

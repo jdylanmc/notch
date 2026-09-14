@@ -317,6 +317,7 @@ extension Defaults.Keys {
     /// bar, calendar or mirror. Off by default so existing users keep the
     /// layout they already have.
     static let compactMode = Key<Bool>("compactMode", default: false)
+    static let dashboardConfigurationData = Key<Data?>("dashboardConfigurationData", default: nil)
 
     // MARK: Notifications
     /// Off by default: mirroring banners needs Accessibility access.
