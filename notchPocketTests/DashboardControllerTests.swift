@@ -25,6 +25,23 @@ final class DashboardControllerTests: XCTestCase {
     private let ownerA = UUID(uuidString: "00000000-0000-0000-0000-00000000000A")!
     private let ownerB = UUID(uuidString: "00000000-0000-0000-0000-00000000000B")!
 
+    func testMissingConfigurationPersistsStableSeedAcrossControllers() {
+        let dataStore = MemoryDataStore()
+        let store = DashboardConfigurationStore(dataStore: dataStore)
+        let firstController = DashboardController(store: store)
+        let firstConfiguration = firstController.committedConfiguration
+
+        let secondController = DashboardController(store: store)
+
+        XCTAssertNotNil(dataStore.data)
+        let expectedLoadResult = firstConfiguration.map(DashboardConfigurationLoadResult.loaded)
+        XCTAssertEqual(firstController.loadResult, expectedLoadResult)
+        XCTAssertEqual(secondController.loadResult, expectedLoadResult)
+        XCTAssertEqual(secondController.committedConfiguration, firstConfiguration)
+        XCTAssertEqual(firstConfiguration?.revision, 0)
+        XCTAssertEqual(firstConfiguration?.instances.count, 1)
+    }
+
     func testOnlyOwnerSeesDraftAndCanCommitIt() {
         let controller = makeController()
         let instance = DashboardWidgetInstance.shelfSummary(

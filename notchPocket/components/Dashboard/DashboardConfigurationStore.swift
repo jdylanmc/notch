@@ -49,6 +49,27 @@ struct DashboardConfigurationStore {
         }
     }
 
+    func loadOrSeed(_ seed: DashboardConfiguration) -> DashboardConfigurationLoadResult {
+        Self.transactionLock.withLock {
+            let result = loadWithoutLock()
+            guard case .missing = result else {
+                return result
+            }
+            guard seed.identityValidationError == nil else {
+                return .storageFailure("The default Dashboard configuration is invalid.")
+            }
+
+            var storedSeed = seed
+            storedSeed.schemaVersion = DashboardConfiguration.currentSchemaVersion
+            do {
+                try dataStore.write(encoder.encode(storedSeed))
+                return .loaded(storedSeed)
+            } catch {
+                return .storageFailure(error.localizedDescription)
+            }
+        }
+    }
+
     func save(
         _ configuration: DashboardConfiguration,
         expectedRevision: UInt64

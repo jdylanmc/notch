@@ -12,16 +12,10 @@ struct NotchPocketHeader: View {
     @EnvironmentObject var vm: NotchPocketViewModel
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = NotchPocketViewCoordinator.shared
-    @StateObject var shelfState = ShelfStateViewModel.shared
-    @Default(.notchPocketShelf) private var shelfEnabled
     var body: some View {
         HStack(spacing: 0) {
             HStack {
-                if coordinator.alwaysShowTabs || (shelfEnabled && !shelfState.isEmpty) {
-                    TabSelectionView()
-                } else if vm.notchState == .open {
-                    EmptyView()
-                }
+                TabSelectionView()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .opacity(vm.notchState == .closed ? 0 : 1)

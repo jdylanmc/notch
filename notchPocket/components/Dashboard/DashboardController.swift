@@ -50,11 +50,11 @@ final class DashboardController: ObservableObject {
         )
     ) {
         self.store = store
-        let result = store.load()
+        let result = store.loadOrSeed(seed)
         loadResult = result
         switch result {
         case .missing:
-            committedConfiguration = seed
+            committedConfiguration = nil
         case .loaded(let configuration):
             committedConfiguration = configuration
         case .recoveryRequired, .storageFailure:
