@@ -139,7 +139,6 @@ struct NotchPocketHeader: View {
                             )
                         }
                     }
-
                 }
             }
             .font(.system(.headline, design: .rounded))
