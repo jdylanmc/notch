@@ -121,7 +121,7 @@ hosted run or distribution succeeded.
 
 | Surface / source | Product branch behavior and retained limits |
 | --- | --- |
-| [App build/test](.github/workflows/cicd.yml) | Pushes to `pocket` and PRs **targeting** `pocket`. Retains all three matrix legs: `macos-15` / `~26.0`, `macos-26` / `^26`, `xcode-27` / `^27`; scheme `notchPocket`, Release build and Debug tests. App tests start the normal app test host on CI. Runner/Xcode availability still needs hosted confirmation. |
+| [App build/test](.github/workflows/cicd.yml) | Pushes to `pocket` and PRs **targeting** `pocket`. Retains all three matrix legs: `macos-15` / `~26.0`, `macos-26` / `^26`, `xcode-27` / `^27`; scheme `notchPocket`, Release build and Debug tests. Each leg first runs the build-wrapper contracts using system `/bin/bash`. App tests start the normal app test host on CI. Runner/Xcode availability still needs hosted confirmation. |
 | [SwiftLint](.github/workflows/swiftlint.yml) | `pocket` push/PR, unchanged `SwiftLint` check name and root `.swiftlint.yml`. Non-strict inherited app baseline; do not add strict mode, suppress warnings, or clean up unrelated source to make CI appear clean. |
 | [CodeQL Advanced](.github/workflows/codeql.yml) | `pocket` push/PR; retains Actions, Python, and manual Swift scans, existing permissions, and Monday `31 15 * * 1` UTC schedule. Scheduled runs use GitHub's default-branch semantics, not the push branch filter. Swift still builds the app without signing; a **separate** canonical helper build follows initialization and app extraction, before analysis. |
 | [Native helper](.github/workflows/notch_control.yml) | Unfiltered `pocket` push/PR on `macos-26`, read-only contents, non-persisted checkout credentials, 20-minute timeout. Canonical build, all 41 package tests, and exactly nine Swift lint inputs. No app launch, screenshots, privacy grants, signing secrets, or publication. |
@@ -202,6 +202,21 @@ The helper keeps its generated output in ignored `scripts/notch-control/.build/`
 App gates remain `scripts/build.sh`, `scripts/test.sh`, and `scripts/lint.sh`;
 app tests start their normal test host, unlike the helper checks. Respect local
 signing, scratch-directory, and user-data restrictions before running them.
+For the build/test wrapper regression suite on macOS with Python 3.9+:
+
+```bash
+python3 -B -m unittest discover -s scripts/tests -p 'test_build_wrappers.py'
+```
+
+This suite executes unchanged copies of the wrappers with system `/bin/bash`,
+including macOS Bash 3.2, against fake `xcodebuild` and `security` tools.
+Disposable `.build/` fixtures use synthetic settings, never the checkout's
+`local.env` or real certificates. Tests cover empty and populated signing
+arguments, argument boundaries, local-setting precedence, and native failure
+exit codes/logs. They do not build, sign, or launch the app. Non-macOS hosts
+explicitly skip these macOS-tool contracts; the existing macOS CI matrix runs
+them before every app build/test leg. These checks do not replace app gates.
+
 Report inherited lint warnings rather than changing the baseline. In an
 orchestrated delivery, the parent reconciles authored changes, runs the declared
 local gates and independent review, then observes actual hosted PR checks and
