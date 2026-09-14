@@ -201,6 +201,54 @@ final class DashboardWidgetInteractionTests: XCTestCase {
         XCTAssertEqual(result, .failure(.layout(.invalidMetrics)))
     }
 
+    func testAlwaysShowTabsKeepsFullNavigationVisible() {
+        XCTAssertEqual(
+            NotchHeaderNavigationPolicy.presentation(
+                alwaysShowTabs: true,
+                shelfEnabled: false,
+                shelfIsEmpty: true,
+                currentView: .dashboard
+            ),
+            .tabs
+        )
+    }
+
+    func testHiddenTabsKeepDashboardReachableFromHome() {
+        XCTAssertEqual(
+            NotchHeaderNavigationPolicy.presentation(
+                alwaysShowTabs: false,
+                shelfEnabled: false,
+                shelfIsEmpty: true,
+                currentView: .home
+            ),
+            .dashboardShortcut
+        )
+    }
+
+    func testHiddenTabsKeepHomeReachableFromDashboard() {
+        XCTAssertEqual(
+            NotchHeaderNavigationPolicy.presentation(
+                alwaysShowTabs: false,
+                shelfEnabled: false,
+                shelfIsEmpty: true,
+                currentView: .dashboard
+            ),
+            .homeShortcut
+        )
+    }
+
+    func testShelfContentPreservesExistingFullNavigationBehavior() {
+        XCTAssertEqual(
+            NotchHeaderNavigationPolicy.presentation(
+                alwaysShowTabs: false,
+                shelfEnabled: true,
+                shelfIsEmpty: false,
+                currentView: .shelf
+            ),
+            .tabs
+        )
+    }
+
     private func resolvedLayout(
         for instance: DashboardWidgetInstance
     ) throws -> DashboardResolvedLayout {

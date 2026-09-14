@@ -8,14 +8,61 @@
 import Defaults
 import SwiftUI
 
+enum NotchHeaderNavigationPresentation: Equatable {
+    case tabs
+    case dashboardShortcut
+    case homeShortcut
+}
+
+enum NotchHeaderNavigationPolicy {
+    static func presentation(
+        alwaysShowTabs: Bool,
+        shelfEnabled: Bool,
+        shelfIsEmpty: Bool,
+        currentView: NotchViews
+    ) -> NotchHeaderNavigationPresentation {
+        if alwaysShowTabs || shelfEnabled && !shelfIsEmpty {
+            return .tabs
+        }
+        return currentView == .dashboard ? .homeShortcut : .dashboardShortcut
+    }
+}
+
 struct NotchPocketHeader: View {
     @EnvironmentObject var vm: NotchPocketViewModel
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = NotchPocketViewCoordinator.shared
+    @StateObject var shelfState = ShelfStateViewModel.shared
+    @Default(.notchPocketShelf) private var shelfEnabled
+
+    private var navigationPresentation: NotchHeaderNavigationPresentation {
+        NotchHeaderNavigationPolicy.presentation(
+            alwaysShowTabs: coordinator.alwaysShowTabs,
+            shelfEnabled: shelfEnabled,
+            shelfIsEmpty: shelfState.isEmpty,
+            currentView: coordinator.currentView
+        )
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             HStack {
-                TabSelectionView()
+                switch navigationPresentation {
+                case .tabs:
+                    TabSelectionView()
+                case .dashboardShortcut:
+                    navigationShortcut(
+                        label: "Dashboard",
+                        icon: "square.grid.2x2.fill",
+                        destination: .dashboard
+                    )
+                case .homeShortcut:
+                    navigationShortcut(
+                        label: "Home",
+                        icon: "house.fill",
+                        destination: .home
+                    )
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .opacity(vm.notchState == .closed ? 0 : 1)
@@ -92,6 +139,7 @@ struct NotchPocketHeader: View {
                             )
                         }
                     }
+
                 }
             }
             .font(.system(.headline, design: .rounded))
@@ -102,6 +150,20 @@ struct NotchPocketHeader: View {
         }
         .foregroundColor(.gray)
         .environmentObject(vm)
+    }
+
+    private func navigationShortcut(
+        label: LocalizedStringKey,
+        icon: String,
+        destination: NotchViews
+    ) -> some View {
+        TabButton(label: label, icon: icon, selected: false) {
+            withAnimation(.smooth) {
+                coordinator.currentView = destination
+            }
+        }
+        .frame(height: 26)
+        .foregroundStyle(.gray)
     }
 
     func isOSDType(_ type: SneakContentType) -> Bool {
