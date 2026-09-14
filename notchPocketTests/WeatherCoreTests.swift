@@ -428,30 +428,34 @@ final class WeatherCoreInvariantTests: XCTestCase {
         }
     }
 
-    func testSnapshotsWithOnlyUnusableRecordsRequireRefreshAndRemainUnavailable() {
+    func testNilAndBlankTextOnlySnapshotsRequireRefreshAndRemainUnavailable() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
-        let current = CurrentWeatherRecord(
-            providerDate: now, condition: nil, symbolName: nil, temperature: nil,
-            apparentTemperature: nil, highTemperature: nil, lowTemperature: nil,
-            precipitationChance: nil
-        )
-        let hourly = HourlyWeatherRecord(
-            date: now, condition: nil, symbolName: nil, temperature: nil, precipitationChance: nil
-        )
-        let daily = DailyWeatherRecord(
-            date: now, condition: nil, symbolName: nil, highTemperature: nil,
-            lowTemperature: nil, precipitationChance: nil
-        )
-        let snapshots = [
-            WeatherSnapshot(providerDate: now, fetchedAt: now, current: current, hourly: [], daily: []),
-            WeatherSnapshot(providerDate: now, fetchedAt: now, current: nil, hourly: [hourly], daily: []),
-            WeatherSnapshot(providerDate: now, fetchedAt: now, current: nil, hourly: [], daily: [daily]),
-            WeatherSnapshot(
-                providerDate: now, fetchedAt: now, current: current, hourly: [hourly], daily: [daily]
+        func makeSnapshots(condition: String?, symbolName: String?) -> [WeatherSnapshot] {
+            let current = CurrentWeatherRecord(
+                providerDate: now, condition: condition, symbolName: symbolName, temperature: nil,
+                apparentTemperature: nil, highTemperature: nil, lowTemperature: nil,
+                precipitationChance: nil
             )
-        ]
+            let hourly = HourlyWeatherRecord(
+                date: now, condition: condition, symbolName: symbolName, temperature: nil,
+                precipitationChance: nil
+            )
+            let daily = DailyWeatherRecord(
+                date: now, condition: condition, symbolName: symbolName, highTemperature: nil,
+                lowTemperature: nil, precipitationChance: nil
+            )
+            return [
+                WeatherSnapshot(providerDate: now, fetchedAt: now, current: current, hourly: [], daily: []),
+                WeatherSnapshot(providerDate: now, fetchedAt: now, current: nil, hourly: [hourly], daily: []),
+                WeatherSnapshot(providerDate: now, fetchedAt: now, current: nil, hourly: [], daily: [daily]),
+                WeatherSnapshot(
+                    providerDate: now, fetchedAt: now, current: current, hourly: [hourly], daily: [daily]
+                )
+            ]
+        }
 
-        for snapshot in snapshots {
+        for snapshot in makeSnapshots(condition: nil, symbolName: nil)
+            + makeSnapshots(condition: " \n", symbolName: "\t") {
             assertUnusable(snapshot, now: now)
         }
     }

@@ -5,6 +5,13 @@
 
 import Foundation
 
+private extension Optional where Wrapped == String {
+    var hasNonblankText: Bool {
+        guard let value = self else { return false }
+        return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 enum WeatherUnitSelection: String, CaseIterable, Equatable, Sendable {
     case automatic
     case metric
@@ -57,8 +64,8 @@ struct CurrentWeatherRecord: Equatable {
     let precipitationChance: Double?
 
     fileprivate var hasUsableData: Bool {
-        condition != nil
-            || symbolName != nil
+        condition.hasNonblankText
+            || symbolName.hasNonblankText
             || temperature != nil
             || apparentTemperature != nil
             || highTemperature != nil
@@ -75,8 +82,8 @@ struct HourlyWeatherRecord: Equatable {
     let precipitationChance: Double?
 
     fileprivate var hasUsableData: Bool {
-        condition != nil
-            || symbolName != nil
+        condition.hasNonblankText
+            || symbolName.hasNonblankText
             || temperature != nil
             || precipitationChance != nil
     }
@@ -91,8 +98,8 @@ struct DailyWeatherRecord: Equatable {
     let precipitationChance: Double?
 
     fileprivate var hasUsableData: Bool {
-        condition != nil
-            || symbolName != nil
+        condition.hasNonblankText
+            || symbolName.hasNonblankText
             || highTemperature != nil
             || lowTemperature != nil
             || precipitationChance != nil
