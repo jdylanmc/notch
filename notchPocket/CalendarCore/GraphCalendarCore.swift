@@ -48,6 +48,7 @@ enum GraphCalendarError: Error, Equatable, Sendable {
     case throttled(retryAfter: GraphRetryAfter?)
     case httpStatus(Int)
     case responseTooLarge(limit: Int)
+    case accountProviderMismatch
     case calendarAccountMismatch
     case invalidNextPageURL
     case paginationCycle
@@ -136,6 +137,7 @@ struct CalendarCoreCoordinator: Sendable {
 }
 
 struct GraphCalendarProvider: CalendarCoreProviding, Sendable {
+    private static let providerID = "graph"
     private static let graphHost = "graph.microsoft.com"
     private static let calendarFields = "id,name,isDefaultCalendar,color,hexColor"
     private static let eventFields = [
@@ -172,6 +174,8 @@ struct GraphCalendarProvider: CalendarCoreProviding, Sendable {
     }
 
     func calendars(for account: CalendarAccountID) async throws -> [CalendarCoreCalendar] {
+        try validateProvider(for: account)
+
         var components = URLComponents()
         components.scheme = "https"
         components.host = Self.graphHost
@@ -193,6 +197,7 @@ struct GraphCalendarProvider: CalendarCoreProviding, Sendable {
         calendars: [CalendarIdentity],
         interval: CalendarQueryInterval
     ) async throws -> [CalendarCoreEvent] {
+        try validateProvider(for: account)
         guard calendars.allSatisfy({ $0.account == account }) else {
             throw GraphCalendarError.calendarAccountMismatch
         }
@@ -207,6 +212,12 @@ struct GraphCalendarProvider: CalendarCoreProviding, Sendable {
             events.append(contentsOf: calendarEvents)
         }
         return events
+    }
+
+    private func validateProvider(for account: CalendarAccountID) throws {
+        guard account.provider.rawValue == Self.providerID else {
+            throw GraphCalendarError.accountProviderMismatch
+        }
     }
 
     private func loadPages<Item: Sendable>(

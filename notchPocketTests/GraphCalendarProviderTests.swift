@@ -5,8 +5,23 @@
 
 import Foundation
 import XCTest
-
 @testable import notchPocket
+private actor CancelOnThirdTransport: GraphCalendarTransport {
+    private(set) var requests: [GraphCalendarRequest] = []
+
+    func response(for request: GraphCalendarRequest) async throws -> GraphCalendarTransportResponse {
+        requests.append(request)
+        if requests.count == 3 {
+            withUnsafeCurrentTask { $0?.cancel() }
+            throw URLError(.cancelled)
+        }
+        return GraphCalendarTransportResponse(
+            statusCode: 200, headers: [:], body: Data(#"{"value":[]}"#.utf8)
+        )
+    }
+
+    func receivedRequests() -> [GraphCalendarRequest] { requests }
+}
 
 final class GraphCalendarProviderTests: XCTestCase {
     private enum StubBehavior {
@@ -28,27 +43,6 @@ final class GraphCalendarProviderTests: XCTestCase {
             requests.append(request)
             guard !responses.isEmpty else { throw GraphCalendarError.transport }
             return responses.removeFirst()
-        }
-
-        func receivedRequests() -> [GraphCalendarRequest] {
-            requests
-        }
-    }
-
-    private actor CancelOnThirdTransport: GraphCalendarTransport {
-        private(set) var requests: [GraphCalendarRequest] = []
-
-        func response(for request: GraphCalendarRequest) async throws -> GraphCalendarTransportResponse {
-            requests.append(request)
-            if requests.count == 3 {
-                withUnsafeCurrentTask { $0?.cancel() }
-                throw URLError(.cancelled)
-            }
-            return GraphCalendarTransportResponse(
-                statusCode: 200,
-                headers: [:],
-                body: Data(#"{"value":[]}"#.utf8)
-            )
         }
 
         func receivedRequests() -> [GraphCalendarRequest] {
@@ -198,20 +192,50 @@ final class GraphCalendarProviderTests: XCTestCase {
         }
     }
 
-    func testEventRequestRejectsCalendarFromAnotherAccountBeforeTransport() async throws {
+    func testRequestsRejectMismatchedAccountsBeforeTransport() async throws {
         let requestedAccount = try account("requested")
         let otherCalendar = try calendar(account: account("other"), id: "calendar")
+        let nonGraphAccount = try CalendarAccountID(
+            provider: CalendarProviderID("eventkit"), externalID: "account"
+        )
+        let nonGraphCalendar = try calendar(account: nonGraphAccount, id: "calendar")
         let transport = RecordingTransport(responses: [])
+        let provider = GraphCalendarProvider(transport: transport)
+        let interval = try interval()
 
-        do {
-            _ = try await GraphCalendarProvider(transport: transport).events(
-                for: requestedAccount,
-                calendars: [otherCalendar],
-                interval: interval()
+        let cases: [(GraphCalendarError, () async throws -> Void)] = [
+            (
+                .calendarAccountMismatch,
+                {
+                    _ = try await provider.events(
+                        for: requestedAccount,
+                        calendars: [otherCalendar],
+                        interval: interval
+                    )
+                }
+            ),
+            (
+                .accountProviderMismatch,
+                { _ = try await provider.calendars(for: nonGraphAccount) }
+            ),
+            (
+                .accountProviderMismatch,
+                {
+                    _ = try await provider.events(
+                        for: nonGraphAccount,
+                        calendars: [nonGraphCalendar],
+                        interval: interval
+                    )
+                }
             )
-            XCTFail("Expected cross-account rejection")
-        } catch {
-            XCTAssertEqual(error as? GraphCalendarError, .calendarAccountMismatch)
+        ]
+        for (expectedError, operation) in cases {
+            do {
+                _ = try await operation()
+                XCTFail("Expected account mismatch")
+            } catch {
+                XCTAssertEqual(error as? GraphCalendarError, expectedError)
+            }
         }
         let requests = await transport.receivedRequests()
         XCTAssertTrue(requests.isEmpty)
@@ -439,21 +463,19 @@ final class GraphCalendarProviderTests: XCTestCase {
         let receivedRequests = await transport.receivedRequests()
         XCTAssertEqual(receivedRequests.map(\.account), [firstAccount, secondAccount, thirdAccount])
     }
+}
 
-    private func eventPayload(id: String, title: String) -> String {
-        """
-        {
-          "value": [{
-            "id": "\(id)",
-            "subject": "\(title)",
-            "start": {"dateTime": "2026-09-12T13:45:00", "timeZone": "UTC"},
-            "end": {"dateTime": "2026-09-12T14:00:00", "timeZone": "UTC"},
-            "isAllDay": false,
-            "isCancelled": false
-          }]
-        }
-        """
+private func eventPayload(id: String, title: String) -> String {
+    """
+    {
+      "value": [{
+        "id": "\(id)", "subject": "\(title)",
+        "start": {"dateTime": "2026-09-12T13:45:00", "timeZone": "UTC"},
+        "end": {"dateTime": "2026-09-12T14:00:00", "timeZone": "UTC"},
+        "isAllDay": false, "isCancelled": false
+      }]
     }
+    """
 }
 
 private func parsedRequestDate(_ value: String) throws -> Date {
@@ -462,21 +484,17 @@ private func parsedRequestDate(_ value: String) throws -> Date {
     let suffixEnd = value.index(before: value.endIndex)
     let wholeSecondValue = String(value[..<fractionalSeparator]) + "Z"
     let fractionalValue = "0." + value[suffixStart..<suffixEnd]
-    let wholeSecond = try Date.ISO8601FormatStyle(
-        includingFractionalSeconds: false
-    ).parse(wholeSecondValue)
+    let wholeSecond = try Date.ISO8601FormatStyle(includingFractionalSeconds: false)
+        .parse(wholeSecondValue)
     let wholeReferenceSeconds = try XCTUnwrap(
         Int64(exactly: wholeSecond.timeIntervalSinceReferenceDate)
     )
-    let fraction = try XCTUnwrap(
-        Decimal(
-            string: String(fractionalValue),
-            locale: Locale(identifier: "en_US_POSIX")
-        )
-    )
+    let fraction = try XCTUnwrap(Decimal(
+        string: String(fractionalValue), locale: Locale(identifier: "en_US_POSIX")
+    ))
     let referenceSeconds = Decimal(wholeReferenceSeconds) + fraction
-    let exactSeconds = try XCTUnwrap(
-        Double(NSDecimalNumber(decimal: referenceSeconds).stringValue)
-    )
+    let exactSeconds = try XCTUnwrap(Double(NSDecimalNumber(
+        decimal: referenceSeconds
+    ).stringValue))
     return Date(timeIntervalSinceReferenceDate: exactSeconds)
 }
