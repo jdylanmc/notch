@@ -12,6 +12,11 @@ the user's `joe-mode` and personal replacements for five legacy skill names.
 That installation does not replace or change these three skills or their
 compatibility boundaries.
 
+The two [SwiftUI design additions](../../.agents/skills/README.md#swiftui-design-additions)
+live under `.agents/skills` as complementary visual-design guidance. Their
+source pins, dependency audit and local macOS guards are recorded separately;
+they do not replace these packages or the bounded live-control helper.
+
 ## Candidate decisions
 
 | Candidate | Decision and current-code evidence |

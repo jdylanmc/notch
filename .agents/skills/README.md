@@ -2,9 +2,10 @@
 
 This checkout contains **32 personal skills** from
 [`jdylanmc/agent-skills`](https://github.com/jdylanmc/agent-skills), plus
-**16 retained Matt Pocock/Caveman skills**. The three macOS skills under
+**16 retained Matt Pocock/Caveman skills** and **two SwiftUI design skills**.
+The three macOS skills under
 [`.github/skills`](../../.github/skills/README.md) remain unchanged.
-There are **51 project skills** in total.
+There are **53 project skills** in total.
 
 ## Personal packet: current versions
 
@@ -42,6 +43,71 @@ historical provenance; [Doctrine](doctrine/SKILL.md) carries its complete
 doctrine texts, manifest and loader. These resources are part of the copies,
 not dependencies on a separate source checkout.
 
+## SwiftUI design additions
+
+The user requested these two project-local design skills on 2026-09-14.
+They supplement, rather than replace, the existing SwiftUI correctness and
+macOS expertise.
+
+| Skill | Reviewed immutable revision | License |
+| --- | --- | --- |
+| [swiftui-design-skill](swiftui-design-skill/SKILL.md) | [wholiver/swiftui-design-skill@2c82638ebd3c801d9d2d12b5f2d6c20495939995](https://github.com/wholiver/swiftui-design-skill/tree/2c82638ebd3c801d9d2d12b5f2d6c20495939995) | [MIT, wholiver](swiftui-design-skill/LICENSE) |
+| [swiftui-design-principles](swiftui-design-principles/SKILL.md) | [arjitj2/swiftui-design-principles@791d22d73f844167a3872530e3941185b730d8be](https://github.com/arjitj2/swiftui-design-principles/tree/791d22d73f844167a3872530e3941185b730d8be) | [MIT, arjitj2](swiftui-design-principles/LICENSE) |
+
+### Dependencies and completeness
+
+- **No additional skill, package, MCP server or build step is required.**
+  Both repositories contain instructional Markdown and metadata, not executable
+  installers or support scripts.
+- Wholiver recommends `swiftui-expert-skill` for correctness, performance and
+  accessibility work. Our [existing vetted copy](../../.github/skills/swiftui-expert-skill/SKILL.md)
+  already supplies that companion; no second copy was installed.
+- Wholiver's examples depend on its bundled
+  [`references/swift-extensions.md`](swiftui-design-skill/references/swift-extensions.md).
+  All five references and the brand-spec template are included. These are
+  example-code dependencies, not Swift packages to add to the app.
+- Arjitj2's skill is self-contained; its
+  [upstream guidance](swiftui-design-principles/AGENTS.md) explicitly requires
+  no scripts or build steps. No companion skill from that creator is required.
+- Fonts, brand assets and Apple documentation are future design inputs, not
+  installation dependencies. No fonts/assets were downloaded and no examples
+  were executed.
+
+Installation used the available official `skills` CLI **1.5.24**, with
+`DISABLE_TELEMETRY=1`, `--agent github-copilot --copy -y`, and only the two
+requested `--skill` names. It made no global installation. The CLI omitted
+both upstream `metadata.json` files; those were restored from the reviewed
+pins so the packages retain all 18 upstream files. Arjitj2's upstream
+`metadata.json` says 1.1.0 while its entry point says 1.1.1; that discrepancy
+is preserved rather than silently rewritten. The commit identifies the import.
+
+### Compatibility and updates
+
+Only a clearly marked compatibility guard was added to each entry point;
+all other upstream bytes, licenses and package-relative resources are retained.
+The [consumer lock](../../skills-lock.json) records upstream folder hashes, not
+the added local guards or an immutable update pin.
+
+These are design references, not a verified macOS component library. Wholiver
+names Xcode 16+ and macOS 15+ SDK prerequisites; this repository's newer build
+host meets those prerequisites without raising the app's macOS 14 deployment.
+Its adaptive-color examples use `UIColor`; arjitj2 also uses UIKit semantic
+colors, iOS navigation-bar APIs and lock-screen WidgetKit families. Adapt only
+relevant examples, with macOS availability and type checks. Do not blindly
+copy snippets or replace the app's existing color, geometry or persistence
+helpers.
+
+The app's Dashboard widgets are not WidgetKit extensions. Neither package
+authorizes a new extension, entitlement, storage domain, redesign, brand/font
+download, unconditional 44-point touch target, or a replacement for AppKit
+window ownership. Existing approved geometry and behavior take precedence over
+opinionated spacing, typography and decoration checklists.
+
+For future refreshes, use an isolated branch, review the new immutable source,
+recheck dependencies/links/licenses, and reapply the guards. Do not use a
+wildcard install/update or overwrite the existing native expertise. Discovery
+does not prove snippet compilation, design quality or permission to execute.
+
 ## Using Joe-mode
 
 [Joe-mode](joe-mode/SKILL.md) is a **human-activated** workflow with one
@@ -69,7 +135,7 @@ Inspect discovery without starting a workflow:
 copilot skill list --json
 ```
 
-Expect 51 project entries, including one enabled project `joe-mode` and the
+Expect 53 project entries, including one enabled project `joe-mode` and the
 personal versions of the five replaced names. Global plugins may add other
 entries; confirm the project source path when names collide. A PR worktree's
 copies are not installed globally or into another checkout: merge or use this

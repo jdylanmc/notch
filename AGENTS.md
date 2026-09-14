@@ -421,6 +421,15 @@ signing or release authority. The [vetting/update record](.github/skills/README.
 lists all six candidates, pinned provenance, deferred skills and coverage gaps.
 Do not replace these local adaptations through an unreviewed bulk update.
 
+For visual-design work, the complementary
+[`swiftui-design-skill`](.agents/skills/swiftui-design-skill/SKILL.md) and
+[`swiftui-design-principles`](.agents/skills/swiftui-design-principles/SKILL.md)
+are installed with their own compatibility guards. Their
+[dependency and provenance record](.agents/skills/README.md#swiftui-design-additions)
+distinguishes bundled examples from additional dependencies. Treat iOS,
+WidgetKit and opinionated styling examples as context-dependent guidance, not
+permission to change app architecture, deployment, compact geometry or scope.
+
 ## Layout
 
 ```
