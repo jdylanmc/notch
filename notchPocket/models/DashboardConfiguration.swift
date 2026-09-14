@@ -37,6 +37,10 @@ struct DashboardWidgetKind: RawRepresentable, Codable, Equatable, Hashable, Send
 
     let rawValue: String
 
+    init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         rawValue = try container.decode(String.self)
