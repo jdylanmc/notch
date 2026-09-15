@@ -47,10 +47,12 @@ public struct ControlFailure: Error, Codable {
 public struct Options: Equatable {
     public enum Command: String {
         case inspect, settings, notch, capture, help
+        case selectTab = "select-tab"
     }
     public let command: Command
     public let pane: String?
     public let notchAction: NotchAction?
+    public let tabTarget: TabTarget?
     public let appPath: String?
     public let windowID: UInt32?
     public let output: String?
@@ -58,7 +60,7 @@ public struct Options: Equatable {
 
     public static func parse(_ arguments: [String]) throws -> Options {
         guard let first = arguments.first, let command = Command(rawValue: first) else {
-            throw ControlFailure(.invalidInput, "Use inspect, settings, notch, capture, or help.")
+            throw ControlFailure(.invalidInput, "Use inspect, settings, notch, select-tab, capture, or help.")
         }
         var tail = Array(arguments.dropFirst())
         var pane: String?
@@ -74,6 +76,14 @@ public struct Options: Equatable {
                 throw ControlFailure(.invalidInput, "notch requires open or close.")
             }
             notchAction = action
+            tail.removeFirst()
+        }
+        var tabTarget: TabTarget?
+        if command == .selectTab {
+            guard let value = tail.first, let target = TabTarget(rawValue: value) else {
+                throw ControlFailure(.invalidInput, "select-tab requires dashboard, home, or shelf.")
+            }
+            tabTarget = target
             tail.removeFirst()
         }
         var flags: [String: String] = [:]
@@ -104,8 +114,9 @@ public struct Options: Equatable {
             }
         }
         let windowID = try parseWindowID(command: command, flags: flags)
-        return Options(command: command, pane: pane, notchAction: notchAction, appPath: flags["--app-path"],
-                       windowID: windowID, output: flags["--output"], timeout: timeout)
+        return Options(command: command, pane: pane, notchAction: notchAction, tabTarget: tabTarget,
+                       appPath: flags["--app-path"], windowID: windowID,
+                       output: flags["--output"], timeout: timeout)
     }
 
     private static func parseWindowID(command: Command, flags: [String: String]) throws -> UInt32? {
@@ -120,14 +131,18 @@ public struct Options: Equatable {
                 throw ControlFailure(.invalidInput, "--output must end in .png.")
             }
             return value
-        } else if command == .notch {
+        } else if command == .notch || command == .selectTab {
             guard let raw = flags["--window"], let value = UInt32(raw), value > 0,
                   String(value) == raw, flags["--output"] == nil else {
-                throw ControlFailure(.invalidInput, "notch requires a canonical positive --window ID and no --output.")
+                let name = command == .notch ? "notch" : "select-tab"
+                throw ControlFailure(.invalidInput, "\(name) requires a canonical positive --window ID and no --output.")
             }
             return value
         } else if flags["--window"] != nil || flags["--output"] != nil {
-            throw ControlFailure(.invalidInput, "--window is only valid for capture or notch; --output is only valid for capture.")
+            throw ControlFailure(
+                .invalidInput,
+                "--window is only valid for capture, notch, or select-tab; --output is only valid for capture."
+            )
         }
         return nil
     }
@@ -377,6 +392,170 @@ public func changeNotchState(
         return current.state == action.targetState
     }
     return NotchActionResult(windowID: windowID, action: action, state: action.targetState, outcome: .changed)
+}
+
+public enum TabTarget: String, Codable, CaseIterable {
+    case dashboard, home, shelf
+
+    public static let identifierPrefix = "com.jdylanmc.notchpocket.notch.v1.tab."
+
+    public var accessibilityIdentifier: String { Self.identifierPrefix + rawValue }
+}
+
+public struct TabControlMetadata: Equatable {
+    public let identifier: String
+    public let value: String?
+    public let enabled: Bool
+
+    public init(identifier: String, value: String?, enabled: Bool) {
+        self.identifier = identifier
+        self.value = value
+        self.enabled = enabled
+    }
+}
+
+public struct TabControlState: Codable, Equatable {
+    public enum State: String, Codable {
+        case selected, unselected
+    }
+
+    public let tab: TabTarget
+    public let state: State
+    public let enabled: Bool
+}
+
+public struct TabSelectionSnapshot: Codable, Equatable {
+    public let windowID: UInt32
+    public let controls: [TabControlState]
+
+    public var selectedTab: TabTarget? {
+        controls.first { $0.state == .selected }?.tab
+    }
+}
+
+public struct TabSelectionInspection: Codable, Equatable {
+    public enum Status: String, Codable {
+        case observed, unsupported
+        case accessibilityUnavailable = "accessibility_unavailable"
+    }
+
+    public let status: Status
+    public let panels: [TabSelectionSnapshot]?
+
+    public init(status: Status, panels: [TabSelectionSnapshot]?) {
+        self.status = status
+        self.panels = panels
+    }
+
+    public static let unsupported = TabSelectionInspection(status: .unsupported, panels: nil)
+    public static let accessibilityUnavailable = TabSelectionInspection(
+        status: .accessibilityUnavailable, panels: nil
+    )
+}
+
+public func observeTabSelection(
+    _ metadata: [TabControlMetadata], windowID: UInt32
+) throws -> TabSelectionSnapshot {
+    guard !metadata.isEmpty else {
+        throw ControlFailure(.unsupportedControl, "Selected panel has no supported tab controls.")
+    }
+    guard metadata.count <= TabTarget.allCases.count else {
+        throw ControlFailure(.unsupportedControl, "Selected panel has ambiguous tab controls.")
+    }
+    var seen: Set<TabTarget> = []
+    let controls = try metadata.map { item -> TabControlState in
+        guard item.identifier.hasPrefix(TabTarget.identifierPrefix),
+              let tab = TabTarget(rawValue: String(item.identifier.dropFirst(TabTarget.identifierPrefix.count))),
+              seen.insert(tab).inserted,
+              let rawValue = item.value,
+              let state = TabControlState.State(rawValue: rawValue) else {
+            throw ControlFailure(.unsupportedControl, "Malformed or duplicate tab Accessibility metadata.")
+        }
+        guard state != .selected || item.enabled else {
+            throw ControlFailure(.unsupportedControl, "A disabled tab cannot be the selected tab.")
+        }
+        return TabControlState(tab: tab, state: state, enabled: item.enabled)
+    }
+    guard seen.contains(.dashboard), seen.contains(.home),
+          controls.filter({ $0.state == .selected }).count == 1 else {
+        throw ControlFailure(.unsupportedControl, "Tab Accessibility state is incomplete or ambiguous.")
+    }
+    let order = Dictionary(uniqueKeysWithValues: TabTarget.allCases.enumerated().map { ($1, $0) })
+    return TabSelectionSnapshot(
+        windowID: windowID,
+        controls: controls.sorted { order[$0.tab, default: 0] < order[$1.tab, default: 0] }
+    )
+}
+
+public struct TabSelectionResult: Codable, Equatable {
+    public enum Outcome: String, Codable {
+        case changed
+        case alreadySelected = "already_selected"
+    }
+
+    public let windowID: UInt32
+    public let tab: TabTarget
+    public let state: String
+    public let outcome: Outcome
+}
+
+public struct TabSelectionTransport {
+    public let observe: () throws -> TabSelectionSnapshot
+    public let actionNames: () throws -> [String]
+    public let perform: (String) throws -> Void
+
+    public init(
+        observe: @escaping () throws -> TabSelectionSnapshot,
+        actionNames: @escaping () throws -> [String],
+        perform: @escaping (String) throws -> Void
+    ) {
+        self.observe = observe
+        self.actionNames = actionNames
+        self.perform = perform
+    }
+}
+
+private func requireSelectableTab(
+    _ snapshot: TabSelectionSnapshot, tab: TabTarget
+) throws -> TabControlState {
+    let matching = snapshot.controls.filter { $0.tab == tab }
+    guard matching.count == 1, let control = matching.first else {
+        throw ControlFailure(.unsupportedControl, "Requested tab is unavailable in the selected panel.")
+    }
+    guard control.enabled else {
+        throw ControlFailure(.unsupportedControl, "Requested tab is disabled in the selected panel.")
+    }
+    return control
+}
+
+public func selectTab(
+    windowID: UInt32, tab: TabTarget, budget: PollBudget,
+    pause: (TimeInterval) -> Void, transport: TabSelectionTransport
+) throws -> TabSelectionResult {
+    _ = try budget.remaining()
+    _ = try requireSelectableTab(transport.observe(), tab: tab)
+    _ = try budget.remaining()
+    let names = try transport.actionNames()
+    _ = try budget.remaining()
+    guard names.count <= 600, names.filter({ $0 == "AXPress" }).count == 1 else {
+        throw ControlFailure(.unsupportedControl, "Selected tab does not advertise the exact press action.")
+    }
+    let before = try transport.observe()
+    let control = try requireSelectableTab(before, tab: tab)
+    _ = try budget.remaining()
+    if control.state == .selected {
+        return TabSelectionResult(
+            windowID: windowID, tab: tab, state: "selected", outcome: .alreadySelected
+        )
+    }
+    try transport.perform("AXPress")
+    _ = try budget.remaining()
+    try budget.until(pause: pause) {
+        let current = try transport.observe()
+        _ = try budget.remaining()
+        return try requireSelectableTab(current, tab: tab).state == .selected
+    }
+    return TabSelectionResult(windowID: windowID, tab: tab, state: "selected", outcome: .changed)
 }
 
 public struct PollBudget {

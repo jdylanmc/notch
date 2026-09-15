@@ -1,6 +1,6 @@
 ---
 name: notch
-description: Inspect the running Notch Pocket app and read-only per-panel notch state, explicitly open/close one identified notch panel, open Settings or select General/About using app-scoped Accessibility, and capture one selected app-owned window locally for UI debugging. Does not control playback, shelf, notifications, or lock notch visibility.
+description: Inspect the running Notch Pocket app and read-only per-panel notch/tab state, explicitly open/close one identified notch panel, select an implemented tab, open Settings or select General/About using app-scoped Accessibility, and capture one selected app-owned window locally for UI debugging. Does not control playback, shelf data, notifications, or lock notch visibility.
 ---
 
 # Notch Pocket local UI debugging
@@ -21,6 +21,9 @@ entry, shared-library validator, daemon, or remote service is required.
 - No global input, command-comma, raw Accessibility tree dumping, private text
   extraction, notification access, media/shelf actions, broader notch controls,
   or whole-desktop capture.
+- Tab selection is limited to versioned Home, Dashboard, and Shelf controls in
+  one freshly identified marked panel. Never change the Shelf setting to make
+  its tab available.
 
 ## Procedure
 
@@ -76,6 +79,29 @@ or treat this as a visibility lock. Normal hover/timers still run.
 Reinspect to establish current state after any failure before deciding what
 restoration is safe; do not blindly replay an action.
 
+For separately authorized tab selection, record the original
+`tabSelection.panels[].controls[]` selected state and use the same fresh exact
+panel ID:
+
+```bash
+bash scripts/notch-control/control.sh run select-tab dashboard --window WINDOW_ID \
+  --app-path /absolute/built/notch-pocket.app
+bash scripts/notch-control/control.sh run select-tab home --window WINDOW_ID \
+  --app-path /absolute/built/notch-pocket.app
+bash scripts/notch-control/control.sh run select-tab shelf --window WINDOW_ID \
+  --app-path /absolute/built/notch-pocket.app
+```
+
+The helper accepts only the versioned app-owned identifiers, exact
+`selected`/`unselected` values, native enabled state and one advertised
+`AXPress`. It searches only descendants of the exact marked panel within the
+documented bounds, presses at most once, then observes fresh Accessibility
+state before returning `changed`. `already_selected` is an explicit no-op.
+Unsupported/malformed controls, stale mapping, permission loss, press failure
+and timeout are errors; never treat dispatch alone as success. Missing or
+disabled Shelf is refused without changing its setting. After an uncertain
+failure, inspect again rather than retrying blindly.
+
 To capture, select one **freshly reported app-owned** `windows[].id`, preferably
 the uniquely mapped `settings.windowID` for Settings. If mapping is missing or
 ambiguous, stop rather than guessing. Use a new absolute PNG destination in an
@@ -99,11 +125,14 @@ original panes or closes Settings if it was originally closed. Preserve shelf,
 persistent preferences, app identity and existing privacy grants.
 For the notch slice, the parent verifies closed → open → closed on the exact
 signed candidate and views fresh selected-panel captures only if already
-shareable. Restore the recorded model state; report blocked restoration honestly
-if a guard or panel recreation prevents it. Never change sharing to obtain proof.
+shareable. For the tab slice, while that panel is open, verify Home → Dashboard
+→ Shelf when Shelf is enabled, observe each selected state, then restore the
+original tab before restoring panel/app state. Report blocked restoration
+honestly if a guard or panel recreation prevents it. Never change Shelf
+availability or sharing to obtain proof.
 
 Report exact commands, observed JSON/pixel postconditions, restoration,
 limitations and ignored residue (`scripts/notch-control/.build/`). A successful
 build/unit suite is not runtime proof. This is issue #18's bounded notch
-observation/open/close, Settings and window-capture slice, not full notch control
-or issue closure.
+observation/open/close, native tab-selection, Settings and window-capture slice,
+not full notch control or closure of #18 or #75.

@@ -52,6 +52,14 @@ class BoundedAccessibilityReader {
         }
         return text
     }
+
+    func bool(_ element: AXUIElement, _ attribute: String) throws -> Bool? {
+        guard let value = try read(element, attribute, optional: true) else { return nil }
+        guard let number = value as? NSNumber else {
+            throw ControlFailure(.unsupportedControl, "Accessibility Boolean has an unsupported shape.")
+        }
+        return number.boolValue
+    }
 }
 
 final class NotchObservationControl: BoundedAccessibilityReader {
@@ -95,6 +103,82 @@ final class NotchObservationControl: BoundedAccessibilityReader {
     func state() throws -> (notch: NotchInspection, windows: [WindowInfo]) {
         let current = try snapshot()
         return (current.notch, current.windows)
+    }
+
+    private func tabControls(
+        in panel: AXUIElement
+    ) throws -> [(element: AXUIElement, metadata: TabControlMetadata)] {
+        var stack = try elements(panel, kAXChildrenAttribute, optional: true).map { ($0, 1) }
+        var controls: [(AXUIElement, TabControlMetadata)] = []
+        var visited = 0
+        while let (element, depth) = stack.popLast() {
+            visited += 1
+            guard visited <= 600, depth <= 24 else {
+                throw ControlFailure(.unsupportedControl, "Tab Accessibility search exceeded its bounded scope.")
+            }
+            if let identifier = try string(element, kAXIdentifierAttribute),
+               identifier.hasPrefix(TabTarget.identifierPrefix) {
+                guard try string(element, kAXRoleAttribute) == kAXButtonRole,
+                      let enabled = try bool(element, kAXEnabledAttribute) else {
+                    throw ControlFailure(.unsupportedControl, "Tab marker is not on an enabled-state button.")
+                }
+                controls.append((
+                    element,
+                    TabControlMetadata(
+                        identifier: identifier,
+                        value: try string(element, kAXValueAttribute),
+                        enabled: enabled
+                    )
+                ))
+            }
+            let children = try elements(element, kAXChildrenAttribute, optional: true)
+            guard children.count <= 600 else {
+                throw ControlFailure(.unsupportedControl, "Tab Accessibility collection exceeds the search limit.")
+            }
+            stack.append(contentsOf: children.map { ($0, depth + 1) })
+        }
+        return controls
+    }
+
+    private func tabSnapshot(
+        windowID: UInt32, tab: TabTarget? = nil
+    ) throws -> (
+        state: TabSelectionSnapshot,
+        panel: AXUIElement,
+        control: AXUIElement?
+    ) {
+        let current = try snapshot()
+        _ = try selectedNotchPanel(current.notch, windowID: windowID)
+        let panelIdentifier = NotchPanelMetadata.versionPrefix + String(windowID)
+        let matchingPanels = current.panels.filter { $0.1 == panelIdentifier }
+        guard matchingPanels.count == 1, let panel = matchingPanels.first?.0 else {
+            throw ControlFailure(.staleTarget, "Selected Accessibility panel changed; inspect again.")
+        }
+        let controls = try tabControls(in: panel)
+        let state = try observeTabSelection(controls.map(\.metadata), windowID: windowID)
+        guard let tab else { return (state, panel, nil) }
+        let matchingControls = controls.filter { $0.metadata.identifier == tab.accessibilityIdentifier }
+        guard matchingControls.count == 1, let control = matchingControls.first?.element else {
+            throw ControlFailure(.unsupportedControl, "Requested tab is unavailable in the selected panel.")
+        }
+        return (state, panel, control)
+    }
+
+    func tabState() throws -> TabSelectionInspection {
+        let current = try snapshot()
+        var states: [TabSelectionSnapshot] = []
+        for panel in current.notch.panels ?? [] {
+            do {
+                states.append(try tabSnapshot(windowID: panel.windowID).state)
+            } catch let error as ControlFailure where error.code == .unsupportedControl {
+                continue
+            }
+        }
+        guard !states.isEmpty else { return .unsupported }
+        return TabSelectionInspection(
+            status: .observed,
+            panels: states.sorted { $0.windowID < $1.windowID }
+        )
     }
 
     private func actionNames(_ element: AXUIElement) throws -> [String] {
@@ -149,6 +233,54 @@ final class NotchObservationControl: BoundedAccessibilityReader {
         )
         return try changeNotchState(
             windowID: windowID, action: action, budget: target.budget,
+            pause: Thread.sleep(forTimeInterval:), transport: transport
+        )
+    }
+
+    func select(_ tab: TabTarget, windowID: UInt32) throws -> TabSelectionResult {
+        var selectedPanel: AXUIElement?
+        var selectedControl: AXUIElement?
+        var dispatched = false
+        let transport = TabSelectionTransport(
+            observe: {
+                let current = try self.tabSnapshot(windowID: windowID, tab: tab)
+                guard selectedPanel == nil || CFEqual(selectedPanel, current.panel) else {
+                    throw ControlFailure(.staleTarget, "Selected Accessibility panel changed; inspect again.")
+                }
+                if !dispatched {
+                    guard let control = current.control,
+                          selectedControl == nil || CFEqual(selectedControl, control) else {
+                        throw ControlFailure(.staleTarget, "Selected Accessibility tab changed; inspect again.")
+                    }
+                    selectedControl = control
+                }
+                selectedPanel = current.panel
+                return current.state
+            },
+            actionNames: {
+                guard let selectedControl else {
+                    throw ControlFailure(.staleTarget, "No selected Accessibility tab.")
+                }
+                return try self.actionNames(selectedControl)
+            },
+            perform: { name in
+                guard let selectedControl else {
+                    throw ControlFailure(.staleTarget, "No selected Accessibility tab.")
+                }
+                try self.prepare(selectedControl)
+                _ = try self.target.budget.remaining()
+                let result = AXUIElementPerformAction(selectedControl, name as CFString)
+                guard result == .success else {
+                    throw ControlFailure(
+                        .accessibilityFailed,
+                        "Tab press failed (AX \(result.rawValue)); not retried."
+                    )
+                }
+                dispatched = true
+            }
+        )
+        return try selectTab(
+            windowID: windowID, tab: tab, budget: target.budget,
             pause: Thread.sleep(forTimeInterval:), transport: transport
         )
     }

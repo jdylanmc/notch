@@ -223,3 +223,183 @@ extension ControlCoreTests {
         }
     }
 }
+
+extension ControlCoreTests {
+        private final class TabSelectionFixture {
+            var now: TimeInterval = 0
+            var metadata = [
+                TabControlMetadata(identifier: "com.jdylanmc.notchpocket.notch.v1.tab.dashboard",
+                                   value: "unselected", enabled: true),
+                TabControlMetadata(identifier: "com.jdylanmc.notchpocket.notch.v1.tab.home",
+                                   value: "selected", enabled: true),
+                TabControlMetadata(identifier: "com.jdylanmc.notchpocket.notch.v1.tab.shelf",
+                                   value: "unselected", enabled: true)
+            ]
+            var names = [kAXPressAction]
+            var attempts: [String] = []
+            var reads = 0
+            var beforeRead: ((Int) throws -> Void)?
+            var onPerform: (() throws -> Void)?
+
+            func run(_ tab: TabTarget = .dashboard) throws -> TabSelectionResult {
+                let budget = PollBudget(timeout: 0.5, now: { self.now })
+                let transport = TabSelectionTransport(
+                    observe: {
+                        self.reads += 1
+                        try self.beforeRead?(self.reads)
+                        return try observeTabSelection(self.metadata, windowID: 15)
+                    },
+                    actionNames: { self.names },
+                    perform: {
+                        self.attempts.append($0)
+                        try self.onPerform?()
+                    }
+                )
+                return try selectTab(
+                    windowID: 15, tab: tab, budget: budget,
+                    pause: { self.now += $0 }, transport: transport
+                )
+            }
+
+            func select(_ tab: TabTarget) {
+                metadata = metadata.map {
+                    TabControlMetadata(
+                        identifier: $0.identifier,
+                        value: $0.identifier.hasSuffix(".\(tab.rawValue)") ? "selected" : "unselected",
+                        enabled: $0.enabled
+                    )
+                }
+            }
+        }
+
+        func testTabSelectionParsingAndExactIdentifiers() throws {
+            for tab in TabTarget.allCases {
+                let options = try Options.parse([
+                    "select-tab", tab.rawValue, "--window", "15",
+                    "--app-path", app.path, "--timeout", "0.5"
+                ])
+                XCTAssertEqual(options.command, .selectTab)
+                XCTAssertEqual(options.tabTarget, tab)
+                XCTAssertEqual(options.windowID, 15)
+                XCTAssertNil(options.notchAction)
+                XCTAssertEqual(tab.accessibilityIdentifier,
+                               "com.jdylanmc.notchpocket.notch.v1.tab.\(tab.rawValue)")
+            }
+        }
+
+        func testTabSelectionInvalidInputMatrix() {
+            var invalid = [
+                ["select-tab"], ["select-tab", "music"], ["select-tab", "Home"],
+                ["select-tab", "home"], ["select-tab", "home", "--window", "0"],
+                ["select-tab", "home", "--window", "015"],
+                ["select-tab", "home", "--window", "15", "--output", "/owned/new.png"]
+            ]
+            invalid += ["-1", "+15", " 15", "15 ", "15.0", "4294967296", ""].map {
+                ["select-tab", "home", "--window", $0]
+            }
+            for arguments in invalid {
+                assertFailure(.invalidInput) { _ = try Options.parse(arguments) }
+            }
+        }
+
+        func testTabSelectionDispatchesOneExactPressAndObservesSelection() throws {
+            for tab in TabTarget.allCases {
+                let fixture = TabSelectionFixture()
+                fixture.select(tab == .home ? .dashboard : .home)
+                fixture.onPerform = { fixture.select(tab) }
+                let result = try fixture.run(tab)
+                XCTAssertEqual(result.windowID, 15)
+                XCTAssertEqual(result.tab, tab)
+                XCTAssertEqual(result.state, "selected")
+                XCTAssertEqual(result.outcome, .changed)
+                XCTAssertEqual(fixture.attempts, [kAXPressAction])
+                XCTAssertEqual(fixture.reads, 3)
+            }
+        }
+
+        func testTabSelectionAlreadySelectedDoesNotDispatch() throws {
+            let fixture = TabSelectionFixture()
+            let result = try fixture.run(.home)
+            XCTAssertEqual(result.outcome, .alreadySelected)
+            XCTAssertTrue(fixture.attempts.isEmpty)
+            XCTAssertEqual(fixture.reads, 2)
+        }
+
+        func testTabSelectionRejectsStaleMappingWithoutDispatch() {
+            for stage in [1, 2] {
+                let fixture = TabSelectionFixture()
+                fixture.beforeRead = { read in
+                    if read == stage {
+                        throw ControlFailure(.staleTarget, "Selected tab mapping changed; inspect again.")
+                    }
+                }
+                assertFailure(.staleTarget) { _ = try fixture.run() }
+                XCTAssertTrue(fixture.attempts.isEmpty)
+            }
+        }
+
+        func testTabSelectionRejectsUnavailableOrDisabledShelfWithoutChangingSettings() {
+            let unavailable = TabSelectionFixture()
+            unavailable.metadata.removeAll { $0.identifier.hasSuffix(".shelf") }
+            assertFailure(.unsupportedControl) { _ = try unavailable.run(.shelf) }
+            XCTAssertTrue(unavailable.attempts.isEmpty)
+
+            let disabled = TabSelectionFixture()
+            disabled.metadata = disabled.metadata.map {
+                TabControlMetadata(identifier: $0.identifier, value: $0.value,
+                                   enabled: $0.identifier.hasSuffix(".shelf") ? false : $0.enabled)
+            }
+            assertFailure(.unsupportedControl) { _ = try disabled.run(.shelf) }
+            XCTAssertTrue(disabled.attempts.isEmpty)
+        }
+
+        func testTabSelectionRequiresExactPressAndValidSelectedState() {
+            for names in [[], ["Press"], ["AXShowAlternateUI"], [kAXPressAction, kAXPressAction]] {
+                let fixture = TabSelectionFixture()
+                fixture.names = names
+                assertFailure(.unsupportedControl) { _ = try fixture.run() }
+                XCTAssertTrue(fixture.attempts.isEmpty)
+            }
+
+            for values in [
+                ["selected", "selected", "unselected"],
+                ["unselected", "unselected", "unselected"],
+                ["home", "unselected", "unselected"]
+            ] {
+                let fixture = TabSelectionFixture()
+                fixture.metadata = zip(fixture.metadata, values).map {
+                    TabControlMetadata(identifier: $0.0.identifier, value: $0.1, enabled: $0.0.enabled)
+                }
+                assertFailure(.unsupportedControl) { _ = try fixture.run() }
+                XCTAssertTrue(fixture.attempts.isEmpty)
+            }
+        }
+
+        func testTabSelectionNativeFailureDoesNotRetryOrReportSuccess() {
+            let fixture = TabSelectionFixture()
+            fixture.onPerform = {
+                fixture.select(.dashboard)
+                throw ControlFailure(.accessibilityFailed, "Tab press failed; not retried.")
+            }
+            assertFailure(.accessibilityFailed) { _ = try fixture.run() }
+            XCTAssertEqual(fixture.attempts, [kAXPressAction])
+            XCTAssertEqual(fixture.reads, 2)
+        }
+
+        func testTabSelectionTimeoutDoesNotRetryPress() {
+            let fixture = TabSelectionFixture()
+            assertFailure(.timeout) { _ = try fixture.run() }
+            XCTAssertEqual(fixture.attempts, [kAXPressAction])
+            XCTAssertEqual(fixture.now, 0.5, accuracy: 0.001)
+            XCTAssertGreaterThan(fixture.reads, 2)
+        }
+
+        func testTabSelectionWireContract() throws {
+            let fixture = TabSelectionFixture()
+            fixture.onPerform = { fixture.select(.dashboard) }
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .sortedKeys
+            XCTAssertEqual(String(data: try encoder.encode(fixture.run()), encoding: .utf8),
+                           "{\"outcome\":\"changed\",\"state\":\"selected\",\"tab\":\"dashboard\",\"windowID\":15}")
+        }
+    }
