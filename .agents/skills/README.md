@@ -1,23 +1,25 @@
 # Notch Pocket workflow skills
 
-This checkout contains **32 personal skills** from
+This checkout contains **34 personal skills** from
 [`jdylanmc/agent-skills`](https://github.com/jdylanmc/agent-skills), plus
 **16 retained Matt Pocock/Caveman skills** and **two SwiftUI design skills**.
 The three macOS skills under
 [`.github/skills`](../../.github/skills/README.md) remain unchanged.
-There are **53 project skills** in total.
+There are **55 project skills** in total.
 
 ## Personal packet: current versions
 
 The user requested the complete personal packet and explicitly chose its
 versions over the overlapping project customizations on 2026-09-13.
+The complete packet was refreshed on 2026-09-14 to include
+`chart-a-course` and `joe-mode-paseo`.
 
 - Source revision:
-  [`f253d8d887282b938f53308b638c51284edd9fe7`](https://github.com/jdylanmc/agent-skills/tree/f253d8d887282b938f53308b638c51284edd9fe7).
+  [`28add88d55b7a32904d51e883349c437d3fbdfb3`](https://github.com/jdylanmc/agent-skills/tree/28add88d55b7a32904d51e883349c437d3fbdfb3).
 - Source directories: `.agents/skills/<name>/`.
-- Installer: official `skills` CLI **1.5.23**, project-local GitHub Copilot
+- Installer: official `skills` CLI **1.5.24**, project-local GitHub Copilot
   scope, copy mode, with telemetry disabled.
-- All **117 files** in the 32 active packages match that revision's Git blob
+- All **132 files** in the 34 active packages match that revision's Git blob
   hashes and executable modes. No Notch-specific edits were applied to these
   personal copies.
 - The retired `archive/atomic-v1/` collection is not installed.
@@ -33,7 +35,7 @@ package-local support files:
 | `tdd` | Locally adapted Matt Pocock copy | Personal packet |
 | `triage` | Locally adapted Matt Pocock copy | Personal packet |
 
-The other 27 personal packages are additions. There are no parallel old copies
+The other 29 personal packages are additions. There are no parallel old copies
 of the replaced names to shadow them. The complete catalog and caller rules
 are in [Setup's invocation contract](setup/INVOCATION.md#full-catalog).
 
@@ -115,6 +117,20 @@ controller per repository. Installing it does not activate it, reserve backlog
 items, configure a tracker, start agents or services, or grant tool access.
 Preserve existing work and ownership when explicitly starting the controller.
 
+[Joe-mode Paseo](joe-mode-paseo/SKILL.md) adds human-enabled recurring
+coordination. Its sibling workflow dependencies are included in this full
+packet, including [Chart a Course](chart-a-course/SKILL.md). The bundled state
+helper uses Node.js built-ins; no npm runtime packages are needed. Actual
+activation also requires a supported Paseo runtime, verified capabilities,
+explicit scheduling consent and reconciliation with any existing Joe owner.
+No separate SDK service or creator skill is required. Read its
+[runtime gates](joe-mode-paseo/RUNTIME.md) before activation: the inspected
+fresh-schedule implementation is incompatible with workspace reuse, while the
+recommended dedicated-PM heartbeat still needs verified binding and consent.
+Installation and deterministic helper tests do not establish recurring
+operation. Do not create a second controller or migrate an existing board merely
+because this adapter is now installed.
+
 Use the personal packet's caller contracts, including its Ship, Roast,
 Shepherd and shared commit-style flow. Retained legacy wrappers do not override
 those contracts or establish that their previous assumptions still apply to
@@ -128,14 +144,16 @@ frontmatter are not enforced permissions or proof that the current harness
 can provide every requested capability.
 
 Start Copilot in this checkout/worktree, or use `/skills reload` if the
-installed CLI supports it, then explicitly invoke `/joe-mode` when desired.
+installed CLI supports it, then explicitly invoke `/joe-mode` or
+`/joe-mode-paseo` when desired.
 Inspect discovery without starting a workflow:
 
 ```bash
 copilot skill list --json
 ```
 
-Expect 53 project entries, including one enabled project `joe-mode` and the
+Expect 55 project entries, including one enabled project entry each for
+`joe-mode`, `joe-mode-paseo` and `chart-a-course`, and the
 personal versions of the five replaced names. Global plugins may add other
 entries; confirm the project source path when names collide. A PR worktree's
 copies are not installed globally or into another checkout: merge or use this
@@ -186,24 +204,29 @@ For an explicitly approved personal-packet refresh, use a dedicated branch
 and worktree based on `origin/pocket`:
 
 ```bash
-DISABLE_TELEMETRY=1 npx --yes skills@1.5.23 add \
+DISABLE_TELEMETRY=1 npx --yes skills@1.5.24 add \
   jdylanmc/agent-skills --skill '*' --agent github-copilot --copy -y
 ```
 
 The CLI requires Node 22.20.0 or newer. The command reads the source's current
 default branch; it does not reproduce the recorded revision automatically.
 [The consumer lock](../../skills-lock.json) records selected sources and
-folder hashes, not an immutable revision pin or hashes of every local edit.
+folder hashes. This refresh also records the immutable commit in each personal
+entry's `ref`; unrelated entries need not be pinned. The lock does not hash
+every local edit, and the default-branch command above still selects moving
+source rather than automatically reproducing those pinned entries.
 Verify the intended source revision and review the complete diff.
 
-The wildcard is intentional **only for this complete 32-skill personal
+The wildcard is intentional **only for this complete 34-skill personal
 packet**. Do not use full-depth/archive discovery, refresh unrelated platform
 skills, or reinstall Matt's collection over the personal replacements.
 Matching directories can be overwritten and extra files removed; preserve
 local changes before any future refresh. Unrelated skills must remain intact.
 
-The initial import was checked against every source file and executable mode,
-the consumer lock, and real Copilot discovery. The bundled Doctrine/Scout
+The refresh used the immutable GitHub tree URL for the recorded revision
+instead of the moving default branch. Every source file and executable mode,
+the consumer lock, unrelated packages and real Copilot discovery were checked.
+The bundled Doctrine/Scout/Joe-mode Paseo state
 tests provide additional deterministic checks; none of these establishes
 that a model follows the workflows or has their advertised runtime tools.
 Installation executes no bundled workflow, hook, tracing or support example.
