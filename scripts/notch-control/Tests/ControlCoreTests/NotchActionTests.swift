@@ -399,6 +399,17 @@ extension ControlCoreTests {
             XCTAssertEqual(fixture.reads, 1)
         }
 
+        func testShelfSelectedCompactMetadataIsUnsupportedWithoutFalseHomeNoOp() {
+            let fixture = TabSelectionFixture()
+            fixture.metadata = []
+            fixture.names = []
+
+            assertFailure(.unsupportedControl) { _ = try fixture.run(.home) }
+
+            XCTAssertTrue(fixture.attempts.isEmpty)
+            XCTAssertEqual(fixture.reads, 1)
+        }
+
         func testTabSelectionRejectsStaleMappingWithoutDispatch() {
             for stage in [1, 2] {
                 let fixture = TabSelectionFixture()

@@ -101,7 +101,10 @@ without action discovery or dispatch.
 Unsupported/malformed controls, stale mapping, permission loss, press failure
 and timeout are errors; never treat dispatch alone as success. Missing or
 disabled Shelf is refused without changing its setting. After an uncertain
-failure, inspect again rather than retrying blindly.
+failure, inspect again rather than retrying blindly. If Shelf remains selected
+as it becomes empty or disabled, compact tab inspection is unsupported until
+the app reaches Home or Dashboard; never infer Home from the visible Dashboard
+shortcut in that transient state.
 
 To capture, select one **freshly reported app-owned** `windows[].id`, preferably
 the uniquely mapped `settings.windowID` for Settings. If mapping is missing or

@@ -291,7 +291,10 @@ When compact navigation replaces the tab bar, its one real Home or Dashboard
 destination button exposes the same versioned identifier and literal
 `unselected` value. The helper accepts only that exact single-shortcut shape
 and derives the selected opposite tab; it does not render or search for hidden
-controls.
+controls. If Shelf remains selected while becoming empty or disabled, the real
+Dashboard shortcut remains usable but withholds the helper marker until the app
+returns to Home or Dashboard. Inspection is unsupported in that transient state
+and selection never falsely reports Home.
 
 `select-tab dashboard|home|shelf --window ID` requires one exact, freshly
 observed app-owned versioned panel. The helper searches only that marked

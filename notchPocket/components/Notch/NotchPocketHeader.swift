@@ -26,6 +26,15 @@ enum NotchHeaderNavigationPolicy {
         }
         return currentView == .dashboard ? .homeShortcut : .dashboardShortcut
     }
+
+    static func exposesCompactTabAccessibility(currentView: NotchViews) -> Bool {
+        switch currentView {
+        case .dashboard, .home:
+            return true
+        case .shelf:
+            return false
+        }
+    }
 }
 
 struct NotchPocketHeader: View {
@@ -161,10 +170,17 @@ struct NotchPocketHeader: View {
                 coordinator.currentView = destination
             }
         }
-        .accessibilityIdentifier(destination.accessibilityIdentifier)
-        .accessibilityValue(Text(verbatim: destination.accessibilityValue(
-            isSelected: destination == coordinator.currentView
-        )))
+        .conditionalModifier(
+            NotchHeaderNavigationPolicy.exposesCompactTabAccessibility(
+                currentView: coordinator.currentView
+            )
+        ) { view in
+            view
+                .accessibilityIdentifier(destination.accessibilityIdentifier)
+                .accessibilityValue(Text(verbatim: destination.accessibilityValue(
+                    isSelected: destination == coordinator.currentView
+                )))
+        }
         .frame(height: 26)
         .foregroundStyle(.gray)
     }
