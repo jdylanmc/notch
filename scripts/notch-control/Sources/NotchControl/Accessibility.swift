@@ -158,10 +158,16 @@ final class NotchObservationControl: BoundedAccessibilityReader {
         let state = try observeTabSelection(controls.map(\.metadata), windowID: windowID)
         guard let tab else { return (state, panel, nil) }
         let matchingControls = controls.filter { $0.metadata.identifier == tab.accessibilityIdentifier }
-        guard matchingControls.count == 1, let control = matchingControls.first?.element else {
+        guard matchingControls.count <= 1 else {
+            throw ControlFailure(.unsupportedControl, "Requested tab is ambiguous in the selected panel.")
+        }
+        if let control = matchingControls.first?.element {
+            return (state, panel, control)
+        }
+        guard state.selectedTab == tab else {
             throw ControlFailure(.unsupportedControl, "Requested tab is unavailable in the selected panel.")
         }
-        return (state, panel, control)
+        return (state, panel, nil)
     }
 
     func tabState() throws -> TabSelectionInspection {
@@ -248,11 +254,16 @@ final class NotchObservationControl: BoundedAccessibilityReader {
                     throw ControlFailure(.staleTarget, "Selected Accessibility panel changed; inspect again.")
                 }
                 if !dispatched {
-                    guard let control = current.control,
-                          selectedControl == nil || CFEqual(selectedControl, control) else {
-                        throw ControlFailure(.staleTarget, "Selected Accessibility tab changed; inspect again.")
+                    if let control = current.control {
+                        guard selectedControl == nil || CFEqual(selectedControl, control) else {
+                            throw ControlFailure(.staleTarget, "Selected Accessibility tab changed; inspect again.")
+                        }
+                        selectedControl = control
+                    } else {
+                        guard current.state.selectedTab == tab else {
+                            throw ControlFailure(.staleTarget, "Selected Accessibility tab changed; inspect again.")
+                        }
                     }
-                    selectedControl = control
                 }
                 selectedPanel = current.panel
                 return current.state

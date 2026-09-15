@@ -161,6 +161,10 @@ struct NotchPocketHeader: View {
                 coordinator.currentView = destination
             }
         }
+        .accessibilityIdentifier(destination.accessibilityIdentifier)
+        .accessibilityValue(Text(verbatim: destination.accessibilityValue(
+            isSelected: destination == coordinator.currentView
+        )))
         .frame(height: 26)
         .foregroundStyle(.gray)
     }

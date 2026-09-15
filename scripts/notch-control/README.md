@@ -151,9 +151,11 @@ mapping is **not** permission to guess an ID.
 
 When supported, `inspect` also reports `tabSelection.panels[]` for marked notch
 panels whose implemented tab controls are currently exposed. Each entry includes
-the exact panel `windowID` and allowlisted Dashboard/Home/Shelf controls with
-literal `selected`/`unselected` state and native enabled state. Missing markers
-yield `{"status":"unsupported"}`; missing Accessibility yields
+the exact panel `windowID` and allowlisted tab state. The full tab bar exposes
+Home, Dashboard, and Shelf when Shelf is enabled. Compact navigation exposes
+only the real unselected Home or Dashboard destination shortcut; the helper
+derives the selected opposite tab from that exact supported shape. Missing
+markers yield `{"status":"unsupported"}`; missing Accessibility yields
 `{"status":"accessibility_unavailable"}`. Never infer a selection for an
 unsupported panel or reuse a saved ID after window recreation.
 
@@ -285,6 +287,12 @@ The selected button also retains the native selected trait. Shelf is absent
 when its existing setting disables it; the helper never changes that setting.
 A present but disabled Shelf control is also refused.
 
+When compact navigation replaces the tab bar, its one real Home or Dashboard
+destination button exposes the same versioned identifier and literal
+`unselected` value. The helper accepts only that exact single-shortcut shape
+and derives the selected opposite tab; it does not render or search for hidden
+controls.
+
 `select-tab dashboard|home|shelf --window ID` requires one exact, freshly
 observed app-owned versioned panel. The helper searches only that marked
 panel's descendants, with the existing 600-element/depth-24 bounds, and accepts
@@ -301,8 +309,8 @@ observed as selected:
 {"tabSelectionAction":{"windowID":123,"tab":"dashboard","state":"selected","outcome":"changed"}}
 ```
 
-`outcome: already_selected` is an explicit no-op after the exact control/action
-contract is revalidated; no press is attempted. Missing/disabled Shelf,
+`outcome: already_selected` is an explicit no-op after the exact marked-panel
+tab state is revalidated; no action discovery or press is attempted. Missing/disabled Shelf,
 unsupported or malformed markers, stale mapping, permission loss, native press
 failure and timeout are nonzero failures. A failed/timed-out press may have
 been delivered; inspect again before restoration and never retry blindly. Tab

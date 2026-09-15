@@ -463,7 +463,7 @@ public func observeTabSelection(
         throw ControlFailure(.unsupportedControl, "Selected panel has ambiguous tab controls.")
     }
     var seen: Set<TabTarget> = []
-    let controls = try metadata.map { item -> TabControlState in
+    var controls = try metadata.map { item -> TabControlState in
         guard item.identifier.hasPrefix(TabTarget.identifierPrefix),
               let tab = TabTarget(rawValue: String(item.identifier.dropFirst(TabTarget.identifierPrefix.count))),
               seen.insert(tab).inserted,
@@ -475,6 +475,13 @@ public func observeTabSelection(
             throw ControlFailure(.unsupportedControl, "A disabled tab cannot be the selected tab.")
         }
         return TabControlState(tab: tab, state: state, enabled: item.enabled)
+    }
+    if controls.count == 1, let shortcut = controls.first,
+       [.dashboard, .home].contains(shortcut.tab),
+       shortcut.state == .unselected, shortcut.enabled {
+        let selected: TabTarget = shortcut.tab == .dashboard ? .home : .dashboard
+        controls.append(TabControlState(tab: selected, state: .selected, enabled: true))
+        seen.insert(selected)
     }
     guard seen.contains(.dashboard), seen.contains(.home),
           controls.filter({ $0.state == .selected }).count == 1 else {
@@ -533,8 +540,13 @@ public func selectTab(
     pause: (TimeInterval) -> Void, transport: TabSelectionTransport
 ) throws -> TabSelectionResult {
     _ = try budget.remaining()
-    _ = try requireSelectableTab(transport.observe(), tab: tab)
+    let initial = try requireSelectableTab(transport.observe(), tab: tab)
     _ = try budget.remaining()
+    if initial.state == .selected {
+        return TabSelectionResult(
+            windowID: windowID, tab: tab, state: "selected", outcome: .alreadySelected
+        )
+    }
     let names = try transport.actionNames()
     _ = try budget.remaining()
     guard names.count <= 600, names.filter({ $0 == "AXPress" }).count == 1 else {

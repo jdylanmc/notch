@@ -317,12 +317,86 @@ extension ControlCoreTests {
             }
         }
 
+        func testCompactTabSelectionWithShelfDisabledOrEmptyPressesDashboard() throws {
+            let fixture = TabSelectionFixture()
+            fixture.metadata = [
+                TabControlMetadata(
+                    identifier: TabTarget.dashboard.accessibilityIdentifier,
+                    value: "unselected",
+                    enabled: true
+                )
+            ]
+            fixture.onPerform = {
+                fixture.metadata = [
+                    TabControlMetadata(
+                        identifier: TabTarget.home.accessibilityIdentifier,
+                        value: "unselected",
+                        enabled: true
+                    )
+                ]
+            }
+
+            let result = try fixture.run(.dashboard)
+
+            XCTAssertEqual(result.outcome, .changed)
+            XCTAssertEqual(result.tab, .dashboard)
+            XCTAssertEqual(fixture.attempts, [kAXPressAction])
+            XCTAssertEqual(fixture.reads, 3)
+        }
+
+        func testCompactTabSelectionWithShelfDisabledOrEmptyPressesHome() throws {
+            let fixture = TabSelectionFixture()
+            fixture.metadata = [
+                TabControlMetadata(
+                    identifier: TabTarget.home.accessibilityIdentifier,
+                    value: "unselected",
+                    enabled: true
+                )
+            ]
+            fixture.onPerform = {
+                fixture.metadata = [
+                    TabControlMetadata(
+                        identifier: TabTarget.dashboard.accessibilityIdentifier,
+                        value: "unselected",
+                        enabled: true
+                    )
+                ]
+            }
+
+            let result = try fixture.run(.home)
+
+            XCTAssertEqual(result.outcome, .changed)
+            XCTAssertEqual(result.tab, .home)
+            XCTAssertEqual(fixture.attempts, [kAXPressAction])
+            XCTAssertEqual(fixture.reads, 3)
+        }
+
         func testTabSelectionAlreadySelectedDoesNotDispatch() throws {
             let fixture = TabSelectionFixture()
+            fixture.names = []
             let result = try fixture.run(.home)
             XCTAssertEqual(result.outcome, .alreadySelected)
             XCTAssertTrue(fixture.attempts.isEmpty)
-            XCTAssertEqual(fixture.reads, 2)
+            XCTAssertEqual(fixture.reads, 1)
+        }
+
+        func testCompactTabSelectionWithShelfDisabledOrEmptyPreservesNoOp() throws {
+            let fixture = TabSelectionFixture()
+            fixture.metadata = [
+                TabControlMetadata(
+                    identifier: TabTarget.dashboard.accessibilityIdentifier,
+                    value: "unselected",
+                    enabled: true
+                )
+            ]
+            fixture.names = []
+
+            let result = try fixture.run(.home)
+
+            XCTAssertEqual(result.outcome, .alreadySelected)
+            XCTAssertEqual(result.tab, .home)
+            XCTAssertTrue(fixture.attempts.isEmpty)
+            XCTAssertEqual(fixture.reads, 1)
         }
 
         func testTabSelectionRejectsStaleMappingWithoutDispatch() {

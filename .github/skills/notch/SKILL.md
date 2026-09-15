@@ -21,9 +21,9 @@ entry, shared-library validator, daemon, or remote service is required.
 - No global input, command-comma, raw Accessibility tree dumping, private text
   extraction, notification access, media/shelf actions, broader notch controls,
   or whole-desktop capture.
-- Tab selection is limited to versioned Home, Dashboard, and Shelf controls in
-  one freshly identified marked panel. Never change the Shelf setting to make
-  its tab available.
+- Tab selection is limited to versioned Home/Dashboard controls and the
+  optional Shelf control in one freshly identified marked panel. Never change
+  the Shelf setting to make its tab available.
 
 ## Procedure
 
@@ -96,7 +96,8 @@ The helper accepts only the versioned app-owned identifiers, exact
 `selected`/`unselected` values, native enabled state and one advertised
 `AXPress`. It searches only descendants of the exact marked panel within the
 documented bounds, presses at most once, then observes fresh Accessibility
-state before returning `changed`. `already_selected` is an explicit no-op.
+state before returning `changed`. `already_selected` is an explicit no-op
+without action discovery or dispatch.
 Unsupported/malformed controls, stale mapping, permission loss, press failure
 and timeout are errors; never treat dispatch alone as success. Missing or
 disabled Shelf is refused without changing its setting. After an uncertain
