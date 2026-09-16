@@ -788,25 +788,13 @@ final class MusicManager: ObservableObject {
             }
         }
     }
-    func openMusicApp() {
-        guard let bundleID = bundleIdentifier else {
-            Log.music.error("Error: appBundleIdentifier is nil")
-            return
-        }
-
-        let workspace = NSWorkspace.shared
-        if let appURL = workspace.urlForApplication(withBundleIdentifier: bundleID) {
-            let configuration = NSWorkspace.OpenConfiguration()
-            workspace.openApplication(at: appURL, configuration: configuration) { (app, error) in
-                if let error = error {
-                    Log.music.error("Failed to launch app with bundle ID: \(bundleID), error: \(error)")
-                } else {
-                    Log.music.debug("Launched app with bundle ID: \(bundleID)")
-                }
-            }
-        } else {
-            Log.music.error("Failed to find app with bundle ID: \(bundleID)")
-        }
+    func openMusicApp() async -> MusicAppLaunchOutcome {
+        let target = MusicLaunchTargetResolver.bundleIdentifier(
+            preferred: preferredMediaController,
+            currentBundleIdentifier: bundleIdentifier,
+            rememberedNowPlayingBundleIdentifier: Defaults[.lastSupportedNowPlayingBundleIdentifier]
+        )
+        return await MusicAppLauncher(workspace: WorkspaceMusicAppOpening()).launch(bundleIdentifier: target)
     }
 
     func forceUpdate() {

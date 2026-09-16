@@ -45,20 +45,25 @@ struct CompactHomeView: View {
     private let vizBlockWidth: CGFloat = 42
     private let vizBarWidth: CGFloat = 24
 
-    // No idle branch, deliberately. The standard layout has none either —
-    // it renders whatever MusicManager last cached, so a paused or stopped
-    // track keeps its art, title and scrub position. A "Nothing Playing"
-    // placeholder here made compact mode lose state the full layout keeps.
     var body: some View {
-        VStack(spacing: 0) {
-            header
-                .frame(height: albumArtWidth)
+        MusicSectionView { _ in
+            VStack(spacing: 0) {
+                header
+                    .frame(height: albumArtWidth)
 
-            progressRow
-                .padding(.top, 4)
+                progressRow
+                    .padding(.top, 4)
 
-            transport
-                .padding(.top, 1)
+                transport
+                    .padding(.top, 1)
+            }
+            .onDisappear {
+                dragging = false
+                showingOutputPicker = false
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            batteryIndicator
         }
         .padding(.horizontal, 12)
         // Atoll's 15/3 formula assumes the player is the whole panel; here
@@ -113,25 +118,25 @@ struct CompactHomeView: View {
                 .frame(width: vizBlockWidth)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            // Compact mode hides NotchPocketHeader (it spans the full notch
-            // width), which took the battery with it. Overlaid rather than
-            // placed in the HStack so it doesn't steal width from the title.
-            if Defaults[.showBatteryIndicator] {
-                NotchPocketBatteryView(
-                    batteryWidth: 24,
-                    isCharging: batteryModel.isCharging,
-                    isInLowPowerMode: batteryModel.isInLowPowerMode,
-                    isPluggedIn: batteryModel.isPluggedIn,
-                    levelBattery: batteryModel.levelBattery,
-                    maxCapacity: batteryModel.maxCapacity,
-                    timeToFullCharge: batteryModel.timeToFullCharge,
-                    timeToDischarge: batteryModel.timeToDischarge,
-                    maxAdapterWatts: batteryModel.maxAdapterWatts,
-                    isForNotification: false
-                )
-                .offset(y: -14)
-            }
+    }
+
+    @ViewBuilder
+    private var batteryIndicator: some View {
+        // Battery belongs to the panel, not the playing/idle music child.
+        if Defaults[.showBatteryIndicator] {
+            NotchPocketBatteryView(
+                batteryWidth: 24,
+                isCharging: batteryModel.isCharging,
+                isInLowPowerMode: batteryModel.isInLowPowerMode,
+                isPluggedIn: batteryModel.isPluggedIn,
+                levelBattery: batteryModel.levelBattery,
+                maxCapacity: batteryModel.maxCapacity,
+                timeToFullCharge: batteryModel.timeToFullCharge,
+                timeToDischarge: batteryModel.timeToDischarge,
+                maxAdapterWatts: batteryModel.maxAdapterWatts,
+                isForNotification: false
+            )
+            .offset(y: -14)
         }
     }
 

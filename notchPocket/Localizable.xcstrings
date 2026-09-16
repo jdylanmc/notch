@@ -12,6 +12,94 @@
       }
     },
     "%lld shelf items" : {},
+    "Could not open music app" : {
+      "comment" : "Title of the music launcher failure alert.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not open music app"
+          }
+        }
+      }
+    },
+    "Music app %@ could not be opened. Try opening it from Applications." : {
+      "comment" : "Music launcher failure. The placeholder identifies the app that macOS could not open.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music app %@ could not be opened. Try opening it from Applications."
+          }
+        }
+      }
+    },
+    "Music app %@ is not installed. Install it or choose a different Music Source in Settings." : {
+      "comment" : "Music launcher failure. The placeholder identifies the app that could not be found.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music app %@ is not installed. Install it or choose a different Music Source in Settings."
+          }
+        }
+      }
+    },
+    "No music app is selected. Choose a Music Source in Settings or play music once with Now Playing." : {
+      "comment" : "Music launcher guidance when Now Playing has no observed or remembered music app.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No music app is selected. Choose a Music Source in Settings or play music once with Now Playing."
+          }
+        }
+      }
+    },
+    "OK" : {
+      "comment" : "Dismiss the music launcher failure alert.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        }
+      }
+    },
+    "Open %@" : {
+      "comment" : "Music launcher button label. The placeholder is the user's selected music app.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open %@"
+          }
+        }
+      }
+    },
+    "Open music app" : {
+      "comment" : "Music launcher button label when no named player has been resolved.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open music app"
+          }
+        }
+      }
+    },
+    "Opens your preferred music app without starting playback." : {
+      "comment" : "Accessibility hint for the idle music launcher button.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opens your preferred music app without starting playback."
+          }
+        }
+      }
+    },
     "Add Shelf Summary" : {},
     "Close and reopen the panel after the configuration issue is resolved." : {},
     "Dashboard" : {},
