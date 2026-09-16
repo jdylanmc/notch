@@ -261,6 +261,37 @@ final class DashboardWidgetInteractionTests: XCTestCase {
         )
     }
 
+    func testEmptyEnabledShelfSelectionUsesDashboardShortcutWithoutTabAccessibility() {
+        XCTAssertEqual(
+            NotchHeaderNavigationPolicy.presentation(
+                alwaysShowTabs: false,
+                shelfEnabled: true,
+                shelfIsEmpty: true,
+                currentView: .shelf
+            ),
+            .dashboardShortcut
+        )
+        XCTAssertFalse(NotchHeaderNavigationPolicy.exposesCompactTabAccessibility(currentView: .shelf))
+    }
+
+    func testDisabledShelfSelectionWithContentUsesDashboardShortcutWithoutTabAccessibility() {
+        XCTAssertEqual(
+            NotchHeaderNavigationPolicy.presentation(
+                alwaysShowTabs: false,
+                shelfEnabled: false,
+                shelfIsEmpty: false,
+                currentView: .shelf
+            ),
+            .dashboardShortcut
+        )
+        XCTAssertFalse(NotchHeaderNavigationPolicy.exposesCompactTabAccessibility(currentView: .shelf))
+    }
+
+    func testHomeAndDashboardCompactNavigationExposeTabAccessibility() {
+        XCTAssertTrue(NotchHeaderNavigationPolicy.exposesCompactTabAccessibility(currentView: .home))
+        XCTAssertTrue(NotchHeaderNavigationPolicy.exposesCompactTabAccessibility(currentView: .dashboard))
+    }
+
     func testDisablingAlwaysShowTabsDisablesRememberLastTab() {
         XCTAssertFalse(
             NotchTabPreferencePolicy.rememberLastTab(

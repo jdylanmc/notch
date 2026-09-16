@@ -1,13 +1,14 @@
-# Local app control — issue #18, bounded notch actions and Settings slice
+# Local app control — bounded notch, tab, Settings, and capture slice
 
 Small Apple-toolchain-only Swift package. No daemon, network service,
 synthetic keyboard input, or dependencies. The app supplies minimal read-only
-panel Accessibility metadata and explicit native open/close actions. Requires macOS 14+
-APIs; use the repository's macOS 15.6+/Xcode 26+ build host.
+panel/tab Accessibility metadata and explicit native panel/tab actions. Requires
+macOS 14+ APIs; use the repository's macOS 15.6+/Xcode 26+ build host.
 
-This slice covers discovery, read-only notch state, per-panel notch open/close,
-Settings → General/About, and a selected app-owned window screenshot.
-It does **not** complete issue #18 or establish full notch control.
+This slice covers discovery, read-only notch/tab state, per-panel notch
+open/close, exact Home/Dashboard/Shelf tab selection, Settings →
+General/About, and a selected app-owned window screenshot.
+It does **not** complete issue #18 or #75 or establish full notch control.
 Runtime behavior must be verified against the exact newly built app.
 
 ## Build and deterministic checks
@@ -82,8 +83,11 @@ tests in `Tests/ControlCoreTests/NotchActionTests.swift` add exact command/name
 contracts, invalid selectors, selected-panel routing,
 explicit no-op, unsupported discovery, pre/post-action stale/foreign/refused
 paths, one-attempt semantics, late discovery/dispatch/observation deadlines and
-bounded polling/output (41 tests total across both test source files). The existing
-subprocess test also covers invalid notch verbs and IDs before discovery. All original cases remain.
+bounded polling/output. Tab-selection cases add exact identifier/parser
+contracts, one-press observation, already-selected no-op, stale mapping,
+disabled/unavailable Shelf, native failure and timeout coverage (51 tests total
+across both test source files). The existing subprocess test also covers invalid
+notch verbs and IDs before discovery. All original cases remain.
 They do **not** exercise Accessibility, ScreenCaptureKit, permissions, Settings UI, or the
 actual app. Permission denial and native API failures need the runtime matrix
 below; tests are not evidence that those integrations work.
@@ -104,6 +108,13 @@ bash scripts/notch-control/control.sh run notch open --window WINDOW_ID \
   --app-path /Applications/notch-pocket.app
 bash scripts/notch-control/control.sh run notch close --window WINDOW_ID \
   --app-path /Applications/notch-pocket.app
+# Use the same freshly observed marked panel ID:
+bash scripts/notch-control/control.sh run select-tab dashboard --window WINDOW_ID \
+  --app-path /Applications/notch-pocket.app
+bash scripts/notch-control/control.sh run select-tab home --window WINDOW_ID \
+  --app-path /Applications/notch-pocket.app
+bash scripts/notch-control/control.sh run select-tab shelf --window WINDOW_ID \
+  --app-path /Applications/notch-pocket.app
 # Substitute a freshly observed windows[].id or settings.windowID, not a saved ID:
 bash scripts/notch-control/control.sh run capture --window WINDOW_ID \
   --output /absolute/private/new-image.png \
@@ -113,9 +124,10 @@ bash scripts/notch-control/control.sh run capture --window WINDOW_ID \
 Use `--app-path` pointing to the **actual built product**, not this installed-app
 example, for build verification. Paths must be absolute and normalized, without
 dot components, duplicate separators, or control characters. Flags cannot
-repeat. Capture IDs must be positive UInt32 decimal values. Notch IDs additionally
-require canonical decimal spelling (no leading zeros, signs or whitespace);
-`--window` is mandatory and `--output` is invalid for notch actions. Commands accept
+repeat. Capture IDs must be positive UInt32 decimal values. Notch and tab IDs
+additionally require canonical decimal spelling (no leading zeros, signs or
+whitespace); `--window` is mandatory and `--output` is invalid for notch/tab
+actions. Commands accept
 `--timeout 0.5` through `--timeout 15` seconds (default 5); this is a shared
 observation/API budget, not a hard OS process-kill timer or disk-write deadline.
 
@@ -136,6 +148,16 @@ absence means unknown/another pane, not General by default.
 `settings.windowID` is returned only when the identified Settings Accessibility
 window's geometry matches one on-screen window owned by that app. Missing
 mapping is **not** permission to guess an ID.
+
+When supported, `inspect` also reports `tabSelection.panels[]` for marked notch
+panels whose implemented tab controls are currently exposed. Each entry includes
+the exact panel `windowID` and allowlisted tab state. The full tab bar exposes
+Home, Dashboard, and Shelf when Shelf is enabled. Compact navigation exposes
+only the real unselected Home or Dashboard destination shortcut; the helper
+derives the selected opposite tab from that exact supported shape. Missing
+markers yield `{"status":"unsupported"}`; missing Accessibility yields
+`{"status":"accessibility_unavailable"}`. Never infer a selection for an
+unsupported panel or reuse a saved ID after window recreation.
 
 ### Read-only notch observation
 
@@ -251,6 +273,53 @@ the requested action caused a concurrent state change. Normal interactions can
 change it immediately. Off-screen/sharing-excluded panels can be controlled but
 this never grants capture permission or relaxes sharing policy.
 
+### Exact native tab selection
+
+The implemented SwiftUI tab buttons expose these stable identifiers and literal
+Accessibility values:
+
+- `com.jdylanmc.notchpocket.notch.v1.tab.dashboard`
+- `com.jdylanmc.notchpocket.notch.v1.tab.home`
+- `com.jdylanmc.notchpocket.notch.v1.tab.shelf`
+- `AXValue = selected|unselected`
+
+The selected button also retains the native selected trait. Shelf is absent
+when its existing setting disables it; the helper never changes that setting.
+A present but disabled Shelf control is also refused.
+
+When compact navigation replaces the tab bar, its one real Home or Dashboard
+destination button exposes the same versioned identifier and literal
+`unselected` value. The helper accepts only that exact single-shortcut shape
+and derives the selected opposite tab; it does not render or search for hidden
+controls. If Shelf remains selected while becoming empty or disabled, the real
+Dashboard shortcut remains usable but withholds the helper marker until the app
+returns to Home or Dashboard. Inspection is unsupported in that transient state
+and selection never falsely reports Home.
+
+`select-tab dashboard|home|shelf --window ID` requires one exact, freshly
+observed app-owned versioned panel. The helper searches only that marked
+panel's descendants, with the existing 600-element/depth-24 bounds, and accepts
+only the exact identifiers on native Accessibility buttons. It pins the panel
+and target control through pre-dispatch validation, requires exactly one
+advertised `AXPress`, and performs at most one native press. It does not execute
+generic selectors or arbitrary actions.
+
+Dispatch acceptance is not success. The helper polls fresh Accessibility state
+within the original deadline and succeeds only after the requested tab is
+observed as selected:
+
+```json
+{"tabSelectionAction":{"windowID":123,"tab":"dashboard","state":"selected","outcome":"changed"}}
+```
+
+`outcome: already_selected` is an explicit no-op after the exact marked-panel
+tab state is revalidated; no action discovery or press is attempted. Missing/disabled Shelf,
+unsupported or malformed markers, stale mapping, permission loss, native press
+failure and timeout are nonzero failures. A failed/timed-out press may have
+been delivered; inspect again before restoration and never retry blindly. Tab
+selection does not open/close or lock the notch, change focus/sharing policy,
+control media/notifications, or alter Shelf settings/data.
+
 | Error code | Exit |
 | --- | --- |
 | `invalid_input` | 2 |
@@ -283,7 +352,7 @@ explicitly; there is no guessed fallback or global command-comma.
 
 ## Privacy and human permissions
 
-Settings and notch actions require **Accessibility**. Capture requires **Screen Recording**
+Settings, notch actions and tab selection require **Accessibility**. Capture requires **Screen Recording**
 (named **Screen & System Audio Recording** on some macOS versions).
 `inspect` reports current preflight results without prompting. A human may grant
 the relevant terminal/agent host or helper in System Settings → Privacy &
@@ -312,8 +381,9 @@ After semantic reconciliation and build/test/lint review:
 
 1. Preserve app identity, permissions, preferences, container and shelf. Follow
    the repository's existing data compatibility guidance. Record the current
-   app path and lifecycle, Settings visibility/pane and per-panel notch state; do not read or dump
-   private preference/shelf contents through this tool.
+   app path and lifecycle, Settings visibility/pane, per-panel notch state and
+   each supported panel's selected tab; do not read or dump private
+   preference/shelf contents through this tool.
 2. Parent/human launches the exact built `notch-pocket.app`, ensuring there is
    exactly one instance. This tool neither installs nor launches it. Run
    `inspect --app-path /absolute/built/notch-pocket.app`; verify path, process,
@@ -347,7 +417,11 @@ After semantic reconciliation and build/test/lint review:
    originally open), Settings and app lifecycle. Normal hover may change state;
    a refused restoration or recreated panel is a reported blocker, not permission
    to bypass guards or use stale IDs.
-8. Retain/delete only the agreed local images; list ignored residue. No commits,
+8. While that exact panel is open, verify Home → Dashboard → Shelf only when
+   Shelf is enabled. Observe each selected state and restore the original tab
+   before restoring panel/app state. Missing or disabled Shelf must be reported
+   without changing its setting.
+9. Retain/delete only the agreed local images; list ignored residue. No commits,
    remote publication, issue closure, or release is implied by these checks.
 
 Existing notch windows may be captured **only if** discoverable, selected and

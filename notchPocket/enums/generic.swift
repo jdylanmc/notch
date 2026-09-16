@@ -24,6 +24,22 @@ enum NotchViews: Hashable, Identifiable {
     case shelf
 
     var id: Self { self }
+
+    var accessibilityIdentifier: String {
+        "com.jdylanmc.notchpocket.notch.v1.tab.\(machineName)"
+    }
+
+    func accessibilityValue(isSelected: Bool) -> String {
+        isSelected ? "selected" : "unselected"
+    }
+
+    private var machineName: String {
+        switch self {
+        case .dashboard: return "dashboard"
+        case .home: return "home"
+        case .shelf: return "shelf"
+        }
+    }
 }
 
 enum DownloadIndicatorStyle: String, Defaults.Serializable {

@@ -13,6 +13,17 @@ import XCTest
 @testable import notchPocket
 
 final class IdentityCompatibilityTests: XCTestCase {
+    func testTabAccessibilityContractIsStableAndVersioned() {
+        XCTAssertEqual(NotchViews.dashboard.accessibilityIdentifier,
+                       "com.jdylanmc.notchpocket.notch.v1.tab.dashboard")
+        XCTAssertEqual(NotchViews.home.accessibilityIdentifier,
+                       "com.jdylanmc.notchpocket.notch.v1.tab.home")
+        XCTAssertEqual(NotchViews.shelf.accessibilityIdentifier,
+                       "com.jdylanmc.notchpocket.notch.v1.tab.shelf")
+        XCTAssertEqual(NotchViews.home.accessibilityValue(isSelected: true), "selected")
+        XCTAssertEqual(NotchViews.home.accessibilityValue(isSelected: false), "unselected")
+    }
+
     @MainActor
     private final class ObservationSource: NotchObservationSource {
         var notchState: NotchState = .closed
