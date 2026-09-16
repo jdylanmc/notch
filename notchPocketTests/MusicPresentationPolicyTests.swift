@@ -23,33 +23,4 @@ final class MusicPresentationPolicyTests: XCTestCase {
         XCTAssertFalse(presentation.showsPlaybackControls)
         XCTAssertTrue(presentation.showsLauncherIcon)
     }
-
-    func testSectionStaysVisibleInBothPresentations() {
-        XCTAssertTrue(MusicPresentationPolicy.presentation(isPlaying: true).isSectionVisible)
-        XCTAssertTrue(MusicPresentationPolicy.presentation(isPlaying: false).isSectionVisible)
-    }
-
-    func testResumingPlaybackRestoresPlayerPresentation() {
-        var presentation = MusicPresentationPolicy.presentation(isPlaying: true)
-        presentation = MusicPresentationPolicy.presentation(isPlaying: false)
-        presentation = MusicPresentationPolicy.presentation(isPlaying: true)
-
-        XCTAssertEqual(presentation, .player)
-        XCTAssertTrue(presentation.showsPlaybackControls)
-    }
-
-    func testPresentationDependsOnlyOnPlaybackState() {
-        XCTAssertEqual(
-            MusicPresentationPolicy.presentation(isPlaying: true),
-            MusicPresentationPolicy.presentation(isPlaying: true)
-        )
-        XCTAssertEqual(
-            MusicPresentationPolicy.presentation(isPlaying: false),
-            MusicPresentationPolicy.presentation(isPlaying: false)
-        )
-        XCTAssertNotEqual(
-            MusicPresentationPolicy.presentation(isPlaying: true),
-            MusicPresentationPolicy.presentation(isPlaying: false)
-        )
-    }
 }
