@@ -17,6 +17,7 @@ enum CompactMusicHoverPolicy {
     ) -> Bool? {
         guard bounds.size.width > 0, bounds.size.height > 0 else { return nil }
         let hovering = !isHidden && bounds.contains(pointInView)
+        if previous == nil && !hovering { return nil }
         return hovering == previous ? nil : hovering
     }
 }
@@ -44,6 +45,7 @@ struct CompactMusicHoverTrackingView: NSViewRepresentable {
         var onHover: ((Bool) -> Void)?
         private var trackingArea: NSTrackingArea?
         private var hovering: Bool?
+        private var reconcileTask: Task<Void, Never>?
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
@@ -69,9 +71,12 @@ struct CompactMusicHoverTrackingView: NSViewRepresentable {
         }
 
         func reconcileHoverAfterLayout() {
+            reconcileTask?.cancel()
             // Reconcile a stationary pointer after layout, outside SwiftUI's update pass.
-            Task { @MainActor [weak self] in
-                self?.updateHover()
+            reconcileTask = Task { @MainActor [weak self] in
+                guard !Task.isCancelled, let self else { return }
+                self.reconcileTask = nil
+                self.updateHover()
             }
         }
 
@@ -79,6 +84,8 @@ struct CompactMusicHoverTrackingView: NSViewRepresentable {
         override func mouseExited(with event: NSEvent) { updateHover() }
 
         func stopTracking() {
+            reconcileTask?.cancel()
+            reconcileTask = nil
             onHover = nil
             removeHoverTrackingArea()
         }

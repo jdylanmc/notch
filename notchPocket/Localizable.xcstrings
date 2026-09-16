@@ -6245,17 +6245,6 @@
       }
     },
     "Copy Meeting Link" : {},
-    "Could not open music app" : {
-      "comment" : "Title of the inline music launcher failure feedback.",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Could not open music app"
-          }
-        }
-      }
-    },
     "Currently selected: %@" : {
       "localizations" : {
         "de" : {
@@ -14387,6 +14376,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Music app %@ is not installed. Install it or choose a different Music Source in Settings."
+          }
+        }
+      }
+    },
+    "Music app could not be opened." : {
+      "comment" : "Concise music launcher failure when the app has no known display name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music app could not be opened."
           }
         }
       }

@@ -124,7 +124,7 @@ struct MusicSectionView<PlayingContent: View>: View {
             )
         case .openFailed(let bundleIdentifier):
             guard let name = MusicAppFeedback.displayName(for: bundleIdentifier) else {
-                return "Could not open music app"
+                return "Music app could not be opened."
             }
             return LocalizedStringResource(
                 "\(String(localized: name)) could not be opened.",
