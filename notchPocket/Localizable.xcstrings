@@ -206,6 +206,28 @@
         }
       }
     },
+    "%@ could not be opened." : {
+      "comment" : "Concise music launcher failure. The placeholder is a human-readable music app name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ could not be opened."
+          }
+        }
+      }
+    },
+    "%@ is not installed." : {
+      "comment" : "Concise music launcher failure. The placeholder is a human-readable music app name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is not installed."
+          }
+        }
+      }
+    },
     "%@x" : {
       "comment" : "Animation speed multiplier."
     },
@@ -14336,6 +14358,49 @@
         }
       }
     },
+    "Music app %@ could not be opened. Try opening it from Applications." : {
+      "comment" : "Music launcher failure. The placeholder is a human-readable music app name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music app %@ could not be opened. Try opening it from Applications."
+          }
+        }
+      }
+    },
+    "Music app %@ is not installed. Install it or choose a different Music Source in Settings." : {
+      "comment" : "Music launcher failure. The placeholder is a human-readable music app name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music app %@ is not installed. Install it or choose a different Music Source in Settings."
+          }
+        }
+      }
+    },
+    "Music app could not be opened." : {
+      "comment" : "Concise music launcher failure when the app has no known display name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music app could not be opened."
+          }
+        }
+      }
+    },
+    "Music app is not installed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music app is not installed."
+          }
+        }
+      }
+    },
     "Music Source" : {
       "localizations" : {
         "cs" : {
@@ -15264,6 +15329,27 @@
         }
       }
     },
+    "No music app is selected. Choose a Music Source in Settings or play music once with Now Playing." : {
+      "comment" : "Music launcher guidance when Now Playing has no observed or remembered music app.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No music app is selected. Choose a Music Source in Settings or play music once with Now Playing."
+          }
+        }
+      }
+    },
+    "No music app selected." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No music app selected."
+          }
+        }
+      }
+    },
     "Normalize gesture direction" : {
       "localizations" : {
         "de" : {
@@ -16153,8 +16239,30 @@
         }
       }
     },
+    "OK" : {
+      "comment" : "Dismiss the inline music launcher failure feedback.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        }
+      }
+    },
     "Only these apps show a live activity in the notch. Turn on \"From all apps\" to mirror everything instead." : {},
     "Open" : {},
+    "Open %@" : {
+      "comment" : "Music launcher button label. The placeholder is the user's selected music app.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open %@"
+          }
+        }
+      }
+    },
     "Open Calendar Settings" : {
       "localizations" : {
         "cs" : {
@@ -16275,6 +16383,17 @@
     },
     "Open in %@" : {},
     "Open in Calendar" : {},
+    "Open music app" : {
+      "comment" : "Music launcher button label when no named player has been resolved.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open music app"
+          }
+        }
+      }
+    },
     "Open Notch" : {
       "localizations" : {
         "de" : {
@@ -16729,6 +16848,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Open System Settings"
+          }
+        }
+      }
+    },
+    "Opens your preferred music app without starting playback." : {
+      "comment" : "Accessibility hint for the idle music launcher button.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opens your preferred music app without starting playback."
           }
         }
       }
@@ -24749,6 +24879,28 @@
     },
     "Tap to see the next of %lld waiting" : {},
     "The background helper crashed or was closed by macOS. It restarts automatically on the next OSD event." : {},
+    "The selected music app could not be opened. Try opening it from Applications." : {
+      "comment" : "Generic music launcher failure when the app has no known display name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The selected music app could not be opened. Try opening it from Applications."
+          }
+        }
+      }
+    },
+    "The selected music app is not installed. Choose a different Music Source in Settings." : {
+      "comment" : "Generic unavailable music app guidance when the app has no known display name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The selected music app is not installed. Choose a different Music Source in Settings."
+          }
+        }
+      }
+    },
     "Time to Full Charge: %@" : {
       "localizations" : {
         "de" : {

@@ -17,10 +17,13 @@ struct MusicPlayerView: View {
     let albumArtNamespace: Namespace.ID
     let horizontalMediaGestureFeedback: CGFloat
     @Binding var isHoveringMusicArea: Bool
+    let openMusicApp: () -> Void
 
     var body: some View {
         HStack {
-            AlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace).frame(width: 120).padding(.all, 5 * (vm.notchSize.height / 190))
+            AlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace, openMusicApp: openMusicApp)
+                .frame(width: 120)
+                .padding(.all, 5 * (vm.notchSize.height / 190))
             MusicControlsView(horizontalMediaGestureFeedback: horizontalMediaGestureFeedback)
                 .compositingGroup()
         }
@@ -38,6 +41,7 @@ struct AlbumArtView: View {
     @ObservedObject var musicManager = MusicManager.shared
     @ObservedObject var vm: NotchPocketViewModel
     let albumArtNamespace: Namespace.ID
+    let openMusicApp: () -> Void
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -64,9 +68,7 @@ struct AlbumArtView: View {
 
     private var albumArtButton: some View {
         ZStack {
-            Button {
-                musicManager.openMusicApp()
-            } label: {
+            Button(action: openMusicApp) {
                 ZStack(alignment:.bottomTrailing) {
                     albumArtImage
                     appIconOverlay
@@ -442,11 +444,14 @@ struct NotchHomeView: View {
 
     private var mainContent: some View {
         HStack(alignment: .top, spacing: (shouldShowCamera && Defaults[.showCalendar]) ? 10 : 15) {
-            MusicPlayerView(
-                albumArtNamespace: albumArtNamespace,
-                horizontalMediaGestureFeedback: horizontalMediaGestureFeedback,
-                isHoveringMusicArea: $isHoveringMusicArea
-            )
+            MusicSectionView { openMusicApp in
+                MusicPlayerView(
+                    albumArtNamespace: albumArtNamespace,
+                    horizontalMediaGestureFeedback: horizontalMediaGestureFeedback,
+                    isHoveringMusicArea: $isHoveringMusicArea,
+                    openMusicApp: openMusicApp
+                )
+            }
 
             if Defaults[.showCalendar] {
                 CalendarView()
