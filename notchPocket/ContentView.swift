@@ -420,7 +420,10 @@ struct ContentView: View {
                     .background(alignment: .top) {
                         if isCompactMusicOpen {
                             // Keep only hover outside the painted/interactive content.
-                            CompactMusicHoverTrackingView(onHover: handleHover)
+                            CompactMusicHoverTrackingView(
+                                initialHovering: isHoveringVisibleContent,
+                                onHover: handleHover
+                            )
                                 .frame(height: compactHoverHeight)
                                 .allowsHitTesting(false)
                         }

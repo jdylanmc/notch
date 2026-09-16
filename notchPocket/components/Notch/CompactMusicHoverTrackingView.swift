@@ -24,10 +24,12 @@ enum CompactMusicHoverPolicy {
 
 @MainActor
 struct CompactMusicHoverTrackingView: NSViewRepresentable {
+    let initialHovering: Bool
     let onHover: (Bool) -> Void
 
     func makeNSView(context: Context) -> HoverView {
         let view = HoverView()
+        view.hovering = initialHovering
         view.onHover = onHover
         return view
     }
@@ -43,8 +45,8 @@ struct CompactMusicHoverTrackingView: NSViewRepresentable {
 
     final class HoverView: NSView {
         var onHover: ((Bool) -> Void)?
+        fileprivate var hovering: Bool?
         private var trackingArea: NSTrackingArea?
-        private var hovering: Bool?
         private var reconcileTask: Task<Void, Never>?
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
