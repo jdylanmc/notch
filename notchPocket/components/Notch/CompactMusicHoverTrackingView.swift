@@ -8,6 +8,19 @@
 import AppKit
 import SwiftUI
 
+enum CompactMusicHoverPolicy {
+    static func hoverState(
+        bounds: CGRect,
+        pointInView: CGPoint,
+        isHidden: Bool,
+        previous: Bool?
+    ) -> Bool? {
+        guard bounds.size.width > 0, bounds.size.height > 0 else { return nil }
+        let hovering = !isHidden && bounds.contains(pointInView)
+        return hovering == previous ? nil : hovering
+    }
+}
+
 @MainActor
 struct CompactMusicHoverTrackingView: NSViewRepresentable {
     let onHover: (Bool) -> Void
@@ -20,6 +33,7 @@ struct CompactMusicHoverTrackingView: NSViewRepresentable {
 
     func updateNSView(_ nsView: HoverView, context: Context) {
         nsView.onHover = onHover
+        nsView.reconcileHoverAfterLayout()
     }
 
     static func dismantleNSView(_ nsView: HoverView, coordinator: ()) {
@@ -51,9 +65,12 @@ struct CompactMusicHoverTrackingView: NSViewRepresentable {
             )
             addTrackingArea(area)
             trackingArea = area
+            reconcileHoverAfterLayout()
+        }
 
+        func reconcileHoverAfterLayout() {
             // Reconcile a stationary pointer after layout, outside SwiftUI's update pass.
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 self?.updateHover()
             }
         }
@@ -76,8 +93,12 @@ struct CompactMusicHoverTrackingView: NSViewRepresentable {
         private func updateHover() {
             guard let window, let onHover else { return }
             let point = convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
-            let inside = bounds.contains(point) && !isHiddenOrHasHiddenAncestor
-            guard hovering != inside else { return }
+            guard let inside = CompactMusicHoverPolicy.hoverState(
+                bounds: bounds,
+                pointInView: point,
+                isHidden: isHiddenOrHasHiddenAncestor,
+                previous: hovering
+            ) else { return }
             hovering = inside
             onHover(inside)
         }

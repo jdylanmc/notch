@@ -28,7 +28,7 @@ struct MusicLaunchFeedbackHoverPreferenceKey: PreferenceKey {
 struct MusicSectionView<PlayingContent: View>: View {
     @ObservedObject private var musicManager = MusicManager.shared
     @Default(.lastSupportedNowPlayingBundleIdentifier) private var rememberedBundleIdentifier
-    @State private var launchFailure: LocalizedStringResource?
+    @State private var launchFailure: MusicAppLaunchOutcome?
     @State private var launchTask: Task<Void, Never>?
     @State private var isHoveringFeedback = false
 
@@ -59,6 +59,7 @@ struct MusicSectionView<PlayingContent: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(minHeight: launchFailure != nil ? 64 : nil, alignment: .topLeading)
         .overlay(alignment: .topLeading) {
             if let launchFailure {
                 failureFeedback(launchFailure)
@@ -107,37 +108,59 @@ struct MusicSectionView<PlayingContent: View>: View {
         )
     }
 
-    private func failureFeedback(_ message: LocalizedStringResource) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-                .accessibilityHidden(true)
-
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Could not open music app")
-                        .font(.caption.weight(.semibold))
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private func conciseFailureMessage(for outcome: MusicAppLaunchOutcome) -> LocalizedStringResource? {
+        switch outcome {
+        case .opened:
+            return nil
+        case .noTarget:
+            return "No music app selected."
+        case .notInstalled(let bundleIdentifier):
+            guard let name = MusicAppFeedback.displayName(for: bundleIdentifier) else {
+                return "Music app is not installed."
             }
-            .help(Text(message))
-
-            Button("OK") {
-                launchFailure = nil
+            return LocalizedStringResource(
+                "\(String(localized: name)) is not installed.",
+                comment: "Concise music launcher failure. The placeholder is a human-readable music app name."
+            )
+        case .openFailed(let bundleIdentifier):
+            guard let name = MusicAppFeedback.displayName(for: bundleIdentifier) else {
+                return "Could not open music app"
             }
-            .buttonStyle(.plain)
-            .font(.caption.weight(.semibold))
-            .frame(minWidth: 24, minHeight: 24)
-            .contentShape(Rectangle())
+            return LocalizedStringResource(
+                "\(String(localized: name)) could not be opened.",
+                comment: "Concise music launcher failure. The placeholder is a human-readable music app name."
+            )
         }
-        .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.black)
-        .clipped()
-        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func failureFeedback(_ outcome: MusicAppLaunchOutcome) -> some View {
+        if let message = conciseFailureMessage(for: outcome),
+           let guidance = MusicAppFeedback.message(for: outcome) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+
+                Text(message)
+                    .font(.caption.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button("OK") {
+                    launchFailure = nil
+                }
+                .buttonStyle(.plain)
+                .font(.caption.weight(.semibold))
+                .frame(minWidth: 24, minHeight: 24)
+                .contentShape(Rectangle())
+            }
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(.black)
+            .clipped()
+            .help(Text(guidance))
+            .accessibilityElement(children: .contain)
+        }
     }
 
     private func openMusicApp() {
@@ -146,7 +169,7 @@ struct MusicSectionView<PlayingContent: View>: View {
         launchTask = Task { @MainActor in
             let outcome = await musicManager.openMusicApp()
             guard !Task.isCancelled else { return }
-            launchFailure = MusicAppFeedback.message(for: outcome)
+            launchFailure = MusicAppFeedback.message(for: outcome) == nil ? nil : outcome
             launchTask = nil
         }
     }

@@ -206,6 +206,28 @@
         }
       }
     },
+    "%@ could not be opened." : {
+      "comment" : "Concise music launcher failure. The placeholder is a human-readable music app name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ could not be opened."
+          }
+        }
+      }
+    },
+    "%@ is not installed." : {
+      "comment" : "Concise music launcher failure. The placeholder is a human-readable music app name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is not installed."
+          }
+        }
+      }
+    },
     "%@x" : {
       "comment" : "Animation speed multiplier."
     },
@@ -14369,6 +14391,16 @@
         }
       }
     },
+    "Music app is not installed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music app is not installed."
+          }
+        }
+      }
+    },
     "Music Source" : {
       "localizations" : {
         "cs" : {
@@ -15304,6 +15336,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No music app is selected. Choose a Music Source in Settings or play music once with Now Playing."
+          }
+        }
+      }
+    },
+    "No music app selected." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No music app selected."
           }
         }
       }
