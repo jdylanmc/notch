@@ -63,22 +63,22 @@ final class CompactMusicHoverPolicyTests: XCTestCase {
         XCTAssertEqual(hoverState(point: insidePoint, previous: false), true)
     }
 
-    func testPointerOutsideEndsHoverFromHovering() {
+    func testObservedHoverExitsWhenPointerLeaves() {
         XCTAssertEqual(hoverState(point: outsidePoint, previous: true), false)
     }
 
-    func testPointerOutsideReportsNotHoveringFromUnknownState() {
-        XCTAssertEqual(hoverState(point: outsidePoint, previous: nil), false)
+    func testUnknownStateWithPointerOutsideYieldsNoInformation() {
+        XCTAssertNil(hoverState(point: outsidePoint, previous: nil))
     }
 
     // MARK: - Hidden section
 
-    func testHiddenSectionEndsHoverEvenWithPointerInside() {
+    func testObservedHoverExitsWhenSectionHides() {
         XCTAssertEqual(hoverState(point: insidePoint, isHidden: true, previous: true), false)
     }
 
-    func testHiddenSectionReportsNotHoveringFromUnknownState() {
-        XCTAssertEqual(hoverState(point: insidePoint, isHidden: true, previous: nil), false)
+    func testUnknownStateWhileHiddenYieldsNoInformation() {
+        XCTAssertNil(hoverState(point: insidePoint, isHidden: true, previous: nil))
     }
 
     // MARK: - Unchanged state
@@ -87,11 +87,11 @@ final class CompactMusicHoverPolicyTests: XCTestCase {
         XCTAssertNil(hoverState(point: insidePoint, previous: true))
     }
 
-    func testUnchangedNonHoverReportsNoState() {
+    func testPreviouslyNotHoveringStaysSilentWhenPointerOutside() {
         XCTAssertNil(hoverState(point: outsidePoint, previous: false))
     }
 
-    func testUnchangedHiddenNonHoverReportsNoState() {
+    func testPreviouslyNotHoveringStaysSilentWhileHidden() {
         XCTAssertNil(hoverState(point: insidePoint, isHidden: true, previous: false))
     }
 
