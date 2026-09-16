@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		530000012026091500000001 /* MusicAppLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 530000022026091500000001 /* MusicAppLauncher.swift */; };
 		530000032026091500000001 /* MusicSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 530000042026091500000001 /* MusicSectionView.swift */; };
+		530000052026091500000001 /* CompactMusicHoverTrackingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 530000062026091500000001 /* CompactMusicHoverTrackingView.swift */; };
 		CAC000062026091200000001 /* GraphCalendarPayloadDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000072026091200000001 /* GraphCalendarPayloadDecoder.swift */; };
 		CAC000042026091200000001 /* GraphCalendarCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000052026091200000001 /* GraphCalendarCore.swift */; };
 		CAC000012026091200000001 /* CalendarCoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000022026091200000001 /* CalendarCoreModels.swift */; };
@@ -239,6 +240,7 @@
 /* Begin PBXFileReference section */
 		530000022026091500000001 /* MusicAppLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAppLauncher.swift; sourceTree = "<group>"; };
 		530000042026091500000001 /* MusicSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSectionView.swift; sourceTree = "<group>"; };
+		530000062026091500000001 /* CompactMusicHoverTrackingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactMusicHoverTrackingView.swift; sourceTree = "<group>"; };
 		CAC000072026091200000001 /* GraphCalendarPayloadDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphCalendarPayloadDecoder.swift; sourceTree = "<group>"; };
 		CAC000052026091200000001 /* GraphCalendarCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphCalendarCore.swift; sourceTree = "<group>"; };
 		CAC000022026091200000001 /* CalendarCoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarCoreModels.swift; sourceTree = "<group>"; };
@@ -948,6 +950,7 @@
 			children = (
 				AA01NLA22E7A0001 /* NotificationLiveActivity.swift */,
 				AA06CHV22E7A0001 /* CompactHomeView.swift */,
+				530000062026091500000001 /* CompactMusicHoverTrackingView.swift */,
 				AA04LAS22E7A0001 /* LiveActivityStack.swift */,
 				1194E8862EA6DDA7009C82D6 /* NotchPocketSkyLightWindow.swift */,
 				1160F8D72DD98230006FBB94 /* NotchShape.swift */,
@@ -1246,6 +1249,7 @@
 				1471639A2C5D35FF0068B555 /* MusicManager.swift in Sources */,
 				530000012026091500000001 /* MusicAppLauncher.swift in Sources */,
 				530000032026091500000001 /* MusicSectionView.swift in Sources */,
+				530000052026091500000001 /* CompactMusicHoverTrackingView.swift in Sources */,
 				AA07ARM12E7A0001 /* AudioRouteManager.swift in Sources */,
 				AA05SRM12E7A0001 /* SmartReplyManager.swift in Sources */,
 				F1F2A0A100000000000000F1 /* AudioCaptureManager.swift in Sources */,

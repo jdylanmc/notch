@@ -28,8 +28,10 @@ struct ContentView: View {
     @State private var activityIndex: Int = 0
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
+    @State private var isHoveringVisibleContent = false
     @State private var compactHoverHeight: CGFloat = 0
     @State private var musicLaunchInteractionActive = false
+    @State private var isHoveringMusicLaunchFeedback = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
 
     @State private var gestureProgress: CGFloat = .zero
@@ -128,7 +130,7 @@ struct ContentView: View {
     /// layout, so any value shorter than the content leaves the transport
     /// row outside the hover region — moving toward the buttons registered
     /// as a hover-exit and closed the notch. The compact panel's height is
-    /// controlled by its own internal padding. Its transparent hover region
+    /// controlled by its own internal padding. A non-hit-testing tracking view
     /// separately retains the largest measured height until this open session
     /// ends, so collapsing the music child cannot move it out from under the
     /// pointer.
@@ -258,7 +260,6 @@ struct ContentView: View {
                     .opacity((isNotchHeightZero && vm.notchState == .closed) ? 0.01 : 1)
                 
                 mainLayout
-                    .fixedSize(horizontal: false, vertical: isCompactMusicOpen)
                     .onGeometryChange(for: CGFloat?.self) { proxy in
                         isCompactMusicOpen ? proxy.size.height : nil
                     } action: { height in
@@ -276,8 +277,6 @@ struct ContentView: View {
                     // top-anchored origin. That's what read as "the notch
                     // sits a bit off the top of the screen."
                     .frame(height: vm.notchState == .open ? openNotchHeight : nil, alignment: .top)
-                    // Outside the painted shape: retain hit testing, not the expanded player.
-                    .frame(minHeight: isCompactMusicOpen ? compactHoverHeight : nil, alignment: .top)
                     .conditionalModifier(true) { view in
                         return view
                             .animation(vm.notchState == .open ? StandardAnimations.open : StandardAnimations.close, value: vm.notchState)
@@ -285,10 +284,21 @@ struct ContentView: View {
                     }
                     .contentShape(Rectangle())
                     .onHover { hovering in
-                        handleHover(hovering)
+                        isHoveringVisibleContent = hovering
+                        if !isCompactMusicOpen {
+                            handleHover(hovering)
+                        }
+                    }
+                    .onChange(of: isCompactMusicOpen) { _, active in
+                        if !active && vm.notchState == .open {
+                            handleHover(isHoveringVisibleContent)
+                        }
                     }
                     .onPreferenceChange(MusicLaunchInteractionPreferenceKey.self) { active in
                         musicLaunchInteractionActive = active
+                    }
+                    .onPreferenceChange(MusicLaunchFeedbackHoverPreferenceKey.self) { hovering in
+                        isHoveringMusicLaunchFeedback = hovering
                     }
                     .onChange(of: musicLaunchInteractionActive) { _, active in
                         if !active && !isHovering && vm.notchState == .open {
@@ -353,8 +363,10 @@ struct ContentView: View {
                     .onDisappear {
                         hoverTask?.cancel()
                         hoverTask = nil
+                        isHoveringVisibleContent = false
                         compactHoverHeight = 0
                         musicLaunchInteractionActive = false
+                        isHoveringMusicLaunchFeedback = false
                         // Balance the refcount: torn down while open (screen
                         // lock, display-set change, window teardown) means the
                         // open->closed onChange never fires — without this the
@@ -404,6 +416,14 @@ struct ContentView: View {
                         //                        dn.toggle()
                         //                    }
                         //                    .keyboardShortcut("E", modifiers: .command)
+                    }
+                    .background(alignment: .top) {
+                        if isCompactMusicOpen {
+                            // Keep only hover outside the painted/interactive content.
+                            CompactMusicHoverTrackingView(onHover: handleHover)
+                                .frame(height: compactHoverHeight)
+                                .allowsHitTesting(false)
+                        }
                     }
                 if vm.chinHeight > 0 {
                     Rectangle()
@@ -943,6 +963,7 @@ struct ContentView: View {
 
     private func handleUpGesture(translation: CGFloat, phase: NSEvent.Phase) {
         guard vm.notchState == .open && !vm.isHoveringCalendar else { return }
+        guard !isHoveringMusicLaunchFeedback || phase == .ended else { return }
 
         withAnimation(animationSpring) {
             gestureProgress = (translation / Defaults[.gestureSensitivity]) * -20
@@ -987,7 +1008,7 @@ struct ContentView: View {
         feedback: CGFloat,
         action: () -> Void
     ) {
-        guard isHorizontalMediaGestureContext else {
+        guard !isHoveringMusicLaunchFeedback && isHorizontalMediaGestureContext else {
             resetHorizontalMediaGesture()
             return
         }

@@ -46,23 +46,25 @@ struct CompactHomeView: View {
     private let vizBarWidth: CGFloat = 24
 
     var body: some View {
-        MusicSectionView { _ in
-            VStack(spacing: 0) {
-                header
-                    .frame(height: albumArtWidth)
+        ZStack(alignment: .topTrailing) {
+            MusicSectionView { _ in
+                VStack(spacing: 0) {
+                    header
+                        .frame(height: albumArtWidth)
 
-                progressRow
-                    .padding(.top, 4)
+                    progressRow
+                        .padding(.top, 4)
 
-                transport
-                    .padding(.top, 1)
+                    transport
+                        .padding(.top, 1)
+                }
+                .onDisappear {
+                    dragging = false
+                    showingOutputPicker = false
+                }
             }
-            .onDisappear {
-                dragging = false
-                showingOutputPicker = false
-            }
-        }
-        .overlay(alignment: .topTrailing) {
+            .frame(maxWidth: .infinity)
+
             batteryIndicator
         }
         .padding(.horizontal, 12)

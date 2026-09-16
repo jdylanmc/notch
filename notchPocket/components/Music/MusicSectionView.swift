@@ -16,12 +16,21 @@ struct MusicLaunchInteractionPreferenceKey: PreferenceKey {
     }
 }
 
+struct MusicLaunchFeedbackHoverPreferenceKey: PreferenceKey {
+    static let defaultValue = false
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
 @MainActor
 struct MusicSectionView<PlayingContent: View>: View {
     @ObservedObject private var musicManager = MusicManager.shared
     @Default(.lastSupportedNowPlayingBundleIdentifier) private var rememberedBundleIdentifier
     @State private var launchFailure: LocalizedStringResource?
     @State private var launchTask: Task<Void, Never>?
+    @State private var isHoveringFeedback = false
 
     private let playingContent: (@escaping () -> Void) -> PlayingContent
 
@@ -30,7 +39,7 @@ struct MusicSectionView<PlayingContent: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             if MusicPresentationPolicy.presentation(isPlaying: musicManager.isPlaying).showsPlaybackControls {
                 playingContent(openMusicApp)
             } else {
@@ -49,19 +58,27 @@ struct MusicSectionView<PlayingContent: View>: View {
                 .help(Text(launcherLabel))
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-
+        }
+        .overlay(alignment: .topLeading) {
             if let launchFailure {
                 failureFeedback(launchFailure)
+                    .onHover { isHoveringFeedback = $0 }
+                    .onDisappear { isHoveringFeedback = false }
             }
         }
         .preference(
             key: MusicLaunchInteractionPreferenceKey.self,
-            value: launchTask != nil || launchFailure != nil
+            value: launchTask != nil
+        )
+        .preference(
+            key: MusicLaunchFeedbackHoverPreferenceKey.self,
+            value: launchFailure != nil && isHoveringFeedback
         )
         .onDisappear {
             launchTask?.cancel()
             launchTask = nil
             launchFailure = nil
+            isHoveringFeedback = false
         }
     }
 
@@ -96,14 +113,17 @@ struct MusicSectionView<PlayingContent: View>: View {
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Could not open music app")
-                    .font(.caption.weight(.semibold))
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Could not open music app")
+                        .font(.caption.weight(.semibold))
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .help(Text(message))
 
             Button("OK") {
                 launchFailure = nil
@@ -114,6 +134,9 @@ struct MusicSectionView<PlayingContent: View>: View {
             .contentShape(Rectangle())
         }
         .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(.black)
+        .clipped()
         .accessibilityElement(children: .contain)
     }
 
