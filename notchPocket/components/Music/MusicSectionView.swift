@@ -8,11 +8,20 @@
 import Defaults
 import SwiftUI
 
+struct MusicLaunchInteractionPreferenceKey: PreferenceKey {
+    static let defaultValue = false
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
 @MainActor
 struct MusicSectionView<PlayingContent: View>: View {
     @ObservedObject private var musicManager = MusicManager.shared
     @Default(.lastSupportedNowPlayingBundleIdentifier) private var rememberedBundleIdentifier
     @State private var launchFailure: LocalizedStringResource?
+    @State private var launchTask: Task<Void, Never>?
 
     private let playingContent: (@escaping () -> Void) -> PlayingContent
 
@@ -21,7 +30,7 @@ struct MusicSectionView<PlayingContent: View>: View {
     }
 
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 8) {
             if MusicPresentationPolicy.presentation(isPlaying: musicManager.isPlaying).showsPlaybackControls {
                 playingContent(openMusicApp)
             } else {
@@ -34,16 +43,25 @@ struct MusicSectionView<PlayingContent: View>: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .disabled(launchTask != nil)
                 .accessibilityLabel(Text(launcherLabel))
                 .accessibilityHint("Opens your preferred music app without starting playback.")
                 .help(Text(launcherLabel))
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            if let launchFailure {
+                failureFeedback(launchFailure)
+            }
         }
-        .alert("Could not open music app", isPresented: isShowingLaunchFailure, presenting: launchFailure) { _ in
-            Button("OK", role: .cancel) {}
-        } message: { message in
-            Text(message)
+        .preference(
+            key: MusicLaunchInteractionPreferenceKey.self,
+            value: launchTask != nil || launchFailure != nil
+        )
+        .onDisappear {
+            launchTask?.cancel()
+            launchTask = nil
+            launchFailure = nil
         }
     }
 
@@ -63,42 +81,50 @@ struct MusicSectionView<PlayingContent: View>: View {
     }
 
     private var launcherLabel: LocalizedStringResource {
-        guard let launchTarget,
-              let controller = MediaControllerType(nowPlayingBundleIdentifier: launchTarget) else {
+        guard let name = MusicAppFeedback.displayName(for: launchTarget) else {
             return "Open music app"
         }
         return LocalizedStringResource(
-            "Open \(controller.localizedString)",
+            "Open \(String(localized: name))",
             comment: "Music launcher button label. The placeholder is the user's selected music app."
         )
     }
 
-    private var isShowingLaunchFailure: Binding<Bool> {
-        Binding(
-            get: { launchFailure != nil },
-            set: { if !$0 { launchFailure = nil } }
-        )
+    private func failureFeedback(_ message: LocalizedStringResource) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Could not open music app")
+                    .font(.caption.weight(.semibold))
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button("OK") {
+                launchFailure = nil
+            }
+            .buttonStyle(.plain)
+            .font(.caption.weight(.semibold))
+            .frame(minWidth: 24, minHeight: 24)
+            .contentShape(Rectangle())
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
     }
 
     private func openMusicApp() {
-        Task { @MainActor in
+        guard launchTask == nil else { return }
+        launchFailure = nil
+        launchTask = Task { @MainActor in
             let outcome = await musicManager.openMusicApp()
-            switch outcome {
-            case .opened:
-                launchFailure = nil
-            case .noTarget:
-                launchFailure = "No music app is selected. Choose a Music Source in Settings or play music once with Now Playing."
-            case .notInstalled(let bundleIdentifier):
-                launchFailure = LocalizedStringResource(
-                    "Music app \(bundleIdentifier) is not installed. Install it or choose a different Music Source in Settings.",
-                    comment: "Music launcher failure. The placeholder identifies the app that could not be found."
-                )
-            case .openFailed(let bundleIdentifier):
-                launchFailure = LocalizedStringResource(
-                    "Music app \(bundleIdentifier) could not be opened. Try opening it from Applications.",
-                    comment: "Music launcher failure. The placeholder identifies the app that macOS could not open."
-                )
-            }
+            guard !Task.isCancelled else { return }
+            launchFailure = MusicAppFeedback.message(for: outcome)
+            launchTask = nil
         }
     }
 }

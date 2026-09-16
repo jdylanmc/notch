@@ -13,7 +13,6 @@ enum MusicSectionPresentation: Equatable {
 
     var showsPlaybackControls: Bool { self == .player }
     var showsLauncherIcon: Bool { self == .launcher }
-    var isSectionVisible: Bool { true }
 }
 
 enum MusicPresentationPolicy {
@@ -59,6 +58,41 @@ enum MusicAppLaunchOutcome: Equatable {
     case noTarget
     case notInstalled(bundleIdentifier: String)
     case openFailed(bundleIdentifier: String)
+}
+
+enum MusicAppFeedback {
+    static func displayName(for bundleIdentifier: String?) -> LocalizedStringResource? {
+        guard let bundleIdentifier = nonemptyBundleIdentifier(bundleIdentifier),
+              let controller = MediaControllerType(nowPlayingBundleIdentifier: bundleIdentifier) else {
+            return nil
+        }
+        return controller.localizedResource
+    }
+
+    static func message(for outcome: MusicAppLaunchOutcome) -> LocalizedStringResource? {
+        switch outcome {
+        case .opened:
+            return nil
+        case .noTarget:
+            return "No music app is selected. Choose a Music Source in Settings or play music once with Now Playing."
+        case .notInstalled(let bundleIdentifier):
+            guard let name = displayName(for: bundleIdentifier) else {
+                return "The selected music app is not installed. Choose a different Music Source in Settings."
+            }
+            return LocalizedStringResource(
+                "Music app \(String(localized: name)) is not installed. Install it or choose a different Music Source in Settings.",
+                comment: "Music launcher failure. The placeholder is a human-readable music app name."
+            )
+        case .openFailed(let bundleIdentifier):
+            guard let name = displayName(for: bundleIdentifier) else {
+                return "The selected music app could not be opened. Try opening it from Applications."
+            }
+            return LocalizedStringResource(
+                "Music app \(String(localized: name)) could not be opened. Try opening it from Applications.",
+                comment: "Music launcher failure. The placeholder is a human-readable music app name."
+            )
+        }
+    }
 }
 
 @MainActor

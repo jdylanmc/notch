@@ -28,6 +28,8 @@ struct ContentView: View {
     @State private var activityIndex: Int = 0
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
+    @State private var compactHoverHeight: CGFloat = 0
+    @State private var musicLaunchInteractionActive = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
 
     @State private var gestureProgress: CGFloat = .zero
@@ -40,6 +42,7 @@ struct ContentView: View {
     @Namespace var albumArtNamespace
 
     @Default(.showNotHumanFace) var showNotHumanFace
+    @Default(.compactMode) private var compactMode
 
     // Use standardized animations from StandardAnimations enum
     private let animationSpring = StandardAnimations.interactive
@@ -125,11 +128,17 @@ struct ContentView: View {
     /// layout, so any value shorter than the content leaves the transport
     /// row outside the hover region — moving toward the buttons registered
     /// as a hover-exit and closed the notch. The compact panel's height is
-    /// controlled by its own internal padding instead, which is the honest
-    /// lever anyway.
+    /// controlled by its own internal padding. Its transparent hover region
+    /// separately retains the largest measured height until this open session
+    /// ends, so collapsing the music child cannot move it out from under the
+    /// pointer.
     private var openNotchHeight: CGFloat? {
         if notificationManager.activeNotification != nil { return 132 }
         return Defaults[.compactMode] ? nil : vm.notchSize.height
+    }
+
+    private var isCompactMusicOpen: Bool {
+        compactMode && vm.notchState == .open && notificationManager.activeNotification == nil
     }
 
     /// Compact mode drops the tab bar along with the tabs it switches
@@ -249,6 +258,16 @@ struct ContentView: View {
                     .opacity((isNotchHeightZero && vm.notchState == .closed) ? 0.01 : 1)
                 
                 mainLayout
+                    .fixedSize(horizontal: false, vertical: isCompactMusicOpen)
+                    .onGeometryChange(for: CGFloat?.self) { proxy in
+                        isCompactMusicOpen ? proxy.size.height : nil
+                    } action: { height in
+                        if let height {
+                            compactHoverHeight = max(compactHoverHeight, height)
+                        } else {
+                            compactHoverHeight = 0
+                        }
+                    }
                     // alignment: .top matters here — without it this frame
                     // defaults to centering, and shrinking the height for a
                     // notification (openNotchHeight < vm.notchSize.height)
@@ -257,6 +276,8 @@ struct ContentView: View {
                     // top-anchored origin. That's what read as "the notch
                     // sits a bit off the top of the screen."
                     .frame(height: vm.notchState == .open ? openNotchHeight : nil, alignment: .top)
+                    // Outside the painted shape: retain hit testing, not the expanded player.
+                    .frame(minHeight: isCompactMusicOpen ? compactHoverHeight : nil, alignment: .top)
                     .conditionalModifier(true) { view in
                         return view
                             .animation(vm.notchState == .open ? StandardAnimations.open : StandardAnimations.close, value: vm.notchState)
@@ -265,6 +286,14 @@ struct ContentView: View {
                     .contentShape(Rectangle())
                     .onHover { hovering in
                         handleHover(hovering)
+                    }
+                    .onPreferenceChange(MusicLaunchInteractionPreferenceKey.self) { active in
+                        musicLaunchInteractionActive = active
+                    }
+                    .onChange(of: musicLaunchInteractionActive) { _, active in
+                        if !active && !isHovering && vm.notchState == .open {
+                            handleHover(false)
+                        }
                     }
                     .onTapGesture {
                         if vm.notchState == .closed && !shouldDisplayNowPlayingFallbackNotice {
@@ -293,13 +322,14 @@ struct ContentView: View {
                             }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: .sharingDidFinish)) { _ in
-                        if vm.notchState == .open && !isHovering && !vm.isBatteryPopoverActive {
+                        if vm.notchState == .open && !isHovering && !vm.isBatteryPopoverActive && !musicLaunchInteractionActive {
                             hoverTask?.cancel()
                             hoverTask = Task {
                                 try? await Task.sleep(for: .milliseconds(100))
                                 guard !Task.isCancelled else { return }
                                 await MainActor.run {
-                                    if self.vm.notchState == .open && !self.isHovering && !self.vm.isBatteryPopoverActive && !SharingStateManager.shared.preventNotchClose {
+                                    if self.vm.notchState == .open && !self.isHovering && !self.vm.isBatteryPopoverActive
+                                        && !self.musicLaunchInteractionActive && !SharingStateManager.shared.preventNotchClose {
                                         self.vm.close()
                                     }
                                 }
@@ -321,6 +351,10 @@ struct ContentView: View {
                         }
                     }
                     .onDisappear {
+                        hoverTask?.cancel()
+                        hoverTask = nil
+                        compactHoverHeight = 0
+                        musicLaunchInteractionActive = false
                         // Balance the refcount: torn down while open (screen
                         // lock, display-set change, window teardown) means the
                         // open->closed onChange never fires — without this the
@@ -342,13 +376,15 @@ struct ContentView: View {
                         if activityIndex >= count { activityIndex = max(count - 1, 0) }
                     }
                     .onChange(of: vm.isBatteryPopoverActive) {
-                        if !vm.isBatteryPopoverActive && !isHovering && vm.notchState == .open && !SharingStateManager.shared.preventNotchClose {
+                        if !vm.isBatteryPopoverActive && !isHovering && vm.notchState == .open
+                            && !musicLaunchInteractionActive && !SharingStateManager.shared.preventNotchClose {
                             hoverTask?.cancel()
                             hoverTask = Task {
                                 try? await Task.sleep(for: .milliseconds(100))
                                 guard !Task.isCancelled else { return }
                                 await MainActor.run {
-                                    if !self.vm.isBatteryPopoverActive && !self.isHovering && self.vm.notchState == .open && !SharingStateManager.shared.preventNotchClose {
+                                    if !self.vm.isBatteryPopoverActive && !self.isHovering && self.vm.notchState == .open
+                                        && !self.musicLaunchInteractionActive && !SharingStateManager.shared.preventNotchClose {
                                         self.vm.close()
                                     }
                                 }
@@ -871,7 +907,8 @@ struct ContentView: View {
                     // Pointer left — let the notification age out again.
                     self.notificationManager.resumeDismiss()
 
-                    if self.vm.notchState == .open && !self.vm.isBatteryPopoverActive && !SharingStateManager.shared.preventNotchClose {
+                    if self.vm.notchState == .open && !self.vm.isBatteryPopoverActive
+                        && !self.musicLaunchInteractionActive && !SharingStateManager.shared.preventNotchClose {
                         self.vm.close()
                     }
                 }
