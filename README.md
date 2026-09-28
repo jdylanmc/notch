@@ -4,9 +4,14 @@ An independent macOS notch app maintained at
 [jdylanmc/notch](https://github.com/jdylanmc/notch).
 Historical source and artwork attribution: [Third-party notices](THIRD_PARTY_LICENSES).
 
-The independent development version is **0.1**. Settings and the macOS app menu
+The independent development version is **0.1.0**. Settings and the macOS app menu
 use **Notch Pocket**; the existing bundle identities, build counter, and
 `notch-pocket.app` filename are unchanged.
+
+The first independent release will use tag **`notch-pocket-v0.1.0`** and
+Homebrew cask version **`0.1.0`**. App and embedded helper versions match.
+Historical upstream `v2.x` tags do not identify Notch Pocket releases.
+Version alignment is release preparation, not evidence of publication or notarization.
 
 The foundation milestone preserves existing media features, shared media code,
 and the file shelf. **Spotify is the only committed player support.** Other
@@ -258,7 +263,7 @@ Consume **that exact successful app** with the unchanged packager:
 mkdir -p .build/packages
 python3 -B scripts/package.py \
   --app "$PWD/.build/np9-signing-001/Products/Release/notch-pocket.app" \
-  --output "$PWD/.build/packages/notch-pocket-0.1-NOT-YET-NOTARIZED-001.dmg"
+  --output "$PWD/.build/packages/notch-pocket-0.1.0-NOT-YET-NOTARIZED-001.dmg"
 ```
 
 Use the `app` path actually returned above and a new DMG path; do not package a

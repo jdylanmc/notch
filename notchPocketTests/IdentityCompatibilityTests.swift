@@ -271,7 +271,7 @@ final class IdentityCompatibilityTests: XCTestCase {
         XCTAssertEqual(app.bundleIdentifier, "com.jdylanmc.notchpocket")
         XCTAssertEqual(app.object(forInfoDictionaryKey: "CFBundleName") as? String, "Notch Pocket")
         XCTAssertEqual(app.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String, "Notch Pocket")
-        XCTAssertEqual(app.releaseVersionNumber, "0.1")
+        XCTAssertEqual(app.releaseVersionNumber, "0.1.0")
         XCTAssertEqual(app.executableURL?.lastPathComponent, "notch-pocket")
         XCTAssertEqual(app.bundleURL.lastPathComponent, "notch-pocket.app")
 

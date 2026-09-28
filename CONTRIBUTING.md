@@ -284,7 +284,7 @@ is the **NP-9-local-signing-v1** entrypoint. Follow the
 [exact signed-app → existing packager workflow](README.md#local-developer-id-candidate-9-bounded-slice).
 It never loads `local.env`, changes project/local-test signing defaults, touches
 an input app, imports/exports certificates, calls Keychain management tools, or
-submits anything to Apple. Existing app/helper IDs, version 0.1 and declared
+submits anything to Apple. Existing app/helper IDs, version 0.1.0 and declared
 entitlements are checked, not overridden. The helper's existing sandbox `false`
 entitlement is retained rather than replaced with app entitlements.
 
