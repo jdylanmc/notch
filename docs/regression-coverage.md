@@ -112,8 +112,9 @@ exercise that production adapter with a fresh
 `com.jdylanmc.notchpocket.tests.dashboard.<UUID>` suite per fixture. Fixtures do
 not read/copy/clear `UserDefaults.standard`, the working Shelf, or another
 preferences domain. Teardown removes only the exact owned generated suite and
-asserts its persistent domain was removed. A process crash may leave that named
-test domain; CFPreferences may also retain an empty backing plist after normal
+asserts its persistent domain contains no values (`nil` or an empty dictionary,
+depending on the OS). A process crash may leave that named test domain;
+CFPreferences may also retain an empty backing plist after normal
 domain removal. Neither is permission to inspect/delete the container's files
 or clear other suites.
 

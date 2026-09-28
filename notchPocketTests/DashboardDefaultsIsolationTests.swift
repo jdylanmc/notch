@@ -38,7 +38,8 @@ final class DashboardDefaultsIsolationTests: XCTestCase {
         addTeardownBlock {
             let ownedDefaults = try XCTUnwrap(UserDefaults(suiteName: name))
             ownedDefaults.removePersistentDomain(forName: name)
-            XCTAssertNil(ownedDefaults.persistentDomain(forName: name))
+            XCTAssertTrue(ownedDefaults.persistentDomain(forName: name)?.isEmpty ?? true,
+                          "The owned fixture domain must contain no persisted values")
         }
         return Fixture(name: name, defaults: defaults)
     }
