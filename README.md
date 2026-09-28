@@ -315,6 +315,12 @@ credential and exact-artifact gates. Crowdin ownership remains separate.
 
 ## Local UI debugging
 
+The [regression coverage and isolation inventory](docs/regression-coverage.md)
+maps current application journeys and every Settings pane to existing tests,
+missing automation and genuine external gates. Dashboard storage fixtures use
+isolated preferences suites; they are not a whole-app isolation or native
+regression pass.
+
 The repository-local [notch skill](.github/skills/notch/SKILL.md) uses a small
 native [control helper](scripts/notch-control/README.md) for running-app
 discovery, read-only per-panel notch state, explicit notch open/close,
