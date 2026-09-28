@@ -68,7 +68,7 @@ class FixtureTests(unittest.TestCase):
             (contents / "MacOS").mkdir(parents=True)
             (contents / "Info.plist").write_bytes(plistlib.dumps({
                 "CFBundleIdentifier": identifier, "CFBundleExecutable": executable,
-                "CFBundlePackageType": kind, "CFBundleShortVersionString": "0.1",
+                "CFBundlePackageType": kind, "CFBundleShortVersionString": "0.1.0",
             }))
         for relative in (APP_BINARY, HELPER_BINARY, FRAMEWORK_BINARY, distribution.RESOURCE_CODE):
             path = self.app / relative
@@ -86,6 +86,21 @@ class FixtureTests(unittest.TestCase):
 
 
 class InputTests(FixtureTests):
+    def test_release_rejects_legacy_or_mismatched_app_and_helper_versions(self):
+        self.create_app()
+        code = distribution.code_inventory(self.app)
+        distribution.bundle_layout(self.app, code)
+        for relative in (Path(), distribution.HELPER):
+            info_path = self.app / relative / "Contents/Info.plist"
+            original = info_path.read_bytes()
+            for version in ("0.1", "0.1.1", "2.7.3"):
+                with self.subTest(bundle=relative, version=version):
+                    info = plistlib.loads(original)
+                    info["CFBundleShortVersionString"] = version
+                    info_path.write_bytes(plistlib.dumps(info))
+                    self.assert_error("invalid_output", distribution.bundle_layout, self.app, code)
+            info_path.write_bytes(original)
+
     def test_explicit_identity_team_and_fresh_owned_build_path(self):
         self.assertEqual(distribution.validate_inputs(IDENTITY, TEAM, str(self.build)), self.build)
         self.assertFalse(self.build.exists())
@@ -321,7 +336,7 @@ class SigningTests(FixtureTests):
         self.assertFalse(result["gatekeeper_assessed"])
         self.assertEqual(result["app"], str(self.app))
         self.assertEqual(result["configuration"], "Release")
-        self.assertEqual(result["version"], "0.1")
+        self.assertEqual(result["version"], "0.1.0")
         self.assertEqual(len(result["code"]), 4)
         self.assertEqual({item["path"] for item in result["code"]},
                          {str(path) for path in (APP_BINARY, HELPER_BINARY, FRAMEWORK_BINARY, distribution.RESOURCE_CODE)})

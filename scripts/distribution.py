@@ -238,7 +238,7 @@ def bundle_layout(app, code):
         info = plist_dictionary(info_path.read_bytes(), "invalid_output")
         if any(info.get(key) != value for key, value in (
             ("CFBundleIdentifier", identifier), ("CFBundleExecutable", executable),
-            ("CFBundlePackageType", kind), ("CFBundleShortVersionString", "0.1"),
+            ("CFBundlePackageType", kind), ("CFBundleShortVersionString", "0.1.0"),
         )):
             raise DistributionError("invalid_output", "Unexpected app/helper identity or version.")
         binary = bundle / "Contents/MacOS" / executable
@@ -421,7 +421,7 @@ def build_distribution(identity, team, build_value, run=run_command):
         return {"ok": True, "status": "signed", "distribution": "local-only",
                 "notarization": "NOT YET NOTARIZED", "gatekeeper_assessed": False,
                 "app": str(app), "build_dir": str(build), "configuration": "Release",
-                "version": "0.1", "team": team, "developer_dir": env["DEVELOPER_DIR"],
+                "version": "0.1.0", "team": team, "developer_dir": env["DEVELOPER_DIR"],
                 "app_identifier": APP_ID, "helper_identifier": HELPER_ID, "code": evidence}
     except DistributionError as exc:
         exc.details["retained_build_dir"] = str(build)

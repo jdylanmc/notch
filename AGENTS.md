@@ -276,7 +276,7 @@ Only successful JSON identifies the exact
 ```bash
 python3 -B scripts/package.py \
   --app "$PWD/.build/np9-signing-001/Products/Release/notch-pocket.app" \
-  --output "$PWD/.build/packages/notch-pocket-0.1-NOT-YET-NOTARIZED-001.dmg"
+  --output "$PWD/.build/packages/notch-pocket-0.1.0-NOT-YET-NOTARIZED-001.dmg"
 python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'
 ```
 
