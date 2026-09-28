@@ -747,3 +747,90 @@ test('product release cannot trigger issue-form commits; dropdown script remains
   assert.deepEqual(config.permissions, { contents: 'write' });
   assert.ok(step(config.jobs['update-dropdown'], 'Commit changes').run.includes('git push'));
 });
+
+function dependencyPreflightContract(config) {
+  assert.equal(config.name, 'Release dependency preflight');
+  assert.equal(config.env, undefined);
+  assert.deepEqual(config.on, {
+    workflow_dispatch: {},
+    pull_request: { branches: ['pocket'], paths: [
+      'Configuration/dmg/requirements.txt', '.github/workflows/release-dependency-preflight.yml',
+      '.github/scripts/pocket_sign.py',
+      '.github/scripts/pocket_release.py', 'scripts/distribution.py', 'scripts/notarize.py', 'scripts/package.py',
+    ] },
+  });
+  assert.deepEqual(config.permissions, { contents: 'read' });
+  assert.deepEqual(config.concurrency, {
+    group: 'release-dependency-preflight-${{ github.event.pull_request.number || github.ref }}',
+    'cancel-in-progress': true,
+  });
+  assert.deepEqual(config.defaults, { run: { shell: 'bash --noprofile --norc -euo pipefail {0}' } });
+  assert.deepEqual(Object.keys(config.jobs), ['preflight']);
+  const job = config.jobs.preflight;
+  assert.equal(job.name, 'Verify pinned DMG dependencies');
+  assert.equal(job['runs-on'], 'macos-26');
+  assert.equal(job['timeout-minutes'], 20);
+  assert.equal(job.permissions, undefined);
+  assert.equal(job.environment, undefined);
+  assert.equal(job.if, undefined);
+  assert.equal(job['continue-on-error'], undefined);
+  assert.deepEqual(job.env, { DEVELOPER_DIR: '/Applications/Xcode_26.6.app/Contents/Developer' });
+  const download = [
+    'umask 077', 'mkdir -p .build',
+    'test ! -e .build/release-preflight-venv', 'test ! -e .build/release-preflight-wheels',
+    'python3 -I -m venv .build/release-preflight-venv', 'mkdir .build/release-preflight-wheels',
+    "if ! .build/release-preflight-venv/bin/python3 -I -c 'import dmgbuild' >/dev/null 2>&1; then",
+    '  .build/release-preflight-venv/bin/python3 -I -m pip download --disable-pip-version-check --timeout 30 --retries 1 --require-hashes --only-binary=:all: -r Configuration/dmg/requirements.txt --dest .build/release-preflight-wheels',
+    '  .build/release-preflight-venv/bin/python3 -I -m pip install --disable-pip-version-check --no-index --find-links .build/release-preflight-wheels --require-hashes --only-binary=:all: -r Configuration/dmg/requirements.txt',
+    'fi',
+    '.build/release-preflight-venv/bin/python3 -I -c \'import dmgbuild, Quartz; print("Pinned DMG dependencies import successfully")\'',
+    '',
+  ].join('\n');
+  assert.deepEqual(job.steps, [
+    { name: 'Require pocket for manual dispatch', if: "github.event_name == 'workflow_dispatch'",
+      run: 'test "$GITHUB_REF" = refs/heads/pocket' },
+    { name: 'Checkout preflight source', uses: pinnedAction(job, 'Checkout preflight source', checkout),
+      'timeout-minutes': 3, with: {
+        ref: '${{ github.sha }}',
+        'persist-credentials': false,
+      } },
+    { name: 'Verify release tools without credentials', 'timeout-minutes': 3,
+      run: 'python3 --version\npython3 -B .github/scripts/pocket_sign.py tools\n' },
+    { name: 'Verify pinned wheel download and offline install', 'timeout-minutes': 10, run: download },
+    { name: 'Retain only verified public wheels',
+      uses: pinnedAction(job, 'Retain only verified public wheels', 'actions/upload-artifact'),
+      'timeout-minutes': 3, with: {
+        name: 'notch-pocket-dmg-wheels', path: '.build/release-preflight-wheels/*.whl',
+        'include-hidden-files': true, 'if-no-files-found': 'error', 'retention-days': 7,
+      } },
+  ]);
+}
+
+test('release dependency preflight has no signing, publication or secret access', () => {
+  dependencyPreflightContract(workflow('release-dependency-preflight'));
+});
+
+for (const [name, mutate] of [
+  ['write token', (c) => { c.permissions.contents = 'write'; }],
+  ['workflow-level secret', (c) => { c.env = { APPLE_CERTIFICATE_P12: '${{ secrets.APPLE_CERTIFICATE_P12 }}' }; }],
+  ['mutable checkout', (c) => { c.jobs.preflight.steps[1].with.ref = 'pocket'; }],
+  ['missing imported-helper trigger', (c) => { c.on.pull_request.paths.pop(); }],
+  ['lost concurrency bound', (c) => { delete c.concurrency; }],
+  ['secret environment', (c) => { c.jobs.preflight.environment = 'notch-pocket-release'; }],
+  ['credential operation', (c) => { c.jobs.preflight.steps[2].run = 'python3 -B .github/scripts/pocket_sign.py sign'; }],
+  ['hash checks removed', (c) => { c.jobs.preflight.steps[3].run = c.jobs.preflight.steps[3].run.replaceAll('--require-hashes ', ''); }],
+  ['online install fallback', (c) => { c.jobs.preflight.steps[3].run = c.jobs.preflight.steps[3].run.replace('--no-index ', ''); }],
+  ['non-isolated imports', (c) => { c.jobs.preflight.steps[3].run = c.jobs.preflight.steps[3].run.replaceAll(' -I ', ' '); }],
+  ['upload private build data', (c) => { c.jobs.preflight.steps[4].with.path = '.build/**'; }],
+  ['upload after failure', (c) => { c.jobs.preflight.steps[4].if = 'always()'; }],
+  ['hidden wheels silently omitted', (c) => { delete c.jobs.preflight.steps[4].with['include-hidden-files']; }],
+  ['unchecked manual source', (c) => { c.jobs.preflight.steps.shift(); }],
+  ['tag trigger', (c) => { c.on.push = { tags: ['*'] }; }],
+  ['ignored install failure', (c) => { c.jobs.preflight.steps[3]['continue-on-error'] = true; }],
+]) {
+  test(`reject dependency preflight mutation: ${name}`, () => {
+    const config = workflow('release-dependency-preflight');
+    mutate(config);
+    assert.throws(() => dependencyPreflightContract(config), assert.AssertionError);
+  });
+}

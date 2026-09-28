@@ -1,0 +1,71 @@
+name: Release dependency preflight
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    branches: [pocket]
+    paths:
+      - Configuration/dmg/requirements.txt
+      - .github/workflows/release-dependency-preflight.yml
+      - .github/scripts/pocket_sign.py
+      - .github/scripts/pocket_release.py
+      - scripts/distribution.py
+      - scripts/notarize.py
+      - scripts/package.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-dependency-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+jobs:
+  preflight:
+    name: Verify pinned DMG dependencies
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Require pocket for manual dispatch
+        if: github.event_name == 'workflow_dispatch'
+        run: test "$GITHUB_REF" = refs/heads/pocket
+      - name: Checkout preflight source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify release tools without credentials
+        timeout-minutes: 3
+        run: |
+          python3 --version
+          python3 -B .github/scripts/pocket_sign.py tools
+      - name: Verify pinned wheel download and offline install
+        timeout-minutes: 10
+        run: |
+          umask 077
+          mkdir -p .build
+          test ! -e .build/release-preflight-venv
+          test ! -e .build/release-preflight-wheels
+          python3 -I -m venv .build/release-preflight-venv
+          mkdir .build/release-preflight-wheels
+          if ! .build/release-preflight-venv/bin/python3 -I -c 'import dmgbuild' >/dev/null 2>&1; then
+            .build/release-preflight-venv/bin/python3 -I -m pip download --disable-pip-version-check --timeout 30 --retries 1 --require-hashes --only-binary=:all: -r Configuration/dmg/requirements.txt --dest .build/release-preflight-wheels
+            .build/release-preflight-venv/bin/python3 -I -m pip install --disable-pip-version-check --no-index --find-links .build/release-preflight-wheels --require-hashes --only-binary=:all: -r Configuration/dmg/requirements.txt
+          fi
+          .build/release-preflight-venv/bin/python3 -I -c 'import dmgbuild, Quartz; print("Pinned DMG dependencies import successfully")'
+      - name: Retain only verified public wheels
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        timeout-minutes: 3
+        with:
+          name: notch-pocket-dmg-wheels
+          path: .build/release-preflight-wheels/*.whl
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
