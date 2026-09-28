@@ -133,9 +133,7 @@ hosted run or distribution succeeded.
 | [PR target check](.github/workflows/base_ref_check.yml), [guidance](.github/workflows/base_ref_check_comment.yml) | Existing `pull_request_target` events and check identities remain unchanged: `Fork PR target check` and `Sync PR target guidance comment`. Only `pocket` is an allowed base. Guidance uses its existing comment permissions; product-CI changes do not broaden them. |
 | [Existing PR-policy test workflow](.github/workflows/pr_target_policy_tests.yml) | Retains `Test PR target policy`, its four-file path filter, all-branch PR event, and `pocket` push event. The new contract workflow runs the same suite independently without changing that scope. Policy tests evaluate the existing inline policy script with mocked APIs, not workflow shell blocks or live writes. |
 | [Dependabot](.github/dependabot.yml) | All three existing weekly entries now target `pocket`: GitHub Actions at `/`, pip at `/Configuration/dmg`, Swift at `/`. Ecosystems and cadence unchanged. The isolated contract-test npm dependency is manually maintained; adding a fourth update entry is separate scope. |
-| [Manual build](.github/workflows/manual_build.yml) — **deferred** | Dispatch only, `head_ref` default/fallback `main`, Xcode `16.4` default/fallback, signed reusable build. Not a safe product-validation entry point; no retargeting or activation. |
-| [Reusable packaging](.github/workflows/build_reusable.yml) — **deferred** | `workflow_call`, Xcode `16.4` default, certificate import, version commits/pushes, archive/export using `development`, and app/DMG uploads. Project and product names are already distinct (below). Not notarized distribution or release authorization. |
-| [Release](.github/workflows/release.yml) — **deferred** | Comment-triggered `/release`, eligible same-repository `dev` → `main` PRs, Xcode `16.4`. Includes branch/version pushes, signed build, release upload, and automatic stable-release merge behavior. Do not invoke, retarget, or grant credentials as part of product CI. |
+| Inherited manual/reusable/comment release — **retired** | `manual_build.yml`, `build_reusable.yml`, `release.yml` and the otherwise-unused `extract_version.py` are removed. No Xcode 16.4/Apple Development release path, comment-triggered version writes or automatic release merge remains. Source contracts reject restored filenames, calls to the retired builder and additional tag/release/comment/repository-dispatch entry points. This is the current source inventory, not proof about arbitrary future workflow code. Historical runs/tags and license notices are preserved. Use only the owned workflow above. |
 | [Crowdin](.github/workflows/crowdin.yml) — **deferred** | `dev` push/manual dispatch, translation PRs targeting `dev`, repository writes and external project credentials. Independent Crowdin project/credential ownership is not established; no `pocket` synchronization is promised. |
 | [Issue-form version dropdown](.github/workflows/update-version-dropdown.yml) — **manual only** | Explicit `workflow_dispatch` only; tag/release triggers removed to prevent unrelated commits on the first product release. The existing default-branch checkout and issue-form update/commit script are retained. Not invoked by the product release workflow. |
 
@@ -427,20 +425,19 @@ installation/coexistence proof remain incomplete and separately approved.
 [`notchPocket.xcodeproj/project.pbxproj`](notchPocket.xcodeproj/project.pbxproj)
 sets the app's Debug/Release `PRODUCT_NAME` to `notch-pocket`, references
 `notch-pocket.app`, and points `TEST_HOST` at that product. Build/test and CodeQL
-use project/scheme **`notchPocket`**. Reusable packaging uses
-`PROJECT_NAME: notchPocket` for the project, scheme and archive, but
-`APP_PRODUCT_NAME: notch-pocket` for `Release/notch-pocket.app` and
-`Release/notch-pocket.dmg`. Release artifact download and publication agree on
-the DMG name. [`Configuration/dmg/create_dmg.sh`](Configuration/dmg/create_dmg.sh)
+use project/scheme **`notchPocket`**. The owned distribution helper verifies
+`Products/Release/notch-pocket.app`; notarization produces
+`notch-pocket-VERSION.dmg` and the hosted workflow transfers that exact final
+artifact plus its public manifest. Release download and publication verify the
+same filename, version, size and checksum. [`Configuration/dmg/create_dmg.sh`](Configuration/dmg/create_dmg.sh)
 takes explicit app/output paths; it does not derive the app name from the scheme.
 
 Structural tests protect those source-level identities without executing
-packaging. The separate local Developer ID command above does not authorize
-these workflows. Archive/export success, notarization, release credential
-handling, translation ownership, and release/merge policy remain separately
-approved work. Inherited Xcode 16.4 defaults are not aligned
-with the product's Xcode 26+ build-host requirement. Do not run the deferred
-workflows to discover whether they work.
+packaging. The separate local Developer ID command above does not itself
+authorize publication. Native notarization, release credentials, exact-artifact
+evidence and approval remain the owned workflow's gates. The incompatible
+Xcode 16.4/Apple Development workflows are retired, not a fallback when those
+gates are unavailable. Translation ownership remains separate.
 
 ## Code Style Guidelines
 

@@ -65,7 +65,7 @@ that request. Do not mix it with fork-local work.
 validation, contract tests, and Dependabot target `pocket`. The existing PR
 policy check identities remain unchanged. See the source-linked
 [CI and packaging inventory](CONTRIBUTING.md#ci-and-packaging-inventory) for
-deferred manual build, release, translation, and issue-form automation.
+owned release gates, retired legacy release routes, and separate translation/issue-form automation.
 Report conflicts rather than retargeting a fork-local PR or weakening checks.
 
 ## Build, test, lint
@@ -360,14 +360,13 @@ an unset identity leaves them unchanged. The hardened-runtime override applies
 only to the valid local-identity path, not unconditionally.
 
 Recheck Accessibility and other required permissions after changing identity.
-These scripts configure no release credentials. The inherited
-`.github/workflows/build_reusable.yml` instead imports a certificate, archives,
-and exports using the `development` method (default identity:
-`Apple Development`), then creates and uploads artifacts. That is not a
-notarized-distribution setup or permission to run it. Distribution signing,
-hardened-runtime requirements, and notarization are not supplied by these local
-test scripts. The separately approved [local Developer ID slice](#local-developer-id-preparation-9-bounded-slice)
-does not authorize that inherited workflow or notarization.
+These scripts configure no release credentials. The inherited manual,
+reusable and comment-triggered release workflows are removed; their Apple
+Development/Xcode 16.4 and automatic-merge paths are not fallback mechanisms.
+Distribution signing, hardened-runtime requirements and notarization are not
+supplied by these local test scripts. Use the separately approved
+[owned release workflow and credential gates](docs/releases.md), without
+restoring a retired route or treating local signing as notarization.
 
 ## Agent skills
 

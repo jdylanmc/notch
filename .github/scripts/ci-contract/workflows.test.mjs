@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import { parseDocument } from 'yaml';
 
@@ -198,26 +198,27 @@ function hostedContract(config, kind) {
   assert.equal(config.defaults, undefined);
 }
 
-function packagingContract(reusable, release) {
-  assert.equal(reusable.jobs.build.env.PROJECT_NAME, 'notchPocket');
-  assert.equal(reusable.jobs.build.env.APP_PRODUCT_NAME, 'notch-pocket');
-  assert.equal(release.env.PROJECT_NAME, 'notchPocket');
-  assert.equal(release.env.APP_PRODUCT_NAME, 'notch-pocket');
-  const archive = step(reusable.jobs.build, 'Build and archive').run;
-  assert.ok(archive.includes('-project ${{ env.PROJECT_NAME }}.xcodeproj'));
-  assert.ok(archive.includes('-scheme ${{ env.PROJECT_NAME }}'));
-  const dmg = step(reusable.jobs.build, 'Create DMG').run;
-  assert.ok(dmg.includes('"Release/${{ env.APP_PRODUCT_NAME }}.app"'));
-  assert.ok(dmg.includes('"Release/${{ env.APP_PRODUCT_NAME }}.dmg"'));
-  for (const [name, extension] of [['Upload DMG', 'dmg'], ['Upload .app', 'app']]) {
-    assert.deepEqual(step(reusable.jobs.build, name).with, {
-      name: `\${{ env.APP_PRODUCT_NAME }}.${extension}`,
-      path: `Release/\${{ env.APP_PRODUCT_NAME }}.${extension}`,
-    });
+function releaseEntryPoints(configs) {
+  for (const config of Object.values(configs)) {
+    assert.ok(config.on && typeof config.on === 'object' && !Array.isArray(config.on),
+      'Use explicit event mappings so branch-only versus tag triggers remain reviewable');
   }
-  const download = release.jobs.publish.steps.find(({ uses }) => uses?.startsWith('actions/download-artifact@'));
-  assert.deepEqual(download.with, { name: '${{ env.APP_PRODUCT_NAME }}.dmg', path: 'Release' });
-  assert.ok(step(release.jobs.publish, 'Create GitHub release').run.includes('Release/notch-pocket.dmg'));
+  const releases = Object.entries(configs).filter(([, config]) => {
+    const push = config.on.push;
+    const tagPush = Object.hasOwn(config.on, 'push')
+      && (push?.tags !== undefined || push?.['tags-ignore'] !== undefined
+        || !(push?.branches || push?.['branches-ignore']));
+    return ['issue_comment', 'release', 'create', 'repository_dispatch']
+      .some((event) => Object.hasOwn(config.on, event)) || tagPush;
+  });
+  assert.deepEqual(releases.map(([name]) => name), ['pocket-native-release.yml'],
+    'Only the owned product workflow may react to release/tag events; no comment release route');
+  assert.equal(configs['pocket-native-release.yml'].on.issue_comment, undefined);
+  for (const config of Object.values(configs)) {
+    for (const job of Object.values(config.jobs)) {
+      assert.ok(!job.uses?.includes('build_reusable'), 'No call to the retired reusable builder');
+    }
+  }
 }
 
 const swiftTestInvocation = 'xcrun swift test "${common[@]}" >&2 || fail "Native tool tests failed."';
@@ -421,27 +422,38 @@ for (const [name, before, after] of [
 }
 
 test('packaging uses project/scheme notchPocket, but notch-pocket.app and .dmg', () => {
-  packagingContract(workflow('build_reusable'), workflow('release'));
+  pocketReleaseContract(workflow('pocket-native-release'));
   const project = read('notchPocket.xcodeproj/project.pbxproj');
   assert.equal([...project.matchAll(/PRODUCT_NAME = "notch-pocket";/g)].length, 2);
   assert.match(project, /path = notch-pocket\.app;/);
   assert.ok(project.includes('TEST_HOST = "$(BUILT_PRODUCTS_DIR)/notch-pocket.app/'));
 });
 
-test('manual signing, dev-to-main release, translations and issue-form writes remain deferred', () => {
-  const manual = workflow('manual_build');
-  assert.deepEqual(Object.keys(manual.on), ['workflow_dispatch']);
-  assert.equal(manual.on.workflow_dispatch.inputs.head_ref.default, 'main');
-  assert.equal(manual.on.workflow_dispatch.inputs.xcode_version.default, '16.4');
-  assert.ok(manual.jobs.build.with.head_ref.endsWith("|| 'main' }}"));
-  const reusable = workflow('build_reusable');
-  assert.deepEqual(Object.keys(reusable.on), ['workflow_call']);
-  assert.equal(reusable.on.workflow_call.inputs.xcode_version.default, '16.4');
-  assert.equal(reusable.jobs.build.env.EXPORT_METHOD, 'development');
-  const release = workflow('release');
-  assert.deepEqual(release.on, { issue_comment: { types: ['created'] } });
-  assert.equal(release.env.XCODE_VERSION, '16.4');
-  assert.ok(release.jobs.check_release.steps[0].run.includes('"$HEAD_REF" == "dev" && "$BASE_REF" == "main"'));
+test('legacy release entry points and their unused comment parser remain retired', () => {
+  for (const path of ['.github/workflows/manual_build.yml', '.github/workflows/build_reusable.yml',
+    '.github/workflows/release.yml', '.github/scripts/extract_version.py']) {
+    assert.equal(existsSync(new URL(path, root)), false, `${path} must not restore a shadow release route`);
+  }
+  const configs = Object.fromEntries(readdirSync(new URL('.github/workflows/', root))
+    .filter((name) => /\.ya?ml$/.test(name)).sort()
+    .map((name) => [name, parse(read(`.github/workflows/${name}`))]));
+  releaseEntryPoints(configs);
+  for (const event of ['issue_comment', 'release', 'create', 'repository_dispatch', 'push']) {
+    const shadow = { on: event === 'push' ? { push: { tags: ['*'] } } : { [event]: {} }, jobs: {} };
+    assert.throws(() => releaseEntryPoints({ ...configs, 'shadow-release.yml': shadow }), assert.AssertionError);
+  }
+  for (const on of ['issue_comment', ['release'], { push: null }, { push: {} }]) {
+    assert.throws(() => releaseEntryPoints({ ...configs, 'shadow-release.yml': { on, jobs: {} } }),
+      assert.AssertionError);
+  }
+  assert.throws(() => releaseEntryPoints({
+    ...configs, 'shadow-manual.yml': {
+      on: { workflow_dispatch: {} }, jobs: { build: { uses: './.github/workflows/build_reusable.yml' } },
+    },
+  }), assert.AssertionError);
+});
+
+test('translations remain deferred and issue-form writes remain manual only', () => {
   const crowdin = workflow('crowdin');
   assert.deepEqual(crowdin.on, { push: { branches: ['dev'] }, workflow_dispatch: null });
   assert.equal(step(crowdin.jobs.crowdin, 'Crowdin action').with.pull_request_base_branch_name, 'dev');
@@ -570,9 +582,9 @@ for (const [name, file, check, mutate] of mutations) {
   });
 }
 test('reject actual-config mutation: project-derived app artifact', () => {
-  const reusable = workflow('build_reusable');
-  step(reusable.jobs.build, 'Upload .app').with.path = 'Release/${{ env.PROJECT_NAME }}.app';
-  assert.throws(() => packagingContract(reusable, workflow('release')), assert.AssertionError);
+  const config = workflow('pocket-native-release');
+  step(config.jobs.sign, 'Upload only final public assets').with.path = '.build/notchPocket.app';
+  assert.throws(() => pocketReleaseContract(config), assert.AssertionError);
 });
 
 function pocketReleaseContract(config) {
