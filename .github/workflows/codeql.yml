@@ -27,7 +27,8 @@ jobs:
     #   - https://gh.io/supported-runners-and-hardware-resources
     #   - https://gh.io/using-larger-runners (GitHub.com only)
     # Consider using larger runners or machines with greater resources for possible analysis time improvements.
-    runs-on: ${{ (matrix.language == 'swift' && 'xcode-27') || 'ubuntu-latest' }}
+    # Keep extraction off the preview OS/compiler; the app matrix still tests Xcode 27.
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-26') || 'ubuntu-latest' }}
     permissions:
       # required for all workflows
       security-events: write
@@ -62,6 +63,13 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
+
+    - name: Select stable Swift toolchain
+      if: matrix.language == 'swift'
+      run: |
+        developer=/Applications/Xcode_26.6.app/Contents/Developer
+        test -x "$developer/usr/bin/xcodebuild"
+        echo "DEVELOPER_DIR=$developer" >> "$GITHUB_ENV"
 
     - name: Resolve Swift package dependencies
       if: matrix.language == 'swift'
