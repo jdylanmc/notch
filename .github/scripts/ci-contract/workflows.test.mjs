@@ -189,6 +189,7 @@ function hostedContract(config, kind) {
           { name: 'Test local packaging policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'" },
           { name: 'Test local distribution signing policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'" },
           { name: 'Test notarization preparation policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_notarize.py'" },
+          { name: 'Test hosted release boundaries', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_pocket_release.py'" },
         ]),
       ],
     },
@@ -445,9 +446,7 @@ test('manual signing, dev-to-main release, translations and issue-form writes re
   assert.deepEqual(crowdin.on, { push: { branches: ['dev'] }, workflow_dispatch: null });
   assert.equal(step(crowdin.jobs.crowdin, 'Crowdin action').with.pull_request_base_branch_name, 'dev');
   const dropdown = workflow('update-version-dropdown');
-  assert.deepEqual(dropdown.on, {
-    push: { tags: ['*'] }, workflow_dispatch: {}, release: { types: ['published'] },
-  });
+  assert.deepEqual(dropdown.on, { workflow_dispatch: {} });
   assert.equal(dropdown.jobs['update-dropdown'].steps[0].with.ref, '${{ github.event.repository.default_branch }}');
 });
 
@@ -574,4 +573,165 @@ test('reject actual-config mutation: project-derived app artifact', () => {
   const reusable = workflow('build_reusable');
   step(reusable.jobs.build, 'Upload .app').with.path = 'Release/${{ env.PROJECT_NAME }}.app';
   assert.throws(() => packagingContract(reusable, workflow('release')), assert.AssertionError);
+});
+
+function pocketReleaseContract(config) {
+  const sha = '${{ needs.gate.outputs.sha }}';
+  const version = '${{ needs.gate.outputs.version }}';
+  const sourceEnv = { SOURCE_SHA: sha, VERSION: version };
+  const githubEnv = { GITHUB_TOKEN: '${{ github.token }}' };
+  const tapEnv = { HOMEBREW_TAP_TOKEN: '${{ secrets.HOMEBREW_TAP_TOKEN }}' };
+  const appleEnv = Object.fromEntries([
+    'APPLE_CERTIFICATE_P12', 'APPLE_CERTIFICATE_PASSWORD', 'APPLE_NOTARY_KEY_P8',
+    'APPLE_NOTARY_KEY_ID', 'APPLE_NOTARY_ISSUER_ID', 'APPLE_TEAM_ID', 'APPLE_SIGNING_IDENTITY',
+  ].map((name) => [name, `\${{ secrets.${name} }}`]));
+  const action = (job, name, repository, minutes, options) => ({
+    name, uses: pinnedAction(config.jobs[job], name, repository), 'timeout-minutes': minutes, with: options,
+  });
+  const checkoutSource = (job, minutes) => action(job, 'Checkout gated source', checkout, minutes,
+    { ref: sha, 'persist-credentials': false });
+  const run = (name, minutes, command, env) => ({
+    name, 'timeout-minutes': minutes, ...(env ? { env } : {}), run: command,
+  });
+  const download = (job) => action(job, 'Download final public assets', 'actions/download-artifact', 3,
+    { name: 'notch-pocket-release', path: '.build/pocket-release-assets' });
+  const release = 'python3 -B .github/scripts/pocket_release.py';
+  const sign = 'python3 -B .github/scripts/pocket_sign.py';
+  assert.deepEqual(config, {
+    name: 'Notch Pocket notarized release',
+    on: {
+      push: { tags: ['notch-pocket-v*'] },
+      workflow_dispatch: { inputs: { tag: {
+        description: 'Existing product tag, exactly matching distribution.VERSION', required: true, type: 'string',
+      } } },
+    },
+    permissions: {},
+    concurrency: { group: 'notch-pocket-release', 'cancel-in-progress': false },
+    defaults: { run: { shell: 'bash --noprofile --norc -euo pipefail {0}' } },
+    jobs: {
+      gate: {
+        'runs-on': 'ubuntu-latest', 'timeout-minutes': 10, permissions: { contents: 'read', actions: 'read' },
+        outputs: { sha: '${{ steps.source.outputs.sha }}', version: '${{ steps.source.outputs.version }}' },
+        steps: [
+          action('gate', 'Checkout trusted gate', checkout, 3,
+            { ref: 'pocket', 'fetch-depth': 0, 'persist-credentials': false }),
+          { ...run('Validate tag and nine exact-commit checks', 6, `${release} gate`,
+            { ...githubEnv, RELEASE_TAG: "${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}" }),
+          id: 'source' },
+        ],
+      },
+      'tap-ready': {
+        needs: 'gate', 'runs-on': 'ubuntu-latest', environment: 'notch-pocket-tap',
+        'timeout-minutes': 5, permissions: { contents: 'read' },
+        steps: [checkoutSource('tap-ready', 2), run('Check scoped tap configuration', 2, `${release} tap-ready`, tapEnv)],
+      },
+      sign: {
+        needs: ['gate', 'tap-ready'], 'runs-on': 'macos-26', environment: 'notch-pocket-release',
+        'timeout-minutes': 150, permissions: { contents: 'read' },
+        env: { DEVELOPER_DIR: '/Applications/Xcode_26.6.app/Contents/Developer', ...sourceEnv },
+        steps: [
+          checkoutSource('sign', 3),
+          run('Check Apple configuration', 1, `${sign} config`, appleEnv),
+          run('Verify hosted tools', 3, `${sign} tools`),
+          run('Prepare isolated pinned DMG dependencies', 10, [
+            'umask 077', 'mkdir -p .build', 'test ! -e .build/pocket-release-venv',
+            'python3 -m venv .build/pocket-release-venv',
+            "if ! .build/pocket-release-venv/bin/python3 -c 'import dmgbuild' >/dev/null 2>&1; then",
+            '  .build/pocket-release-venv/bin/python3 -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r Configuration/dmg/requirements.txt',
+            'fi', ".build/pocket-release-venv/bin/python3 -c 'import dmgbuild'",
+            'printf \'%s\\n\' "$GITHUB_WORKSPACE/.build/pocket-release-venv/bin" >> "$GITHUB_PATH"', '',
+          ].join('\n')),
+          run('Build exact Release app and notarize final DMG', 120, `${sign} sign`, appleEnv),
+          { ...run('Always restore keychain search list and remove credentials', 5, `${sign} cleanup`), if: 'always()' },
+          action('sign', 'Upload only final public assets', 'actions/upload-artifact', 5, {
+            name: 'notch-pocket-release',
+            path: `.build/pocket-release-assets/notch-pocket-${version}.dmg\n.build/pocket-release-assets/manifest.json\n`,
+            'include-hidden-files': true,
+            'if-no-files-found': 'error', 'retention-days': 7, 'compression-level': 0,
+          }),
+        ],
+      },
+      publish: {
+        needs: ['gate', 'sign'], 'runs-on': 'ubuntu-latest', 'timeout-minutes': 20,
+        permissions: { contents: 'write', actions: 'read' },
+        steps: [checkoutSource('publish', 2), download('publish'),
+          run('Verify bytes and draft then publish latest', 14, `${release} publish`, { ...githubEnv, ...sourceEnv })],
+      },
+      tap: {
+        needs: ['gate', 'publish'], 'runs-on': 'ubuntu-latest', environment: 'notch-pocket-tap',
+        'timeout-minutes': 15, permissions: { contents: 'read' },
+        steps: [checkoutSource('tap', 2), download('tap'),
+          run('Verify published bytes and open tap PR', 9, `${release} tap`, { ...githubEnv, ...tapEnv, ...sourceEnv })],
+      },
+    },
+  });
+}
+
+test('product release isolates gated SHA, hosted Apple secrets, publication and PR-only tap credentials', () => {
+  pocketReleaseContract(workflow('pocket-native-release'));
+});
+
+for (const [name, mutate] of [
+  ['inherited tag prefix', (c) => { c.on.push.tags = ['v*']; }],
+  ['branch trigger', (c) => { c.on.push.branches = ['pocket']; }],
+  ['manual tag default', (c) => { c.on.workflow_dispatch.inputs.tag.default = 'v2.7'; }],
+  ['untrusted gate checkout', (c) => { c.jobs.gate.steps[0].with.ref = '${{ inputs.tag }}'; }],
+  ['tag instead of pinned source', (c) => { c.jobs.sign.steps[0].with.ref = '${{ inputs.tag }}'; }],
+  ['persisted checkout credentials', (c) => { c.jobs.sign.steps[0].with['persist-credentials'] = true; }],
+  ['floating action', (c) => { c.jobs.sign.steps[0].uses = 'actions/checkout@v7'; }],
+  ['untrusted action', (c) => { c.jobs.sign.steps[0].uses = `other/checkout@${'a'.repeat(40)}`; }],
+  ['tag interpolation into shell', (c) => { c.jobs.gate.steps[1].run += ' "${{ inputs.tag }}"'; }],
+  ['secret workflow output', (c) => { c.jobs.gate.outputs.key = '${{ secrets.APPLE_NOTARY_KEY_P8 }}'; }],
+  ['signing job write token', (c) => { c.jobs.sign.permissions.contents = 'write'; }],
+  ['Apple secrets in publisher', (c) => { c.jobs.publish.env = { APPLE_TEAM_ID: '${{ secrets.APPLE_TEAM_ID }}' }; }],
+  ['tap token fallback', (c) => {
+    step(c.jobs.tap, 'Verify published bytes and open tap PR').env.HOMEBREW_TAP_TOKEN = '${{ secrets.HOMEBREW_TAP_TOKEN || github.token }}';
+  }],
+  ['legacy reusable builder', (c) => { c.jobs.sign.uses = './.github/workflows/build_reusable.yml'; }],
+  ['wrong macOS runner', (c) => { c.jobs.sign['runs-on'] = 'macos-latest'; }],
+  ['implicit Xcode', (c) => { delete c.jobs.sign.env.DEVELOPER_DIR; }],
+  ['lost job timeout', (c) => { delete c.jobs.sign['timeout-minutes']; }],
+  ['lost step timeout', (c) => { delete c.jobs.sign.steps[4]['timeout-minutes']; }],
+  ['skipped native signing', (c) => { c.jobs.sign.steps[4].if = 'false'; }],
+  ['native failure masked', (c) => { c.jobs.sign.steps[4].run += ' || true'; }],
+  ['cleanup failure ignored', (c) => { c.jobs.sign.steps[5]['continue-on-error'] = true; }],
+  ['cleanup not always', (c) => { delete c.jobs.sign.steps[5].if; }],
+  ['upload despite failure', (c) => { c.jobs.sign.steps[6].if = 'always()'; }],
+  ['missing hidden-file opt-in', (c) => { delete c.jobs.sign.steps[6].with['include-hidden-files']; }],
+  ['disabled hidden-file opt-in', (c) => { c.jobs.sign.steps[6].with['include-hidden-files'] = false; }],
+  ['upload private residue', (c) => { c.jobs.sign.steps[6].with.path = '.build'; }],
+  ['upload public directory glob', (c) => { c.jobs.sign.steps[6].with.path = '.build/pocket-release-assets/**'; }],
+  ['upload additional private path', (c) => { c.jobs.sign.steps[6].with.path += '.build/pocket-release-notarized/evidence.json\n'; }],
+  ['release before successful signing', (c) => { c.jobs.publish.needs = ['gate']; }],
+  ['tap before publication', (c) => { c.jobs.tap.needs = ['gate', 'sign']; }],
+  ['dependency hash enforcement lost', (c) => { c.jobs.sign.steps[3].run = c.jobs.sign.steps[3].run.replace('--require-hashes ', ''); }],
+  ['dependency credentials exposed', (c) => { c.jobs.sign.steps[3].env = c.jobs.sign.steps[1].env; }],
+  ['overlapping signing cancellation', (c) => { c.concurrency['cancel-in-progress'] = true; }],
+]) {
+  test(`reject release mutation: ${name}`, () => {
+    const config = workflow('pocket-native-release');
+    mutate(config);
+    assert.throws(() => pocketReleaseContract(config), assert.AssertionError);
+  });
+}
+
+for (const [name, mutate] of [
+  ['missing', (s) => s.pop()],
+  ['filtered', (s) => { s.at(-1).run += ' -k success'; }],
+  ['skipped', (s) => { s.at(-1).if = 'false'; }],
+  ['ignored', (s) => { s.at(-1)['continue-on-error'] = true; }],
+  ['masked', (s) => { s.at(-1).run += ' || true'; }],
+]) {
+  test(`reject release test mutation: ${name}`, () => {
+    const config = workflow('ci_contract_tests');
+    mutate(config.jobs.test.steps);
+    assert.throws(() => hostedContract(config, 'contracts'), assert.AssertionError);
+  });
+}
+
+test('product release cannot trigger issue-form commits; dropdown script remains manual', () => {
+  const config = workflow('update-version-dropdown');
+  assert.deepEqual(config.on, { workflow_dispatch: {} });
+  assert.deepEqual(config.permissions, { contents: 'write' });
+  assert.ok(step(config.jobs['update-dropdown'], 'Commit changes').run.includes('git push'));
 });
