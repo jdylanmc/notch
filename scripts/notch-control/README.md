@@ -154,6 +154,9 @@ absence means unknown/another pane, not General by default.
 `settings.windowID` is returned only when the identified Settings Accessibility
 window's geometry matches one on-screen window owned by that app. Missing
 mapping is **not** permission to guess an ID.
+Pane selection can settle before window geometry does. If `windowID` is absent,
+inspect fresh read-only state before capture/close; do not replay navigation or
+reuse an earlier ID to bypass a missing mapping.
 
 When supported, `inspect` also reports `tabSelection.panels[]` for marked notch
 panels whose implemented tab controls are currently exposed. Each entry includes
@@ -386,7 +389,7 @@ deduplicates identical roots, and searches at most 600 nodes across those roots,
 with depth at most 24. It never searches window descendants for menu commands.
 Exactly one distinct English Settings item is required before pressing; it then
 verifies `NotchPocketSettingsWindow`; navigation requires one matching row and observes
-both selected row and window title. Localized or changed structures can fail
+its selection in the same Settings window. Localized or changed structures can fail
 explicitly; there is no guessed fallback or global command-comma.
 
 ## Privacy and human permissions
@@ -439,8 +442,12 @@ After semantic reconciliation and build/test/lint review:
    and **view it**. Verify the reversible General → About action in both pixels
    and observed state. Reinspect rather than reusing stale IDs.
 5. Restore the original General/About selection with this tool. If it was a
-   different pane, a human restores that pane; if Settings was originally
-   closed, a human closes only Settings. No preference toggles are needed.
+   different pane, a human restores that pane. If this task opened originally
+   closed Settings, inspect again and use `settings close --window ID` with the
+   fresh `settings.windowID`; verify closed visibility. Do not close a
+   pre-existing human Settings session. No preference toggles are needed.
+   If close fails, report blocked restoration and inspect without retrying the
+   action or guessing an ID; a human restores unsupported window state.
    Parent restores the original app lifecycle if it changed. Verify shelf,
    preferences and permissions remain intact without dumping their contents.
 6. Report live denial/missing-app/duplicate-instance/stale-window/unsupported

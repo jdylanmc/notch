@@ -28,12 +28,55 @@ access, global input, or alterations to the user's working data.
 - **External gate:** genuine one-time OS consent, account/device availability
   or separately approved effects. Deterministic provider tests remain feasible.
 
-No row has fresh native evidence attached by this change. The
+Native evidence is candidate-specific; the bounded Settings run below does not
+establish other rows. The
 [owner-accepted #54 checkpoint](https://github.com/jdylanmc/notch/issues/54)
 records historical evidence for a particular 0.1 candidate; do not transfer
 that result to today's code. [PR #85](https://github.com/jdylanmc/notch/pull/85)
 adds the current tab helper; the issue's older "select Dashboard manually"
 description is no longer the complete capability inventory.
+
+### Settings close native evidence (2026-09-28)
+
+[PR #95](https://github.com/jdylanmc/notch/pull/95) was exercised on the exact
+Release candidate built from pre-rebase head
+`aa433d2afc00345e08e550c797e2e2746e04c3fe`, at
+`.build/pr95-resume-aa433d2/Products/Release/notch-pocket.app` relative to the
+worktree. Bundle identity/version: `com.jdylanmc.notchpocket`, `0.1.0`.
+The tested `notchPocket/` tree is `7bf8b4a78c9759f28165b8a418d10d208f6c087b`;
+`scripts/notch-control/Sources/` is `bbbeac8d72990efc991e95011ea9e090512f50e7`.
+Those source trees remain unchanged by the subsequent documentation rebase.
+
+The candidate passed `scripts/distribution.py` Developer ID signature, runtime
+and entitlement verification, but was **not notarized or published** and
+Gatekeeper was not assessed. This is local control evidence, not a new
+distributed release. Commands used `bash scripts/notch-control/control.sh run`
+with the exact candidate's absolute `--app-path`: `inspect`, `settings open`,
+`settings general`, `settings about`, `capture --window ID --output PATH`,
+and `settings close --window ID`. Each capture/close ID came from a fresh
+successful Settings mapping, not a saved ID from another run.
+
+- Helper-only cold open observed the explicit Settings Accessibility marker.
+  General and About selection produced meaningful, locally viewed app-only
+  captures; General was restored before closing.
+- `settings close --window ID` used a freshly observed mapping and returned
+  `settingsClose.outcome: closed`. A separate inspection confirmed Settings
+  absent from Accessibility and its native window off-screen. Closing the
+  already-closed target then failed with `stale_target`, exit 3, not a false no-op.
+- The owner authorized the temporary app switch. The original app was
+  relaunched at its unchanged path with its executable checksum unchanged,
+  Settings and notch closed, and both helper permission booleans unchanged.
+  No preference toggles, Shelf operations, privacy changes or global input were
+  used. Restoration covers process identity and observed visible state, not
+  the original process's retained off-screen windows, whole-profile isolation
+  or exact OS focus.
+
+An earlier attempt lost on-screen Settings visibility and was stopped without
+guessing a capture/close target; the owner explicitly requested the fresh retry.
+About selection also briefly lacked a unique geometry mapping: fresh read-only
+inspection established it before capture, without replaying the action.
+Private images and exact machine identity records remain local. This evidence
+does not close #14/#18/#75 or cover other Settings panes, gestures or providers.
 
 ## Application journeys
 
@@ -67,7 +110,7 @@ regression preservation, not a new player support commitment.
 | Camera mirror, device/frame/flip and expanded preview; [WebcamManager](../notchPocket/managers/WebcamManager.swift), [view](../notchPocket/components/Webcam/WebcamView.swift) | No dedicated authorization/device/session suite. | Fake availability/session provider; view interaction and permission-denial tests without capturing a real camera. | Camera grant and hardware for live preview; no recording. |
 | Displays, positioning, screen removal, lock/unlock, Spaces and sharing exclusion; [window manager](../notchPocket/managers/NotchWindowManager.swift), [panel](../notchPocket/components/Notch/NotchPocketSkyLightWindow.swift) | Panel invariant tests and helper ownership/sharing validation use model/substitute evidence. | Inject display/lifecycle events; verify teardown/recreation, no stale IDs and explicit refusal of excluded captures. | Multi-monitor/fullscreen/lock setup and human grants; no hidden system identifiers or desktop capture. |
 | Helper connection interruption, authorization and brightness/notification wire contracts; [client](../notchPocket/XPCHelperClient/XPCHelperClient.swift), [shared protocols](../Shared/NotchPocketXPCHelperProtocol.swift) | Identity/wire-selector/secure-coding tests; no actual process failure injection. | Isolated XPC connection/service seams; bounded recovery/failure observability and test-owned child lifecycle. | Usable signed helper and Accessibility for live operations. |
-| Exact app/process/window discovery, permission diagnostics, local capture; [native helper](../scripts/notch-control/README.md) | 55 helper tests cover deterministic contracts; [identity tests](../notchPocketTests/IdentityCompatibilityTests.swift) cover app-side markers. | Native paths exist. Missing canonical scenario runner must distinguish pass/fail/blocked, preserve original state and inspect captured pixels locally. | Accessibility/capture grants; no implicit grant or identity change. |
+| Exact app/process/window discovery, permission diagnostics, local capture; [native helper](../scripts/notch-control/README.md) | 69 helper tests cover deterministic contracts, including explicit Settings close; [identity tests](../notchPocketTests/IdentityCompatibilityTests.swift) cover app-side markers. | Bounded Settings native evidence is recorded above. Missing canonical scenario runner must distinguish pass/fail/blocked, preserve original state and inspect captured pixels locally. | Accessibility/capture grants; no implicit grant or identity change. |
 
 ## Every Settings pane
 
@@ -79,7 +122,7 @@ routine human clicks. Preference writes need a whole-app fixture profile first.
 
 | Pane / source | Important controls and journeys | Existing evidence / remaining work |
 | --- | --- | --- |
-| [General](../notchPocket/components/Settings/Views/GeneralSettingsView.swift) | Menu icon, launch at login, language/restart, display selection/height, hover, gestures, animation, compact/remembered tabs. | Native pane selection exists; tab-preference policy tests only. Isolate persistent settings and launch-at-login effects. |
+| [General](../notchPocket/components/Settings/Views/GeneralSettingsView.swift) | Menu icon, launch at login, language/restart, display selection/height, hover, gestures, animation, compact/remembered tabs. | Candidate-specific selection/capture/close evidence above; no preference-toggle coverage. Isolate persistent settings and launch-at-login effects. |
 | [Appearance](../notchPocket/components/Settings/Views/AppearanceSettingsView.swift) | Tab visibility, settings icon, waveform, tinting/lighting, slider color and idle face. | Tab policy only; fixture setting/pixel and audio-availability assertions missing. |
 | [Media](../notchPocket/components/Settings/Views/MediaSettingsView.swift) | Source, live activity, sneak peek, idle timing, lyrics and fallback retry. | Availability-model tests; no pane/controller/provider end-to-end suite. |
 | [Notifications](../notchPocket/components/Settings/Views/NotificationSettingsView.swift) | Enable watching, all-apps/allow-list selection, smart replies and availability. | No settings journey test; real enable can start live capture and must not run in a personal profile. |
@@ -90,7 +133,7 @@ routine human clicks. Preference writes need a whole-app fixture profile first.
 | [Mirror](../notchPocket/components/Settings/Views/WebcamSettingsView.swift) | Enable, camera, mirroring and frame shape. | No dedicated tests; fake authorization/device state, native hardware separately gated. |
 | [Shortcuts](../notchPocket/components/Settings/Views/ShortcutsSettingsView.swift) | Shortcut recording, conflicts, trigger behavior and restoration. | No app-owned native recorder scenarios; never send shortcuts to unrelated windows. |
 | [Advanced](../notchPocket/components/Settings/Views/AdvancedSettingsView.swift) | Accent color, shadows/radii, hover/title-bar, lock screen, capture exclusion, Mission Control and gesture direction. | Window contract tests cover defaults, not setting propagation; never flip exclusion or lock state to force a capture. |
-| [About](../notchPocket/components/Settings/Views/AboutView.swift) | Product/build identity, links and acknowledgments. | Native pane navigation plus built-bundle identity tests; screenshot/rendered-content and external-link sink checks separate. |
+| [About](../notchPocket/components/Settings/Views/AboutView.swift) | Product/build identity, links and acknowledgments. | Built-bundle identity tests and candidate-specific native selection/capture evidence above; automated rendered-content assertions and external-link sink checks remain missing. |
 
 ## Foundations that are not delivered features
 
@@ -191,8 +234,9 @@ scripts/test.sh \
 3. Extend native Dashboard observation and Edit/Done/Cancel/widget actions using
    existing logic, then actual app-scoped drag/resize/drop/focus scenarios.
    Evaluate native UI testing and Accessibility first; no general script engine.
-4. Extend reversible Settings navigation across all panes and close/restore
-   support, then fixture-backed feature/provider scenarios in the matrix.
+4. Extend reversible Settings navigation/restoration beyond General/About,
+   reusing the bounded observed close path; then add fixture-backed
+   feature/provider scenarios in the matrix.
 5. Build the canonical machine-readable scenario runner on proven seams.
    Required scenarios without execution report **blocked/not_run**, never
    pass, empty success, or a misleading whole-app percentage. Bind results to
