@@ -315,6 +315,7 @@ def cask(version, digest):
   homepage "https://github.com/jdylanmc/notch"
 
   depends_on macos: ">= :sonoma"
+
   app "notch-pocket.app"
 end
 '''
