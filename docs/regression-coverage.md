@@ -57,7 +57,7 @@ regression preservation, not a new player support commitment.
 | Lyrics, artwork/tinting, visualizer and output-route selection; [lyrics](../notchPocket/managers/LyricsService.swift), [audio capture](../notchPocket/managers/AudioCaptureManager.swift), [routes](../notchPocket/managers/AudioRouteManager.swift) | No dedicated provider or native interaction suite. | Synthetic metadata/lyrics/audio levels/output devices; missing/error/stale response scenarios; verify routing separately from UI. | Network/provider availability, audio-capture grant and physical output devices for live cases. |
 | Shelf file/text/link/image drop, deduplication and selection; [drop service](../notchPocket/components/Shelf/Services/ShelfDropService.swift), [state](../notchPocket/components/Shelf/ViewModels/ShelfStateViewModel.swift) | Drop-target aggregation tests do not cover payload ingestion or the state singleton. | Inject owned storage/services; deterministic item-provider cases, internal-drag rejection, selection and cancellation. | Security-scoped access to owned fixtures; no use of personal shelf items. |
 | Shelf Quick Look, open/copy/share, drag out and removal; [actions](../notchPocket/components/Shelf/Services/ShelfActionService.swift), [Quick Look](../notchPocket/components/Shelf/Services/QuickLookService.swift), [share](../notchPocket/components/Shelf/Services/QuickShareService.swift) | No dedicated native journey suite. | App-scoped keyboard/drag/focus scenarios and injectable share/open sinks; verify no unrelated files removed and restore transient selection. | Opening external apps or sending shares requires separate effects approval. |
-| Shelf save/load, stale bookmarks, temporary data and quit flush; [persistence](../notchPocket/components/Shelf/Services/ShelfPersistenceService.swift) | Identity test covers path naming, not persistence correctness. | Owned directory injection, damaged/mixed payloads, bookmark refresh, durable quit/relaunch and cleanup tests. | Real bookmark security scope under the signed candidate, not bypasses. |
+| Shelf save/load, stale bookmarks, temporary data and quit flush; [persistence](../notchPocket/components/Shelf/Services/ShelfPersistenceService.swift) | [Owned-directory tests](../notchPocketTests/ShelfPersistenceIsolationTests.swift) cover real JSON/filesystem save/load, same-process service reconstruction, awaited async save, directory isolation and malformed/mixed input bytes. Identity test covers path naming. | Bookmark refresh, temporary-file services, view-model/quit flushing, process relaunch and whole-profile isolation remain missing. | Real bookmark security scope under the signed candidate, not bypasses. |
 | Notification capture/filter/queue/expiry/cycling, draft preservation; [manager](../notchPocket/managers/SystemNotificationManager.swift), [helper watcher](../notchPocketXPCHelper/NotificationWatcher.swift) | Bundle-ID normalization/cache tests; notification expanded-view pixel test is local rendering, not banner delivery. | Synthetic notification source/clock and state scenarios before controlled live banners; fresh XPC reconnect/queue cases. | Accessibility; controlled sender/account consent. Attribution follow-up [#12](https://github.com/jdylanmc/notch/issues/12). |
 | Notification reply/action/open, verification-code copy and debug window; [notification UI](../notchPocket/components/Notch/NotificationLiveActivity.swift), [debug UI](../notchPocket/components/NotificationDebugWindow.swift) | OTP DEBUG self-check is not a canonical XCTest gate. No end-to-end send evidence. | Mock send/clipboard/open sinks; verify drafts survive failures, failed sends never count as delivered, and diagnostics avoid private text. | Real message sending/clipboard changes are separately approved effects. Never dump personal notification trees. |
 | Contact avatars and optional smart replies; [avatars](../notchPocket/managers/ContactAvatarManager.swift), [smart replies](../notchPocket/managers/SmartReplyManager.swift) | No dedicated availability/generation or contact-provider tests. | Inject contacts/model availability and synthetic content; test unavailable/failed output and fallback rendering. | Contacts grant; macOS 26+ and Apple Intelligence availability for live generation. |
@@ -140,6 +140,43 @@ scripts/test.sh \
 
 The full existing app suite includes the new file through the test target's
 synchronized source group; no filtered CI lane replaces it.
+
+### Shelf filesystem fixtures
+
+`ShelfPersistenceService(storageDirectory:)` uses the caller's explicit local
+file URL, rejects other schemes, and surfaces directory-creation failure instead of selecting another
+location. The production `shared` service retains its existing Application
+Support path and behavior by code inspection; the fixture suite does not
+instantiate/read that live singleton or prove its native startup wiring.
+This is an internal injection seam, not a command-line
+path sandbox or a whole-app fixture selector; its caller owns the directory.
+
+[ShelfPersistenceIsolationTests](../notchPocketTests/ShelfPersistenceIsolationTests.swift)
+create fresh `notch-shelf-tests-<UUID>` directories beneath the test host's
+temporary directory and remove only those generated directories on teardown.
+The tests do not inspect the working Shelf or resolve real bookmarks. Synthetic
+bookmark bytes exercise serialization only; text and `example.invalid` links
+exercise the other stored kinds without opening or sharing them.
+
+Raw JSON/file assertions cover IDs, order, payload values, temporary flags,
+distinct directories, missing-index behavior, empty saves, existing fixture
+content preservation, awaited async writes and independent service reads.
+A deterministic replaced-parent error case verifies that failed saving leaves
+the retained fixture index and obstructing file unchanged, without relying on
+permission changes or skipping root users.
+Malformed and partially decodable input tests pin the existing load behavior:
+valid items may be returned, but **load itself** does not rewrite source bytes.
+This does not establish a recovery UI, preservation of corrupt item payloads after a later save/quit,
+bookmark validity, process-relaunch durability or isolated singleton providers.
+Production load/save error semantics are unchanged by this constructor seam.
+
+```bash
+scripts/test.sh \
+  -only-testing:notchPocketTests/ShelfPersistenceIsolationTests \
+  -only-testing:notchPocketTests/IdentityCompatibilityTests \
+  -only-testing:notchPocketTests/DropInteractionStateTests \
+  -only-testing:notchPocketTests/ShelfSummaryWidgetPolicyTests
+```
 
 ## Next bounded isolation/control increments
 
