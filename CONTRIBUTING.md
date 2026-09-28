@@ -112,6 +112,12 @@ rather than assuming external changes reach this product.
 
 ## CI and Packaging Inventory
 
+The [credential-free release dependency preflight](.github/workflows/release-dependency-preflight.yml)
+runs manually from `pocket` and on scoped dependency/tooling PR changes. It
+verifies the actual hosted tools and hash-pinned wheels, including an offline
+install, and retains only public wheels. It does not replace the unfiltered
+product checks or access signing credentials. See [usage and limits](docs/releases.md#credential-free-dependency-preflight).
+
 This inventories the bounded product-CI and local-packaging slices of
 [#51](https://github.com/jdylanmc/notch/issues/51) and local-signing slice
 NP-9-local-signing-v1 of [#9](https://github.com/jdylanmc/notch/issues/9) under

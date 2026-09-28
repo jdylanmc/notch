@@ -32,6 +32,46 @@ deleted by source retirement. Crowdin is unchanged.
 The issue-form dropdown is now **manual dispatch only**, so a product tag or
 release cannot cause its unrelated default-branch commits.
 
+### Credential-free dependency preflight
+
+Run [Release dependency preflight](../.github/workflows/release-dependency-preflight.yml)
+manually from `pocket`, or inspect its result on a PR changing the workflow,
+DMG requirements or the hosted/native tool helpers it imports. It checks out the
+run's immutable `github.sha` in either mode and logs the Python interpreter.
+It uses the existing `pocket_sign.py tools`
+check, then downloads the exact hash-pinned wheels and proves an offline install
+and isolated `dmgbuild`/Quartz import on the hosted macOS 26 / Xcode 26.6 runner.
+Python isolation prevents a repository module or user-site package from
+masquerading as the installed dependency.
+
+It has read-only repository permission, no release environment or secret
+references, no app build/launch, no certificate import, no Apple submission,
+no disk-image mount and no release/tag/tap writes. Its only artifact,
+`notch-pocket-dmg-wheels`, contains public `.whl` files for seven days. The
+hidden-file opt-in is limited to that wheel-only path, not the private `.build`
+tree. A failing tool/download/hash/import step prevents artifact upload.
+
+If a developer's public package CDN is unreachable, those wheels can be
+downloaded from the **specific reviewed successful run** and installed into a
+fresh owned venv using the unchanged requirements:
+
+```bash
+# Use an already-installed Python 3.10+ (python3.14 here) and a new venv path.
+test ! -e .build/package-venv-offline
+python3.14 -I -m venv .build/package-venv-offline
+.build/package-venv-offline/bin/python3 -I -m pip install --no-index --find-links /absolute/downloaded/wheels \
+  --require-hashes --only-binary=:all: -r Configuration/dmg/requirements.txt
+```
+
+Use an already-installed Python 3.10+ and the isolated environment procedure
+in the README; do not install globally or replace a failed environment.
+Wheels are platform/interpreter-specific. Original hash enforcement remains
+mandatory after transfer; do not substitute versions or trust an artifact name
+alone. This auxiliary preflight is not one of the nine exact-commit release
+checks and does not replace the release job's own installation or native gates.
+It proves dependencies/tool availability for that run, not signing, notarization,
+Gatekeeper acceptance, an app artifact, or public distribution.
+
 ### Owner configuration
 
 Create the following GitHub Actions environments in **`jdylanmc/notch`**.
