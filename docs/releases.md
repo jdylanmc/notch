@@ -7,7 +7,7 @@ cask version is `0.1.0`; historical upstream tags/casks identify another product
 
 The release owner owns GitHub Actions integration, credential configuration,
 independent reviews, merges, actual Apple submissions, publication and Homebrew
-updates. This slice changes none of the workflows, signing/build settings,
+updates. This slice adds portable CI coverage but changes no signing/build settings,
 entitlements or existing packaging contracts. Apple CI secrets are not configured
 as part of it. **Native evidence is still pending.** Portable tests are not proof
 of Apple acceptance, a usable signing identity, stapled tickets, or installation.
@@ -25,6 +25,8 @@ Only the release owner should execute the following after the required reviews
 and gates, using real approved inputs rather than these placeholders:
 
 ```bash
+# Run from the repository root.
+mkdir -p .build
 python3 -B scripts/notarize.py \
   --app '/exact/signed/notch-pocket.app' \
   --identity 'Developer ID Application: YOUR CERTIFICATE NAME (YOURTEAMID)' \
@@ -33,15 +35,20 @@ python3 -B scripts/notarize.py \
   --output-dir "$PWD/.build/notarized-0.1.0-001"
 ```
 
-Native execution **uploads to Apple**. It requires macOS with Xcode's
+Native execution **uploads to Apple**. It requires macOS 15.6+ with Xcode 26+'s
 `notarytool`/`stapler` available through `xcrun`, plus `codesign`, `lipo`, `ditto`,
-`spctl` and `hdiutil`. An explicit `DEVELOPER_DIR` must name a full Xcode.
+`spctl` and `hdiutil`. Gatekeeper is at `/usr/sbin/spctl`.
+The signing helper's full-Xcode discovery is reused: an explicit
+`DEVELOPER_DIR` must name a full Xcode, including valid Xcode aliases; invalid
+explicit selections fail rather than silently falling back. The resolved
+developer directory is recorded in final evidence. Both Xcode utilities and
+the existing packager's dependencies are checked before output creation or upload.
 The unchanged packager additionally needs its existing `python3`/`dmgbuild`
 dependencies on the caller's `PATH`. Follow the
 [isolated missing-dependency recovery](../README.md#local-dmg-preparation)
 only after a missing-dependency failure; no dependency installation or repair is
-performed here. Resolve a failed attempt before starting another fresh one:
-the app may already have been submitted when packaging reports a missing tool.
+performed here. Resolve any post-submission failure before starting another fresh
+attempt; preflight cannot guarantee a dependency remains available later.
 
 The certificate and notarytool keychain profile are **caller-configured**.
 The complete Developer ID Application name and matching ten-character team ID
@@ -111,8 +118,10 @@ quarantine-stripping installation instructions are rejected for this product.
 Quarantine and other source extended attributes are retained through staging;
 a failing assessment is a blocker, not permission to remove them.
 
-All native subprocesses have deadlines and use the existing owned-process-group
-runner/cancellation discipline. Submit has a 10-minute local bound; wait has
+All native subprocesses have deadlines and use the shared distribution runner.
+Post-spawn pipe errors stop and reap the owned child before propagating; if
+termination cannot be established, cleanup uncertainty preserves the packager's
+staging and child identity. Submit has a 10-minute local bound; wait has
 notarytool's 20-minute bound and a 21-minute outer bound. Copy/ZIP/staple are
 bounded at 5 minutes; signature/image/assessment/ticket checks at 2 minutes
 or less. The unchanged package builder/mount/cleanup deadlines remain in force.
@@ -132,7 +141,7 @@ The owned directory is retained on success and failure. Its normal contents:
 
 Success is exit zero and one JSON line on stdout: `ok: true`,
 `status: "notarized"`, `public_artifact_ready: true`, `publication: "not-published"`,
-exact source/app/ZIP/DMG/evidence paths, version/team, both submission IDs, final
+exact source/app/ZIP/DMG/evidence paths, version/team/resolved developer directory, both submission IDs, final
 DMG `sha256`/`size_bytes`, per-code/per-architecture evidence, unchanged-source
 proof and exact retained top-level `residue` paths. The final evidence file
 contains the same result. The **published checksum is computed after the final
@@ -148,7 +157,10 @@ publication, create a release/tag, upload a GitHub asset, or change a cask.
 
 Failure is a nonzero exit and one JSON line on stderr with `ok: false`,
 `public_artifact_ready: false`, `error`, `stage`, known `submissions`, and
-`uploads_may_be_processing`. **No public artifact is ready on error.** Native
+`uploads_may_be_processing`. Confirmed failure to spawn the upload process does not
+claim an uncertain upload; a failed command after launch remains conservative.
+Known rejection/pending responses include `notary_status`; unknown values are not
+echoed as trusted diagnostics. **No public artifact is ready on error.** Native
 diagnostics, credentials and the certificate/profile selectors are not echoed
 or persisted as logs. Original native `tool_exit`, timeout/owned-child details
 and any package cleanup residue are retained in the structured error.
@@ -182,7 +194,15 @@ response. **Do not automatically resubmit**, even when no UUID could be parsed.
 When known, inspect the recorded UUID manually using the same approved profile,
 for example `xcrun notarytool info UUID --keychain-profile PROFILE
 --output-format json`, or wait on that UUID with `--timeout 20m`. Those are
-operator actions requiring the same release authorization. A response with a
+operator actions requiring the same release authorization. For a rejected submission,
+retrieve its diagnostics without re-uploading:
+
+```bash
+xcrun notarytool log UUID --keychain-profile PROFILE
+```
+
+Keep that raw log private; it may include source paths and other build details.
+A response with a
 different ID or malformed/unrecognized status is not acceptance.
 
 There is deliberately no automated resume/repair mode. Resolve uncertain
@@ -205,11 +225,18 @@ submission persistence and malformed/nonaccepted responses, timeouts,
 staple/Gatekeeper failures, final drift, source changes and package residue.
 No native build, signing, packaging, Keychain or Apple network operation occurs.
 
-Before publication, the release owner still needs CI registration and green
+Before publication, the release owner still needs green
 repository gates, independent review, an authorized fresh Developer ID candidate
 with originating-build provenance, live ZIP/DMG `Accepted` records, staple and
 strict signature proof, native metadata/mount/detach evidence, enabled
-Gatekeeper acceptance, and clean second-Mac installation/coexistence evidence.
-GitHub Actions secrets and workflow integration, tag/release asset publication,
+Gatekeeper acceptance.
+GitHub Actions secrets and release-workflow integration, tag/release asset publication,
 and Homebrew URL/version/final-SHA256 wiring are separate reviewed work. None
 is established by source version alignment or portable mocked tests.
+
+### Post-publication acceptance
+
+The owner will test the published Homebrew release on additional Macs and report
+installation, launch, permission prompts and coexistence results. This is
+**after publication**, not a prerequisite to publishing the approved first release.
+Keep #9 and dependent distribution acceptance open until that confirmation arrives.

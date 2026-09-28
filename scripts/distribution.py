@@ -17,6 +17,7 @@ from xml.parsers.expat import ExpatError
 
 
 ROOT = Path(__file__).resolve().parent.parent
+VERSION = "0.1.0"
 APP_NAME = "notch-pocket.app"
 APP_ID = "com.jdylanmc.notchpocket"
 HELPER_ID = APP_ID + ".XPCHelper"
@@ -54,10 +55,11 @@ def run_command(command, *, env, phase, timeout):
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
         )
     except OSError as exc:
-        raise DistributionError(phase, "Unable to start " + Path(command[0]).name) from exc
+        raise DistributionError(phase, "Unable to start " + Path(command[0]).name,
+                                process_started=False) from exc
     try:
         result = process.communicate(timeout=timeout)
-    except (subprocess.TimeoutExpired, KeyboardInterrupt) as exc:
+    except BaseException as exc:
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
@@ -67,13 +69,13 @@ def run_command(command, *, env, phase, timeout):
                                     pid=process.pid) from stop_error
         try:
             process.communicate(timeout=10)
-        except subprocess.TimeoutExpired as stop_error:
+        except (subprocess.TimeoutExpired, OSError) as stop_error:
             raise DistributionError("cleanup_failed", "Owned subprocess did not stop.",
                                     pid=process.pid) from stop_error
-        if isinstance(exc, KeyboardInterrupt):
-            raise
-        raise DistributionError(phase, Path(command[0]).name + " timed out.",
-                                timed_out=True) from exc
+        if isinstance(exc, subprocess.TimeoutExpired):
+            raise DistributionError(phase, Path(command[0]).name + " timed out.",
+                                    timed_out=True) from exc
+        raise
     if process.returncode:
         raise DistributionError(phase, Path(command[0]).name + " failed.",
                                 tool_exit=process.returncode)
@@ -238,7 +240,7 @@ def bundle_layout(app, code):
         info = plist_dictionary(info_path.read_bytes(), "invalid_output")
         if any(info.get(key) != value for key, value in (
             ("CFBundleIdentifier", identifier), ("CFBundleExecutable", executable),
-            ("CFBundlePackageType", kind), ("CFBundleShortVersionString", "0.1.0"),
+            ("CFBundlePackageType", kind), ("CFBundleShortVersionString", VERSION),
         )):
             raise DistributionError("invalid_output", "Unexpected app/helper identity or version.")
         binary = bundle / "Contents/MacOS" / executable
@@ -421,7 +423,7 @@ def build_distribution(identity, team, build_value, run=run_command):
         return {"ok": True, "status": "signed", "distribution": "local-only",
                 "notarization": "NOT YET NOTARIZED", "gatekeeper_assessed": False,
                 "app": str(app), "build_dir": str(build), "configuration": "Release",
-                "version": "0.1.0", "team": team, "developer_dir": env["DEVELOPER_DIR"],
+                "version": VERSION, "team": team, "developer_dir": env["DEVELOPER_DIR"],
                 "app_identifier": APP_ID, "helper_identifier": HELPER_ID, "code": evidence}
     except DistributionError as exc:
         exc.details["retained_build_dir"] = str(build)

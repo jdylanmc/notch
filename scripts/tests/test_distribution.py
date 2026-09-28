@@ -668,6 +668,34 @@ class SigningTests(FixtureTests):
 
 
 class SubprocessTests(unittest.TestCase):
+    def test_pipe_error_stops_and_reaps_owned_child_before_propagating(self):
+        process = mock.Mock(pid=4321)
+        failure = OSError("fixture pipe error")
+        process.communicate.side_effect = [failure, (b"", b"")]
+        with mock.patch.object(distribution.subprocess, "Popen", return_value=process), \
+                mock.patch.object(distribution.os, "killpg") as kill:
+            with self.assertRaises(OSError) as raised:
+                distribution.run_command(["fixture"], env={}, phase="build_failed", timeout=3)
+        self.assertIs(raised.exception, failure)
+        kill.assert_called_once_with(4321, signal.SIGKILL)
+        self.assertEqual(process.communicate.call_count, 2)
+
+    def test_reap_pipe_error_reports_uncertain_child(self):
+        process = mock.Mock(pid=4321)
+        process.communicate.side_effect = OSError("fixture pipe error")
+        with mock.patch.object(distribution.subprocess, "Popen", return_value=process), \
+                mock.patch.object(distribution.os, "killpg"):
+            with self.assertRaises(distribution.DistributionError) as raised:
+                distribution.run_command(["fixture"], env={}, phase="build_failed", timeout=3)
+        self.assertEqual(raised.exception.code, "cleanup_failed")
+        self.assertEqual(raised.exception.details["pid"], 4321)
+
+    def test_failed_spawn_is_distinct_from_uncertain_execution(self):
+        with mock.patch.object(distribution.subprocess, "Popen", side_effect=FileNotFoundError):
+            with self.assertRaises(distribution.DistributionError) as raised:
+                distribution.run_command(["fixture"], env={}, phase="build_failed", timeout=3)
+        self.assertIs(raised.exception.details["process_started"], False)
+
     def test_native_error_status_and_output_redaction(self):
         process = mock.Mock(returncode=65)
         process.communicate.return_value = (b"private build output", b"private diagnostic")

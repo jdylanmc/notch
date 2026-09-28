@@ -36,6 +36,7 @@ FRAMEWORK_BINARY = Path("Contents/Frameworks/Fixture.framework/Versions/A/Fixtur
 RESOURCE = distribution.RESOURCE_CODE
 TOOLS = {name: "/usr/bin/" + name for name in
          ("codesign", "lipo", "ditto", "xcrun", "spctl", "hdiutil")}
+TOOLS["spctl"] = "/usr/sbin/spctl"
 
 
 class NotarizationTests(unittest.TestCase):
@@ -92,7 +93,7 @@ class NotarizationTests(unittest.TestCase):
         self.package_hook = lambda: None
         patches = (
             mock.patch.object(distribution, "ROOT", self.root),
-            mock.patch.object(notarize, "find_tools", return_value=TOOLS),
+            mock.patch.object(notarize, "find_tools", side_effect=self.tools),
             mock.patch.object(package, "attributes", side_effect=self.attributes),
             mock.patch.object(package, "package", side_effect=self.fake_package),
             mock.patch.object(subprocess, "Popen", side_effect=AssertionError("Native call forbidden")),
@@ -102,6 +103,10 @@ class NotarizationTests(unittest.TestCase):
         for patch in patches:
             patch.start()
             self.addCleanup(patch.stop)
+
+    def tools(self, env, run):
+        env["DEVELOPER_DIR"] = "/fixture/Xcode.app/Contents/Developer"
+        return TOOLS
 
     def attributes(self, path, *, symlink=False):
         value = os.fstat(path) if isinstance(path, int) else Path(path).lstat()
@@ -284,6 +289,7 @@ class NotarizationTests(unittest.TestCase):
         self.assertTrue(result["public_artifact_ready"])
         self.assertEqual(result["status"], "notarized")
         self.assertEqual(result["version"], "0.1.0")
+        self.assertEqual(result["developer_dir"], "/fixture/Xcode.app/Contents/Developer")
         self.assertEqual(result["team"], TEAM)
         self.assertEqual(result["submissions"], {"app": APP_ID, "dmg": DMG_ID})
         self.assertEqual(result["source_app"], str(self.app))
@@ -507,6 +513,34 @@ class NotarizationTests(unittest.TestCase):
         self.assertEqual(error.details["submissions"], {"app": APP_ID})
         self.assertEqual(error.details["uploads_may_be_processing"], ["app"])
         self.assertNotIn("private token", str(error))
+
+    def test_missing_preflight_tool_has_no_output_or_uncertain_upload(self):
+        with mock.patch.object(notarize, "find_tools", side_effect=distribution.DistributionError(
+                "missing_tool", "missing notarytool")):
+            error = self.assert_failure("missing_tool")
+        self.assertEqual(error.details["uploads_may_be_processing"], [])
+        self.assertFalse(self.output.exists())
+
+    def test_failed_submit_spawn_does_not_claim_possible_upload(self):
+        def fail(command, options):
+            if command[1:3] == ["notarytool", "submit"]:
+                raise distribution.DistributionError("notary_failed", "unable to start", process_started=False)
+        self.hook = fail
+        error = self.assert_failure("notary_failed")
+        self.assertEqual(error.details["uploads_may_be_processing"], [])
+        self.assertEqual(error.details["submissions"], {})
+
+    def test_known_rejection_status_is_reported_without_service_messages(self):
+        self.wait_data["app"] = {"id": APP_ID, "status": "Invalid", "message": "do not echo"}
+        error = self.assert_failure("notary_failed")
+        self.assertEqual(error.details["notary_status"], "Invalid")
+        self.assertNotIn("do not echo", json.dumps(error.details))
+
+    def test_mismatched_release_version_is_rejected_before_upload(self):
+        with mock.patch.object(distribution, "VERSION", "0.1.1"):
+            self.assert_failure("invalid_output")
+        self.assertEqual(self.events, [])
+        self.assertFalse(self.output.exists())
 
     def test_submit_timeout_is_uncertain_and_never_resubmits(self):
         def fail(command, options):
@@ -751,6 +785,42 @@ class NotarizationTests(unittest.TestCase):
         self.assertTrue(error.details["cleanup_uncertain"])
         self.assertEqual([item["tool_exit"] for item in error.details["native_failures"]], [17, 23])
 
+    def test_packager_pipe_error_stops_child_or_retains_uncertain_stage(self):
+        for stop_fails in (False, True):
+            with self.subTest(stop_fails=stop_fails):
+                self.output = self.output.with_name("pipe-stop-" + str(stop_fails))
+                self.copy = self.output / self.app.name
+                self.dmg = self.output / "notch-pocket-0.1.0.dmg"
+                stages = []
+                process = mock.Mock(pid=4321)
+                process.communicate.side_effect = [OSError("fixture pipe error"), (b"", b"")]
+                stopped = mock.Mock(side_effect=PermissionError if stop_fails else None)
+
+                def run(command, **options):
+                    tool = Path(command[0]).name
+                    if tool == "bash":
+                        stages.append(Path(command[3]).parent)
+                        with mock.patch.object(distribution.subprocess, "Popen", return_value=process), \
+                                mock.patch.object(distribution.os, "killpg", stopped):
+                            return distribution.run_command(command, **options)
+                    if tool == "codesign" and "--verbose=2" in command:
+                        return b"", b""
+                    if tool == "hdiutil" and command[1] == "info":
+                        stopped.assert_called_once()
+                        self.assertEqual(process.communicate.call_count, 2)
+                        return plistlib.dumps({"images": []}), b""
+                    return self.native(command, **options)
+
+                with mock.patch.object(package, "package", REAL_PACKAGE), \
+                        mock.patch.object(package, "find_tools", return_value={**TOOLS, "bash": "/bin/bash"}):
+                    error = self.assert_failure("cleanup_failed" if stop_fails else "io_error", run=run)
+                self.assertEqual(len(stages), 1)
+                self.assertEqual(stages[0].exists(), stop_fails)
+                if stop_fails:
+                    self.assertEqual(error.details["staging"], str(stages[0]))
+                    self.assertEqual(error.details["pid"], 4321)
+                    self.assertTrue(error.details["cleanup_uncertain"])
+
     def test_original_source_change_after_copy_prevents_success(self):
         def change(command, options):
             if command[1:3] == ["stapler", "validate"] and command[-1] == str(self.dmg):
@@ -812,6 +882,82 @@ class NotarizationTests(unittest.TestCase):
                 self.assertFalse(result["public_artifact_ready"])
                 self.assertNotIn("secret", stderr.getvalue())
         self.assertEqual(self.calls, [])
+
+
+class ToolPreflightTests(unittest.TestCase):
+    def setUp(self):
+        fixture = tempfile.TemporaryDirectory()
+        self.addCleanup(fixture.cleanup)
+        self.developer = Path(fixture.name).resolve() / "Xcode.app/Contents/Developer"
+        (self.developer / "Platforms/MacOSX.platform").mkdir(parents=True)
+        (self.developer / "usr/bin").mkdir(parents=True)
+        for name in ("xcodebuild", "notarytool", "stapler"):
+            path = self.developer / "usr/bin" / name
+            path.write_bytes(b"fixture not executable")
+            path.chmod(0o755)
+        self.run = mock.Mock(side_effect=self.native)
+        native_access = os.access
+        patches = (
+            mock.patch.dict(os.environ, {"DEVELOPER_DIR": str(self.developer)}, clear=True),
+            mock.patch.object(distribution.sys, "platform", "darwin"),
+            mock.patch.object(distribution.platform, "mac_ver", return_value=("26.0", (), "")),
+            mock.patch.object(distribution.os.path, "isfile", return_value=True),
+            mock.patch.object(distribution.os, "access", side_effect=lambda path, mode:
+                              str(path).startswith(("/usr/bin/", "/usr/sbin/")) or native_access(path, mode)),
+            mock.patch.object(package, "find_tools", return_value={}),
+        )
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def native(self, command, **options):
+        if "-version" in command:
+            return b"Xcode 26.6\n", b""
+        self.assertEqual(command[:2], ["/usr/bin/xcrun", "--find"])
+        self.assertEqual(options["phase"], "missing_tool")
+        return (str(self.developer / "usr/bin" / command[-1]) + "\n").encode(), b""
+
+    def test_real_gatekeeper_path_and_resolved_developer_are_used(self):
+        env = {}
+        tools = notarize.find_tools(env, self.run)
+        self.assertEqual(tools["spctl"], "/usr/sbin/spctl")
+        self.assertEqual(env["DEVELOPER_DIR"], str(self.developer))
+        self.assertEqual([call.args[0][-1] for call in self.run.call_args_list], ["-version", "notarytool", "stapler"])
+
+    def test_missing_xcode_utility_fails_before_any_submit(self):
+        (self.developer / "usr/bin/stapler").unlink()
+        with self.assertRaises(notarize.NotarizationError) as raised:
+            notarize.find_tools({}, self.run)
+        self.assertEqual(raised.exception.code, "missing_tool")
+        self.assertFalse(any("submit" in call.args[0] for call in self.run.call_args_list))
+
+    def test_missing_gatekeeper_fails_preflight(self):
+        with mock.patch.object(distribution.os.path, "isfile", side_effect=lambda path: path != "/usr/sbin/spctl"):
+            with self.assertRaises(notarize.NotarizationError) as raised:
+                notarize.find_tools({}, self.run)
+        self.assertEqual(raised.exception.code, "missing_tool")
+
+    def test_explicit_clt_is_rejected_and_xcode_aliases_are_resolved(self):
+        with mock.patch.dict(os.environ, {"DEVELOPER_DIR": str(self.developer.parent / "CommandLineTools")}):
+            with self.assertRaises(distribution.DistributionError) as raised:
+                notarize.find_tools({}, self.run)
+        self.assertEqual(raised.exception.code, "missing_tool")
+        alias = self.developer.parents[2] / "Alias.app"
+        alias.symlink_to(self.developer.parent.parent, target_is_directory=True)
+        with mock.patch.dict(os.environ, {"DEVELOPER_DIR": str(alias / "Contents/Developer") + "/"}):
+            env = {}
+            notarize.find_tools(env, self.run)
+        self.assertEqual(env["DEVELOPER_DIR"], str(self.developer))
+
+    def test_unsupported_host_and_missing_packager_fail_explicitly(self):
+        with mock.patch.object(distribution.sys, "platform", "linux"):
+            with self.assertRaises(distribution.DistributionError) as raised:
+                notarize.find_tools({}, self.run)
+        self.assertEqual(raised.exception.code, "unsupported_platform")
+        with mock.patch.object(package, "find_tools", side_effect=package.PackageError("missing_tool", "dmgbuild")):
+            with self.assertRaises(package.PackageError) as raised:
+                notarize.find_tools({}, self.run)
+        self.assertEqual(raised.exception.code, "missing_tool")
 
 
 if __name__ == "__main__":

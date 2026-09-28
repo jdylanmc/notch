@@ -294,11 +294,11 @@ belongs in an authoring-only phase.
 
 App build/test, SwiftLint, CodeQL, native-helper validation, and CI contract
 tests run for pushes to `pocket` and PRs targeting `pocket`. The app retains its
-three-leg Xcode matrix. Helper CI runs its canonical build, all 41 package tests,
+three-leg Xcode matrix. Helper CI runs its canonical build, all 55 package tests,
 and nine-file lint without launching the app or requesting privacy grants.
 Contract checks use Node.js 22+ with an isolated, pinned YAML parser and also run
-the existing 22 PR-policy tests plus the portable local-packaging and distribution-
-signing unittest commands. CI does not use a signing identity, build a distribution
+the existing 22 PR-policy tests plus the portable local-packaging, distribution-
+signing and notarization-preparation unittest commands. CI does not use a signing identity, build a distribution
 candidate, or build/upload a DMG.
 
 See the [CI and packaging inventory](CONTRIBUTING.md#ci-and-packaging-inventory)

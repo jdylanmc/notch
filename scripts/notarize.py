@@ -20,7 +20,6 @@ EXIT_CODES = {
     "notary_failed": 11, "staple_failed": 12, "gatekeeper_failed": 13,
     "artifact_changed": 14,
 }
-VERSION = "0.1.0"
 DMG_IDENTIFIER = distribution.APP_ID + ".dmg"
 
 
@@ -66,19 +65,23 @@ def owned_snapshot(app):
     return entries, fingerprints
 
 
-def find_tools(env):
-    if sys.platform != "darwin":
-        raise NotarizationError("unsupported_platform", "Native notarization requires macOS.")
-    tools = {name: "/usr/bin/" + name for name in
-             ("ditto", "codesign", "lipo", "xcrun", "spctl", "hdiutil")}
+def find_tools(env, run):
+    tools = distribution.find_tools(env, run)
+    tools.update({name: "/usr/bin/" + name for name in ("ditto", "xcrun", "hdiutil")})
+    tools["spctl"] = "/usr/sbin/spctl"
     for name, path in tools.items():
         if not os.path.isfile(path) or not os.access(path, os.X_OK):
             raise NotarizationError("missing_tool", "Required native tool is unavailable: " + name)
-    if "DEVELOPER_DIR" in os.environ:
-        developer = canonical_path(os.environ["DEVELOPER_DIR"])
-        if not distribution.full_xcode(developer):
-            raise NotarizationError("missing_tool", "DEVELOPER_DIR must select a full Xcode.")
-        env["DEVELOPER_DIR"] = str(developer)
+    for name in ("notarytool", "stapler"):
+        output, _ = run([tools["xcrun"], "--find", name],
+                        env=env, phase="missing_tool", timeout=30)
+        try:
+            path = Path(output.decode("utf-8").strip())
+        except UnicodeError as exc:
+            raise NotarizationError("missing_tool", "Invalid native tool location.") from exc
+        if not path.is_absolute() or not path.is_file() or not os.access(path, os.X_OK):
+            raise NotarizationError("missing_tool", "Required Xcode tool is unavailable: " + name)
+    package.find_tools()
     return tools
 
 
@@ -171,8 +174,13 @@ def upload(artifact, kind, profile, tools, env, run, state):
     arguments = ["--keychain-profile", profile, "--output-format", "json"]
     state["stage"] = kind + "_submit"
     state["uploads_may_be_processing"].append(kind)
-    data, _ = run([tools["xcrun"], "notarytool", "submit", str(artifact), "--no-wait", *arguments],
-                  env=env, phase="notary_failed", timeout=600)
+    try:
+        data, _ = run([tools["xcrun"], "notarytool", "submit", str(artifact), "--no-wait", *arguments],
+                      env=env, phase="notary_failed", timeout=600)
+    except distribution.DistributionError as exc:
+        if exc.details.get("process_started") is False:
+            state["uploads_may_be_processing"].remove(kind)
+        raise
     submitted = notary_dictionary(data)
     identifier = submission_id(submitted.get("id"))
     state["submissions"][kind] = identifier
@@ -186,8 +194,11 @@ def upload(artifact, kind, profile, tools, env, run, state):
     data, _ = run([tools["xcrun"], "notarytool", "wait", identifier, "--timeout", "20m", *arguments],
                   env=env, phase="notary_failed", timeout=1260)
     waited = notary_dictionary(data)
-    if submission_id(waited.get("id")) != identifier or waited.get("status") != "Accepted":
-        raise NotarizationError("notary_failed", "Recorded submission was not confirmed Accepted.")
+    notary_status = waited.get("status")
+    if submission_id(waited.get("id")) != identifier or notary_status != "Accepted":
+        known_status = notary_status if notary_status in ("Invalid", "Rejected", "In Progress") else "unrecognized"
+        raise NotarizationError("notary_failed", "Recorded submission was not confirmed Accepted.",
+                                notary_status=known_status)
     state["uploads_may_be_processing"].remove(kind)
 
 
@@ -300,7 +311,7 @@ def prepare(app_value, identity, team, profile, output_value, run=distribution.r
         app, output = validate_inputs(app_value, identity, team, profile, output_value)
         source = owned_snapshot(app)
         env = distribution.environment()
-        tools = find_tools(env)
+        tools = find_tools(env, run)
         state["stage"] = "source_verification"
         verify_app(app, identity, team, tools, env, run)
         require_snapshot(app, source, "source_changed")
@@ -315,8 +326,8 @@ def prepare(app_value, identity, team, profile, output_value, run=distribution.r
         scratch.mkdir(mode=0o700)
         env.update(TMPDIR=str(scratch), TMP=str(scratch), TEMP=str(scratch))
         staged = output / distribution.APP_NAME
-        archive = output / ("notch-pocket-" + VERSION + ".zip")
-        dmg = output / ("notch-pocket-" + VERSION + ".dmg")
+        archive = output / ("notch-pocket-" + distribution.VERSION + ".zip")
+        dmg = output / ("notch-pocket-" + distribution.VERSION + ".dmg")
         state["stage"] = "copy"
         run([tools["ditto"], "--rsrc", "--extattr", "--acl", str(app), str(staged)],
             env=env, phase="verification_failed", timeout=300)
@@ -374,7 +385,8 @@ def prepare(app_value, identity, team, profile, output_value, run=distribution.r
         evidence_path = output / "evidence.json"
         result = {
             "ok": True, "status": "notarized", "public_artifact_ready": True,
-            "publication": "not-published", "version": VERSION, "team": team,
+            "publication": "not-published", "version": distribution.VERSION, "team": team,
+            "developer_dir": env["DEVELOPER_DIR"],
             "source_app": str(app), "app": str(staged), "zip": str(archive), "dmg": str(dmg),
             "retained_output_dir": str(output), "evidence": str(evidence_path),
             "app_identifier": distribution.APP_ID, "helper_identifier": distribution.HELPER_ID,
