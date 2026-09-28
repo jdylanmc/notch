@@ -1,0 +1,195 @@
+name: Notch Pocket notarized release
+
+on:
+  push:
+    tags: ['notch-pocket-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing product tag, exactly matching distribution.VERSION'
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: notch-pocket-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      version: ${{ steps.source.outputs.version }}
+    steps:
+      - name: Checkout trusted gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          ref: pocket
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate tag and nine exact-commit checks
+        id: source
+        timeout-minutes: 6
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: python3 -B .github/scripts/pocket_release.py gate
+
+  tap-ready:
+    needs: gate
+    runs-on: ubuntu-latest
+    environment: notch-pocket-tap
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout gated source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 2
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+      - name: Check scoped tap configuration
+        timeout-minutes: 2
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: python3 -B .github/scripts/pocket_release.py tap-ready
+
+  sign:
+    needs: [gate, tap-ready]
+    runs-on: macos-26
+    environment: notch-pocket-release
+    timeout-minutes: 150
+    permissions:
+      contents: read
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      SOURCE_SHA: ${{ needs.gate.outputs.sha }}
+      VERSION: ${{ needs.gate.outputs.version }}
+    steps:
+      - name: Checkout gated source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+      - name: Check Apple configuration
+        timeout-minutes: 1
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: python3 -B .github/scripts/pocket_sign.py config
+      - name: Verify hosted tools
+        timeout-minutes: 3
+        run: python3 -B .github/scripts/pocket_sign.py tools
+      - name: Prepare isolated pinned DMG dependencies
+        timeout-minutes: 10
+        run: |
+          umask 077
+          mkdir -p .build
+          test ! -e .build/pocket-release-venv
+          python3 -m venv .build/pocket-release-venv
+          if ! .build/pocket-release-venv/bin/python3 -c 'import dmgbuild' >/dev/null 2>&1; then
+            .build/pocket-release-venv/bin/python3 -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r Configuration/dmg/requirements.txt
+          fi
+          .build/pocket-release-venv/bin/python3 -c 'import dmgbuild'
+          printf '%s\n' "$GITHUB_WORKSPACE/.build/pocket-release-venv/bin" >> "$GITHUB_PATH"
+      - name: Build exact Release app and notarize final DMG
+        timeout-minutes: 120
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: python3 -B .github/scripts/pocket_sign.py sign
+      - name: Always restore keychain search list and remove credentials
+        if: always()
+        timeout-minutes: 5
+        run: python3 -B .github/scripts/pocket_sign.py cleanup
+      - name: Upload only final public assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        timeout-minutes: 5
+        with:
+          name: notch-pocket-release
+          path: |
+            .build/pocket-release-assets/notch-pocket-${{ needs.gate.outputs.version }}.dmg
+            .build/pocket-release-assets/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  publish:
+    needs: [gate, sign]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Checkout gated source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 2
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+      - name: Download final public assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        timeout-minutes: 3
+        with:
+          name: notch-pocket-release
+          path: .build/pocket-release-assets
+      - name: Verify bytes and draft then publish latest
+        timeout-minutes: 14
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.gate.outputs.sha }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: python3 -B .github/scripts/pocket_release.py publish
+
+  tap:
+    needs: [gate, publish]
+    runs-on: ubuntu-latest
+    environment: notch-pocket-tap
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout gated source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 2
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+      - name: Download final public assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        timeout-minutes: 3
+        with:
+          name: notch-pocket-release
+          path: .build/pocket-release-assets
+      - name: Verify published bytes and open tap PR
+        timeout-minutes: 9
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          SOURCE_SHA: ${{ needs.gate.outputs.sha }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: python3 -B .github/scripts/pocket_release.py tap

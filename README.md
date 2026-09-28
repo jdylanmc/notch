@@ -13,9 +13,10 @@ Homebrew cask version **`0.1.0`**. App and embedded helper versions match.
 Historical upstream `v2.x` tags do not identify Notch Pocket releases.
 Version alignment is release preparation, not evidence of publication or notarization.
 
-See [notarized release preparation](docs/releases.md) for the explicit-input
-app/DMG notarization command, retained-artifact recovery, and pending native
-release evidence. It does not publish a release or configure Apple credentials.
+See [notarized releases](docs/releases.md) for the scoped hosted Actions workflow,
+manual credential configuration, exact-commit gates, final-DMG publication,
+Homebrew update PRs, and native recovery. Workflow source is not publication
+evidence; Apple credentials must be supplied by the owner.
 
 The foundation milestone preserves existing media features, shared media code,
 and the file shelf. **Spotify is the only committed player support.** Other
@@ -37,7 +38,9 @@ symbol is separate and unchanged.
 **No independent Notch Pocket binary releases are available yet.** Build locally
 from `pocket`. Upstream downloads and Homebrew casks install a different product;
 they are not Notch Pocket installation options. There is no independent download
-site, tap, sponsorship destination, or notarized release to advertise.
+site, sponsorship destination, or notarized release to advertise. The owned
+[Homebrew tap](https://github.com/jdylanmc/homebrew-notch) is prepared for the first
+release; installation availability requires publication and a reviewed cask PR.
 
 The deployment target is macOS **14 Sonoma** or later, on Apple Silicon or Intel.
 The build-host requirements below are separate.
