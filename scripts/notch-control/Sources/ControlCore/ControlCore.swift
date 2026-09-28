@@ -65,8 +65,8 @@ public struct Options: Equatable {
         var tail = Array(arguments.dropFirst())
         var pane: String?
         if command == .settings {
-            guard let value = tail.first, ["open", "general", "about"].contains(value) else {
-                throw ControlFailure(.invalidInput, "settings requires open, general, or about.")
+            guard let value = tail.first, ["open", "general", "about", "close"].contains(value) else {
+                throw ControlFailure(.invalidInput, "settings requires open, general, about, or close.")
             }
             pane = tail.removeFirst()
         }
@@ -113,13 +113,13 @@ public struct Options: Equatable {
                 throw ControlFailure(.invalidInput, "--app-path must name an absolute .app path.")
             }
         }
-        let windowID = try parseWindowID(command: command, flags: flags)
+        let windowID = try parseWindowID(command: command, pane: pane, flags: flags)
         return Options(command: command, pane: pane, notchAction: notchAction, tabTarget: tabTarget,
                        appPath: flags["--app-path"], windowID: windowID,
                        output: flags["--output"], timeout: timeout)
     }
 
-    private static func parseWindowID(command: Command, flags: [String: String]) throws -> UInt32? {
+    private static func parseWindowID(command: Command, pane: String?, flags: [String: String]) throws -> UInt32? {
         if command == .capture {
             guard let raw = flags["--window"], !raw.isEmpty,
                   raw.utf8.allSatisfy({ (48...57).contains($0) }),
@@ -131,17 +131,17 @@ public struct Options: Equatable {
                 throw ControlFailure(.invalidInput, "--output must end in .png.")
             }
             return value
-        } else if command == .notch || command == .selectTab {
+        } else if command == .notch || command == .selectTab || (command == .settings && pane == "close") {
             guard let raw = flags["--window"], let value = UInt32(raw), value > 0,
                   String(value) == raw, flags["--output"] == nil else {
-                let name = command == .notch ? "notch" : "select-tab"
+                let name = command == .settings ? "settings close" : command.rawValue
                 throw ControlFailure(.invalidInput, "\(name) requires a canonical positive --window ID and no --output.")
             }
             return value
         } else if flags["--window"] != nil || flags["--output"] != nil {
             throw ControlFailure(
                 .invalidInput,
-                "--window is only valid for capture, notch, or select-tab; --output is only valid for capture."
+                "--window requires capture, notch, select-tab, or settings close; --output is only valid for capture."
             )
         }
         return nil
@@ -166,6 +166,82 @@ public struct AppIdentity: Codable, Equatable {
         self.pid = pid
         self.path = path
         self.launchedAt = launchedAt
+    }
+}
+
+public struct SettingsCloseResult: Encodable, Equatable {
+    public enum Outcome: String, Encodable {
+        case closed
+    }
+    public let windowID: UInt32
+    public let outcome: Outcome
+}
+
+public struct SettingsCloseTransport {
+    public let observe: () throws -> UInt32?
+    public let actionNames: () throws -> [String]
+    public let perform: (String) throws -> Void
+
+    public init(
+        observe: @escaping () throws -> UInt32?,
+        actionNames: @escaping () throws -> [String],
+        perform: @escaping (String) throws -> Void
+    ) {
+        self.observe = observe
+        self.actionNames = actionNames
+        self.perform = perform
+    }
+}
+
+public func closeSettingsWindow(
+    windowID: UInt32, budget: PollBudget, pause: (TimeInterval) -> Void,
+    transport: SettingsCloseTransport
+) throws -> SettingsCloseResult {
+    guard windowID > 0 else {
+        throw ControlFailure(.invalidInput, "Settings close requires a positive window ID.")
+    }
+    _ = try budget.remaining()
+    guard try transport.observe() == windowID else {
+        throw ControlFailure(.staleTarget, "Selected Settings window is missing or changed; inspect again.")
+    }
+    _ = try budget.remaining()
+    let names = try transport.actionNames()
+    _ = try budget.remaining()
+    guard names.count <= 600, names.filter({ $0 == "AXPress" }).count == 1 else {
+        throw ControlFailure(.unsupportedControl, "Settings close button must advertise one AXPress action.")
+    }
+    guard try transport.observe() == windowID else {
+        throw ControlFailure(.staleTarget, "Selected Settings window changed before close.")
+    }
+    _ = try budget.remaining()
+    try transport.perform("AXPress")
+    _ = try budget.remaining()
+    try budget.until(pause: pause) {
+        let current = try transport.observe()
+        _ = try budget.remaining()
+        guard current == nil || current == windowID else {
+            throw ControlFailure(.staleTarget, "Settings window was replaced while closing.")
+        }
+        return current == nil
+    }
+    return SettingsCloseResult(windowID: windowID, outcome: .closed)
+}
+
+public func waitForSettingsPane(
+    _ pane: String, budget: PollBudget, pause: (TimeInterval) -> Void,
+    observe: () throws -> (sameWindow: Bool, selectedPane: String?)?
+) throws {
+    guard ["general", "about"].contains(pane) else {
+        throw ControlFailure(.invalidInput, "Settings pane observation requires general or about.")
+    }
+    try budget.until(pause: pause) {
+        let current = try observe()
+        _ = try budget.remaining()
+        guard let current else { return false }
+        guard current.sameWindow else {
+            throw ControlFailure(.staleTarget, "Settings window changed during pane selection.")
+        }
+        return current.selectedPane == pane
     }
 }
 

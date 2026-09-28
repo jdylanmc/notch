@@ -8,6 +8,7 @@ private struct Response: Encodable {
     var permissions: Permissions?
     var windows: [WindowInfo]?
     var settings: SettingsState?
+    var settingsClose: SettingsCloseResult?
     var output: String?
     var error: ControlFailure?
     var settingsDiagnostic: ControlFailure?
@@ -30,6 +31,7 @@ struct NotchControl {
                 emit(Response(ok: true, command: "help", usage: [
                     "inspect [--app-path /absolute/notch-pocket.app] [--timeout 5]",
                     "settings open|general|about [--app-path /absolute/notch-pocket.app] [--timeout 5]",
+                    "settings close --window ID [--app-path /absolute/notch-pocket.app] [--timeout 5]",
                     "notch open|close --window ID [--app-path /absolute/notch-pocket.app] [--timeout 5]",
                     "select-tab dashboard|home|shelf --window ID [--app-path /absolute/notch-pocket.app] [--timeout 5]",
                     "capture --window ID --output /absolute/new.png [--app-path /absolute/notch-pocket.app] [--timeout 5]"
@@ -45,7 +47,7 @@ struct NotchControl {
                 guard let pane = options.pane else {
                     throw ControlFailure(.invalidInput, "Missing Settings destination.")
                 }
-                response.settings = try SettingsControl(target: target).navigate(pane)
+                try applySettings(target: target, pane: pane, response: &response)
                 response.windows = try target.windows()
                 response.permissions = Permissions.current()
             case .capture:
@@ -75,6 +77,23 @@ struct NotchControl {
         } catch {
             emit(Response(ok: false, error: ControlFailure(.internalError, "Unexpected control tool failure.")))
             exit(FailureCode.internalError.exitStatus)
+        }
+    }
+
+    @MainActor
+    private static func applySettings(target: AppTarget, pane: String, response: inout Response) throws {
+        let settings = try SettingsControl(target: target)
+        guard pane == "close" else {
+            response.settings = try settings.navigate(pane)
+            return
+        }
+        guard let id = target.options.windowID else {
+            throw ControlFailure(.invalidInput, "Missing Settings window selector.")
+        }
+        response.settingsClose = try settings.close(windowID: id)
+        response.settings = try settings.state()
+        guard response.settings?.status == "closed" else {
+            throw ControlFailure(.staleTarget, "Settings reopened after close; inspect again.")
         }
     }
 

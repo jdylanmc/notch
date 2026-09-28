@@ -48,6 +48,7 @@ class SettingsWindowController: NSWindowController {
         // Configure window to be a standard document-style window
         window.isRestorable = true
         window.identifier = NSUserInterfaceItemIdentifier("NotchPocketSettingsWindow")
+        window.setAccessibilityIdentifier("NotchPocketSettingsWindow")
         
         // Create the SwiftUI content
         let settingsView = SettingsView()
