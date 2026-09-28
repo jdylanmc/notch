@@ -184,7 +184,8 @@ def tools():
         require(os.path.isfile(path) and os.access(path, os.X_OK), "missing_tool", "Required host tool missing.")
 
 
-def sign():
+def sign(*, recovery=None):
+    recovery = {} if recovery is None else recovery
     values, certificate = configuration(os.environ)
     # The packager inherits PATH for its venv, but must not inherit credentials.
     for name in APPLE_SECRETS:
@@ -197,7 +198,6 @@ def sign():
     build, output = ROOT / ".build/pocket-release-build", ROOT / ".build/pocket-release-notarized"
     require(not os.path.lexists(folder) and not os.path.lexists(build) and not os.path.lexists(output),
             "output_exists", "Release paths already exist; reconcile instead of reusing them.")
-    completed_notarization = None
     try:
         setup_credentials(folder, profile, values, certificate)
         signed = distribution.build_distribution(values["APPLE_SIGNING_IDENTITY"], values["APPLE_TEAM_ID"], str(build))
@@ -214,25 +214,26 @@ def sign():
                 and result.get("source_unchanged") is True and result.get("mount") == "detached"
                 and result.get("gatekeeper") == "Notarized Developer ID",
                 "invalid_native_result", "Notarization did not return the exact final verified DMG.")
-        completed_notarization = {
+        recovery["notarization"] = {
             "status": "notarized", "submissions": validated_submissions(result.get("submissions")),
         }
     finally:
         primary = sys.exc_info()[1]
         try:
             cleanup_credentials(folder)
-        except ReleaseError as cleanup:
-            cleanup.details["public_artifact_ready"] = False
-            if completed_notarization is not None:
-                cleanup.details["notarization"] = completed_notarization
+        except (ReleaseError, distribution.DistributionError, notarize.NotarizationError,
+                OSError, ValueError, KeyError, TypeError, KeyboardInterrupt) as cleanup:
+            recovery["public_artifact_ready"] = False
             if isinstance(primary, (distribution.DistributionError, notarize.NotarizationError)):
-                cleanup.details["native_failure"] = native_failure(primary)
+                recovery["native_failure"] = native_failure(primary)
             elif isinstance(primary, ReleaseError):
-                cleanup.details["primary_failure"] = native_failure(primary)
+                recovery["primary_failure"] = native_failure(primary)
             elif primary is not None:
-                cleanup.details["primary_failure"] = {
+                recovery["primary_failure"] = {
                     "error": "interrupted" if isinstance(primary, KeyboardInterrupt) else "release_io",
                 }
+            if isinstance(cleanup, ReleaseError):
+                cleanup.details.update(recovery)
             raise
     assets = ROOT / ".build/pocket-release-assets"
     assets.mkdir(mode=0o700)
@@ -264,30 +265,31 @@ def main():
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, interrupt)
+    # Caller-owned evidence survives interruption in cleanup or later asset export.
+    recovery = {}
     try:
         if args.command == "config":
             configuration(os.environ)
         elif args.command == "tools":
             tools()
         elif args.command == "sign":
-            sign()
+            sign(recovery=recovery)
         else:
             cleanup_credentials(credential_paths()[0])
     except ReleaseError as exc:
-        print(json.dumps({"ok": False, "error": exc.code, "message": str(exc), **exc.details}), file=sys.stderr)
-        return 1
+        failure = {"error": exc.code, "message": str(exc), **exc.details}
     except (distribution.DistributionError, notarize.NotarizationError) as exc:
         # Whitelist diagnostics; never dump native output, identities, profiles or keys.
-        print(json.dumps({"ok": False, **native_failure(exc)}), file=sys.stderr)
-        return 1
+        failure = native_failure(exc)
     except (OSError, ValueError, KeyError, TypeError):
-        print('{"ok":false,"error":"release_io","message":"Hosted release filesystem/response failure."}', file=sys.stderr)
-        return 1
+        failure = {"error": "release_io", "message": "Hosted release filesystem/response failure."}
     except KeyboardInterrupt:
-        print('{"ok":false,"error":"interrupted","message":"Reconcile any Apple submissions before retry."}', file=sys.stderr)
-        return 1
-    print(json.dumps({"ok": True, "operation": args.command}))
-    return 0
+        failure = {"error": "interrupted", "message": "Reconcile any Apple submissions before retry."}
+    else:
+        print(json.dumps({"ok": True, "operation": args.command}))
+        return 0
+    print(json.dumps({**failure, **recovery, "ok": False, "public_artifact_ready": False}), file=sys.stderr)
+    return 1
 
 
 if __name__ == "__main__":

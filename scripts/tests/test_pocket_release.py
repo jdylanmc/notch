@@ -7,6 +7,7 @@ import io
 import json
 import os
 from pathlib import Path
+import signal
 import stat
 import sys
 import tempfile
@@ -480,6 +481,163 @@ class CredentialTests(PortableTest):
             return b"native output containing FAKE-SECRET must not be printed"
 
         return run
+
+    @contextlib.contextmanager
+    def main_release_fixture(self):
+        with tempfile.TemporaryDirectory(prefix="main-", dir=self.root) as temporary:
+            root = Path(temporary)
+            (root / ".build").mkdir()
+            folder = root / "credentials"
+            app = root / ".build/pocket-release-build/Products/Release/notch-pocket.app"
+            run = self.fake_security()
+            cleanup_run = Mock(side_effect=run)
+            setup, cleanup = signing.setup_credentials, signing.cleanup_credentials
+
+            def prepare(app_value, identity, team, profile, output_value, *, keychain):
+                output = Path(output_value)
+                output.mkdir(mode=0o700)
+                dmg = output / "notch-pocket-0.1.0.dmg"
+                data = b"FINAL STAPLED"
+                dmg.write_bytes(data)
+                return {"ok": True, "status": "notarized", "public_artifact_ready": True,
+                        "publication": "not-published", "version": "0.1.0", "source_app": app_value,
+                        "dmg": str(dmg), "source_unchanged": True, "mount": "detached",
+                        "gatekeeper": "Notarized Developer ID", "submissions": {"app": APP_ID, "dmg": DMG_ID},
+                        "sha256": hashlib.sha256(data).hexdigest(), "size_bytes": len(data), "raw": "FAKE-SECRET"}
+
+            previous_handler = signal.getsignal(signal.SIGTERM)
+            try:
+                with patch.object(signing, "ROOT", root), patch.object(signing, "git", return_value=SHA), \
+                        patch.dict(os.environ, {**credentials(), "SOURCE_SHA": SHA, "VERSION": "0.1.0"}), \
+                        patch.object(signing, "credential_paths", return_value=(folder, "profile")), \
+                        patch.object(signing, "tools"), \
+                        patch.object(signing, "setup_credentials", side_effect=lambda *args: setup(*args, run=run)), \
+                        patch.object(signing, "cleanup_credentials", side_effect=lambda path: cleanup(path, run=cleanup_run)), \
+                        patch.object(signing.distribution, "build_distribution", return_value={
+                            "ok": True, "status": "signed", "configuration": "Release", "version": "0.1.0", "app": str(app)}), \
+                        patch.object(signing.notarize, "prepare", side_effect=prepare), \
+                        patch.object(sys, "argv", ["pocket_sign.py", "sign"]), patch.object(signing.os, "umask"):
+                    yield folder, root / ".build/pocket-release-assets", cleanup_run
+            finally:
+                signal.signal(signal.SIGTERM, previous_handler)
+
+    def assert_main_recovery_failure(self, stdout, stderr, error):
+        failure = json.loads(stderr.getvalue())
+        self.assertEqual(failure["error"], error)
+        self.assertFalse(failure["ok"])
+        self.assertFalse(failure["public_artifact_ready"])
+        self.assertEqual(failure["notarization"], {
+            "status": "notarized", "submissions": {"app": APP_ID, "dmg": DMG_ID},
+        })
+        self.assertEqual(stdout.getvalue(), "")
+        for value in ("FAKE-SECRET", credentials()["APPLE_CERTIFICATE_PASSWORD"],
+                      credentials()["APPLE_NOTARY_KEY_P8"], credentials()["APPLE_SIGNING_IDENTITY"]):
+            self.assertNotIn(value, stderr.getvalue())
+
+    def test_main_success_preserves_verified_export_and_cleanup_contract(self):
+        with self.main_release_fixture() as (folder, assets, _):
+            with contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
+                self.assertEqual(signing.main(), 0)
+            self.assertEqual(json.loads(stdout.getvalue()), {"ok": True, "operation": "sign"})
+            self.assertEqual(stderr.getvalue(), "")
+            self.assertFalse(folder.exists())
+            self.assertEqual(self.current, self.previous)
+            manifest = release.asset_manifest(assets, SHA, "0.1.0")
+            self.assertEqual(manifest["notarization_ids"], {"app": APP_ID, "dmg": DMG_ID})
+
+    def test_main_retains_completed_ids_when_sigterm_interrupts_real_cleanup(self):
+        with self.main_release_fixture() as (folder, assets, cleanup_run):
+            normal_cleanup = cleanup_run.side_effect
+
+            def terminate(command):
+                output = normal_cleanup(command)
+                if command[1] == "list-keychains" and "-s" in command:
+                    signal.raise_signal(signal.SIGTERM)
+                return output
+
+            cleanup_run.side_effect = terminate
+            with contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
+                self.assertEqual(signing.main(), 1)
+            self.assert_main_recovery_failure(stdout, stderr, "interrupted")
+            self.assertFalse(assets.exists())
+            self.assertTrue(folder.exists(), "Interrupted cleanup is unresolved, not claimed complete")
+            cleanup_run.side_effect = normal_cleanup
+            signing.cleanup_credentials(folder)  # The workflow's always-cleanup backstop.
+            self.assertFalse(folder.exists())
+            self.assertEqual(self.current, self.previous)
+
+    def test_main_retains_completed_ids_for_post_cleanup_export_failures(self):
+        for phase, error in (("staging_io", "release_io"), ("copy_io", "release_io"),
+                             ("hash", "asset_changed"), ("manifest_io", "release_io"),
+                             ("manifest_check", "asset_changed"), ("export_sigterm", "interrupted")):
+            with self.subTest(phase=phase), self.main_release_fixture() as (folder, assets, _), \
+                    contextlib.ExitStack() as patches:
+                def io_failure(*args):
+                    self.assertFalse(folder.exists())
+                    raise OSError("FAKE-SECRET native diagnostic")
+
+                def terminate(*args):
+                    self.assertFalse(folder.exists())
+                    signal.raise_signal(signal.SIGTERM)
+
+                if phase == "staging_io":
+                    assets.write_text("Unrelated existing path")
+                elif phase == "copy_io":
+                    patches.enter_context(patch.object(signing.shutil, "copyfileobj", side_effect=io_failure))
+                elif phase == "hash":
+                    patches.enter_context(patch.object(signing, "file_digest", return_value=("0" * 64, 13)))
+                elif phase == "manifest_io":
+                    write = signing.private_write
+
+                    def fail_manifest(path, data):
+                        if path.name == "manifest.json":
+                            io_failure()
+                        return write(path, data)
+
+                    patches.enter_context(patch.object(signing, "private_write", side_effect=fail_manifest))
+                elif phase == "manifest_check":
+                    patches.enter_context(patch.object(signing, "asset_manifest", side_effect=release.ReleaseError(
+                        "asset_changed", "Final manifest verification failed.")))
+                else:
+                    patches.enter_context(patch.object(signing.shutil, "copyfileobj", side_effect=terminate))
+                with contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
+                    self.assertEqual(signing.main(), 1)
+                self.assert_main_recovery_failure(stdout, stderr, error)
+                self.assertFalse(folder.exists())
+                self.assertEqual(self.current, self.previous)
+                if phase == "staging_io":
+                    self.assertEqual(assets.read_text(), "Unrelated existing path")
+
+    def test_main_preserves_native_primary_failure_when_cleanup_is_interrupted(self):
+        primary = signing.notarize.NotarizationError(
+            "notary_failed", "FAKE-SECRET", stage="dmg_wait",
+            submissions={"app": APP_ID, "dmg": DMG_ID}, raw="FAKE-SECRET")
+        with self.main_release_fixture() as (folder, assets, cleanup_run):
+            normal_cleanup = cleanup_run.side_effect
+
+            def terminate(command):
+                output = normal_cleanup(command)
+                signal.raise_signal(signal.SIGTERM)
+                return output
+
+            cleanup_run.side_effect = terminate
+            with patch.object(signing.notarize, "prepare", side_effect=primary), \
+                    contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
+                self.assertEqual(signing.main(), 1)
+            failure = json.loads(stderr.getvalue())
+            self.assertEqual(failure["error"], "interrupted")
+            self.assertFalse(failure["ok"])
+            self.assertFalse(failure["public_artifact_ready"])
+            self.assertEqual(failure["native_failure"], {
+                "error": "notary_failed", "stage": "dmg_wait", "submissions": {"app": APP_ID, "dmg": DMG_ID},
+            })
+            self.assertNotIn("notarization", failure)
+            self.assertNotIn("FAKE-SECRET", stderr.getvalue())
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertFalse(assets.exists())
+            cleanup_run.side_effect = normal_cleanup
+            signing.cleanup_credentials(folder)
+            self.assertFalse(folder.exists())
 
     def test_every_missing_secret_is_named_without_values_or_fallback(self):
         with self.assertRaises(release.ReleaseError) as error:

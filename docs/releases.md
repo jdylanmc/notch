@@ -169,11 +169,23 @@ submission after a timeout; preserve the safe printed submission IDs/stage and
 reconcile with Apple as described below. A secondary cleanup failure preserves
 available native failure IDs or the validated successful notarization status
 and both submission UUIDs in its diagnostic, plus safe primary-error context
-when applicable. It still reports `public_artifact_ready: false` and creates
-no public asset directory. Run-owned build/notary residue
-is not uploaded and disappears with the ephemeral hosted runner; raw logs stay
-private. Catastrophic runner termination can prevent any cleanup handler from
-running: Actions must discard that runner, and the owner must investigate and
+when applicable. The CLI retains this whitelisted recovery context through
+**cancellation during cleanup and every later asset-staging, hash or manifest
+export failure**, not only ordinary cleanup errors. Cancellation remains an
+explicit `interrupted` error; it is never converted to success or ignored.
+Every error reports `ok: false` and `public_artifact_ready: false`, without
+credentials or raw native output.
+
+Interrupted cleanup may leave the temporary keychain/files unresolved; the
+workflow's `always()` cleanup step must still restore/remove those owned
+resources. No asset export starts unless cleanup completes successfully.
+A later export failure may leave partial `.build/pocket-release-assets` files,
+but the failed step prevents their upload; existence is not readiness or
+permission to publish. Unknown/competing paths are not deleted.
+Run-owned build/notary residue is not uploaded and disappears with the
+ephemeral hosted runner; raw logs stay private. Catastrophic runner termination
+can prevent any cleanup handler from running: Actions must discard that runner,
+and the owner must investigate and
 rotate credentials if exposure is suspected. Portable tests cannot prove that
 platform guarantee.
 
