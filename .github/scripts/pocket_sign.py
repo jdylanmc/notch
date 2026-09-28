@@ -252,7 +252,7 @@ def sign(*, recovery=None):
 
 def native_failure(error):
     return {"error": error.code, **{key: value for key, value in error.details.items()
-            if key in ("tool_exit", "timed_out", "stage", "submissions", "uploads_may_be_processing")}}
+            if key in ("tool_exit", "timed_out", "stage", "submissions", "uploads_may_be_processing", "artifact_check")}}
 
 
 def main():

@@ -44,9 +44,18 @@ and isolated `dmgbuild`/Quartz import on the hosted macOS 26 / Xcode 26.6 runner
 Python isolation prevents a repository module or user-site package from
 masquerading as the installed dependency.
 
+Before dependencies, a native synthetic-image probe runs the production checksum
+verification boundary twice on that same hosted macOS version: first with a real
+checksum cache and then without one. Byte/identity/metadata checks must pass,
+and the absent-cache pass must preserve the entire strict fingerprint.
+The owned `.build/dmg-checksum-preflight` fixture is retained on the runner for
+diagnosis but never uploaded; it contains synthetic text only, not an application.
+
 It has read-only repository permission, no release environment or secret
 references, no app build/launch, no certificate import, no Apple submission,
-no disk-image mount and no release/tag/tap writes. Its only artifact,
+no explicit disk-image attach, app mount, or release/tag/tap writes. Native image
+creation may use hdiutil-managed temporary resources; no external device is
+selected or force-detached. Its only artifact,
 `notch-pocket-dmg-wheels`, contains public `.whl` files for seven days. The
 hidden-file opt-in is limited to that wheel-only path, not the private `.build`
 tree. A failing tool/download/hash/import step prevents artifact upload.
@@ -356,10 +365,21 @@ Preparation runs in this order:
 5. Sign the new DMG with the given Developer ID Application identity and secure
    timestamp; verify its container signature/identity/team. Submit it once,
    record its own UUID, and require the matching `Accepted` response.
-6. Staple/validate the DMG, strictly reverify its signature, run `hdiutil verify`,
+6. Staple/validate the DMG, strictly reverify its signature, run `hdiutil verify -nocache`,
    and require Gatekeeper's `open` assessment with
    `--context context:primary-signature`. Check final bytes remain unchanged
    through those gates and the source/stapled app snapshots remain unchanged.
+
+`hdiutil verify` normally rewrites the `com.apple.diskimages.recentcksum`
+extended attribute, changing the file's change-time without changing its bytes.
+Even `-nocache` removes an existing checksum-cache attribute on its first run.
+The `dmg_checksum` boundary requires **exactly that attribute removal when
+present and permits only its associated change-time update**: SHA-256, size, device/inode, mode, modification time,
+link count and every other extended attribute must remain unchanged.
+Change-time drift without the removed cache is rejected. The resulting strict
+fingerprint is then used unchanged through Gatekeeper and final integrity checks.
+No quarantine/provenance attribute is removed by this code or exempted from
+comparison, and no signature, notarization or Gatekeeper gate is skipped.
 
 Gatekeeper must report **assessments enabled**, both before and after each
 assessment. Its raw property list must have a true verdict and the authority
@@ -412,7 +432,9 @@ publication, create a release/tag, upload a GitHub asset, or change a cask.
 
 Failure is a nonzero exit and one JSON line on stderr with `ok: false`,
 `public_artifact_ready: false`, `error`, `stage`, known `submissions`, and
-`uploads_may_be_processing`. Confirmed failure to spawn the upload process does not
+`uploads_may_be_processing`. Image-verification mismatches also include a bounded
+`artifact_check` category, retained by hosted failure reporting without paths or
+attribute values. Confirmed failure to spawn the upload process does not
 claim an uncertain upload; a failed command after launch remains conservative.
 Known rejection/pending responses include `notary_status`; unknown values are not
 echoed as trusted diagnostics. **No public artifact is ready on error.** Native

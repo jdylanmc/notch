@@ -235,7 +235,7 @@ class NotarizationTests(unittest.TestCase):
             })
             return data if isinstance(data, bytes) else plistlib.dumps(data), b""
         if tool == "hdiutil":
-            self.assertEqual(command[1:3], ["verify", "-plist"])
+            self.assertIn(command[1:-1], (["verify", "-plist"], ["verify", "-nocache", "-plist"]))
             self.events.append("verify-image")
             return plistlib.dumps({}), b""
         self.fail("Unexpected native boundary: " + tool)
@@ -688,6 +688,25 @@ class NotarizationTests(unittest.TestCase):
         self.hook = change
         self.assert_failure("artifact_changed")
 
+    def test_final_checksum_cache_removal_preserves_the_release_integrity_chain(self):
+        cache = "com.apple.diskimages.recentcksum"
+
+        def native_metadata(command, options):
+            if command[1:3] == ["stapler", "staple"] and command[-1] == str(self.dmg):
+                self.set_attributes(self.dmg, ((cache, "old-cache"), ("fixture.attribute", "00")))
+            if Path(command[0]).name == "hdiutil" and command[-1] == str(self.dmg):
+                self.assertEqual(command[1:-1], ["verify", "-nocache", "-plist"])
+                self.set_attributes(self.dmg, (("fixture.attribute", "00"),))
+                mode = stat.S_IMODE(self.dmg.stat().st_mode)
+                self.dmg.chmod(mode ^ stat.S_IXUSR)
+                self.dmg.chmod(mode)
+
+        self.hook = native_metadata
+        result = self.prepare()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["sha256"], hashlib.sha256(self.dmg.read_bytes()).hexdigest())
+        self.assertEqual(self.attributes(self.dmg), (("fixture.attribute", "00"),))
+
     def test_final_dmg_signature_and_image_verification_failures_block_success(self):
         for kind in ("signature", "image"):
             with self.subTest(kind=kind):
@@ -906,6 +925,144 @@ class NotarizationTests(unittest.TestCase):
                 self.assertFalse(result["public_artifact_ready"])
                 self.assertNotIn("secret", stderr.getvalue())
         self.assertEqual(self.calls, [])
+
+
+class ImageVerificationTests(unittest.TestCase):
+    def setUp(self):
+        area = ROOT / ".build"
+        area.mkdir(exist_ok=True)
+        fixture = tempfile.TemporaryDirectory(prefix="image-verification-tests-", dir=area)
+        self.addCleanup(fixture.cleanup)
+        self.image = Path(fixture.name) / "image.dmg"
+        self.image.write_bytes(b"unchanged synthetic image")
+        self.cache = "com.apple.diskimages.recentcksum"
+        self.attributes = {self.cache: "old-cache", "com.apple.quarantine": "preserve"}
+        patch = mock.patch.object(package, "attributes", side_effect=lambda path: tuple(sorted(self.attributes.items())))
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.expected = notarize.file_state(self.image)
+
+    def remove_cache(self):
+        self.attributes.pop(self.cache, None)
+        mode = stat.S_IMODE(self.image.stat().st_mode)
+        self.image.chmod(mode ^ stat.S_IXUSR)
+        self.image.chmod(mode)
+
+    def verify(self, action):
+        def run(command, **options):
+            self.assertEqual(command, ["/usr/bin/hdiutil", "verify", "-nocache", "-plist", str(self.image)])
+            self.assertEqual(options["phase"], "verification_failed")
+            self.assertEqual(options["timeout"], 120)
+            action()
+            return plistlib.dumps({}), b""
+        return notarize.verify_image(self.image, self.expected, TOOLS, {}, run)
+
+    def assert_rejected(self, action, check):
+        with self.assertRaises(notarize.NotarizationError) as raised:
+            self.verify(action)
+        self.assertEqual(raised.exception.code, "artifact_changed")
+        self.assertEqual(raised.exception.details.get("artifact_check"), check)
+
+    def test_only_exact_cache_removal_may_change_ctime(self):
+        result = self.verify(self.remove_cache)
+        self.assertNotEqual(result[2][5], self.expected[2][5])
+        self.assertEqual(result[:2], self.expected[:2])
+        self.assertEqual(result[2][:5] + result[2][6:], self.expected[2][:5] + self.expected[2][6:])
+        self.assertEqual(self.attributes, {"com.apple.quarantine": "preserve"})
+
+    def test_no_cache_and_no_changes_preserve_the_entire_fingerprint(self):
+        self.attributes.pop(self.cache)
+        self.assertEqual(self.verify(lambda: None), self.expected)
+
+    def test_ctime_change_without_cache_removal_is_not_accepted(self):
+        self.attributes.pop(self.cache)
+        self.assert_rejected(self.remove_cache, "dmg_checksum_identity")
+
+    def test_keeping_or_rewriting_cache_is_not_accepted(self):
+        self.assert_rejected(lambda: None, "dmg_checksum_attributes")
+        self.assert_rejected(lambda: self.attributes.update({self.cache: "new-cache"}), "dmg_checksum_attributes")
+
+    def test_unrelated_attribute_change_or_quarantine_removal_is_rejected(self):
+        for change in ("modify", "remove", "add"):
+            with self.subTest(change=change):
+                self.attributes = {self.cache: "old-cache", "com.apple.quarantine": "preserve"}
+                self.expected = notarize.file_state(self.image)
+
+                def action():
+                    self.remove_cache()
+                    if change == "modify":
+                        self.attributes["com.apple.quarantine"] = "different"
+                    elif change == "remove":
+                        self.attributes.pop("com.apple.quarantine")
+                    else:
+                        self.attributes["unexpected"] = "value"
+
+                self.assert_rejected(action, "dmg_checksum_attributes")
+
+    def test_equal_length_byte_mutation_still_fails(self):
+        def action():
+            self.remove_cache()
+            content = self.image.read_bytes()
+            self.image.write_bytes(b"X" + content[1:])
+        self.assert_rejected(action, "dmg_checksum_bytes")
+
+    def test_same_bytes_replacement_cannot_become_a_new_baseline(self):
+        def action():
+            self.remove_cache()
+            original = self.image.stat()
+            replacement = self.image.with_name("replacement.dmg")
+            replacement.write_bytes(self.image.read_bytes())
+            replacement.chmod(stat.S_IMODE(original.st_mode))
+            os.utime(replacement, ns=(original.st_atime_ns, original.st_mtime_ns))
+            os.replace(replacement, self.image)
+        self.assert_rejected(action, "dmg_checksum_identity")
+
+    def test_mutation_during_post_verification_attribute_read_is_rejected(self):
+        reads = 0
+
+        def attributes(path):
+            nonlocal reads
+            reads += 1
+            values = tuple(sorted(self.attributes.items()))
+            if reads == 2:
+                self.image.write_bytes(b"late mutation")
+            return values
+
+        with mock.patch.object(package, "attributes", side_effect=attributes):
+            with self.assertRaises(notarize.NotarizationError) as raised:
+                self.verify(self.remove_cache)
+        self.assertEqual(raised.exception.code, "artifact_changed")
+
+    def test_mode_and_mtime_changes_still_fail(self):
+        for change in ("mode", "mtime"):
+            with self.subTest(change=change):
+                self.attributes = {self.cache: "old-cache", "com.apple.quarantine": "preserve"}
+                self.image.chmod(0o600)
+                self.expected = notarize.file_state(self.image)
+
+                def action():
+                    self.remove_cache()
+                    if change == "mode":
+                        self.image.chmod(0o700)
+                    else:
+                        info = self.image.stat()
+                        os.utime(self.image, ns=(info.st_atime_ns, info.st_mtime_ns + 1_000_000_000))
+
+                self.assert_rejected(action, "dmg_checksum_identity")
+
+    def test_native_verification_failure_remains_a_failure(self):
+        run = mock.Mock(side_effect=distribution.DistributionError(
+            "verification_failed", "fixture", tool_exit=17))
+        with self.assertRaises(distribution.DistributionError) as raised:
+            notarize.verify_image(self.image, self.expected, TOOLS, {}, run)
+        self.assertEqual(raised.exception.details["tool_exit"], 17)
+
+    def test_change_before_verification_never_reaches_native_tool(self):
+        self.image.write_bytes(b"changed before verification")
+        run = mock.Mock()
+        with self.assertRaises(notarize.NotarizationError):
+            notarize.verify_image(self.image, self.expected, TOOLS, {}, run)
+        run.assert_not_called()
 
 
 class ToolPreflightTests(unittest.TestCase):

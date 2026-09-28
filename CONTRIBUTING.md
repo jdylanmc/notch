@@ -114,8 +114,10 @@ rather than assuming external changes reach this product.
 
 The [credential-free release dependency preflight](.github/workflows/release-dependency-preflight.yml)
 runs manually from `pocket` and on scoped dependency/tooling PR changes. It
-verifies the actual hosted tools and hash-pinned wheels, including an offline
-install, and retains only public wheels. It does not replace the unfiltered
+verifies the actual hosted tools, synthetic DMG checksum-cache behavior, and
+hash-pinned wheels including an offline install; it retains only public wheels.
+The synthetic image is not an application or release and is not uploaded.
+It does not replace the unfiltered
 product checks or access signing credentials. See [usage and limits](docs/releases.md#credential-free-dependency-preflight).
 
 This inventories the bounded product-CI and local-packaging slices of

@@ -315,6 +315,34 @@ def require_file(path, original):
         raise NotarizationError("artifact_changed", "Artifact changed outside its signing/stapling stage.")
 
 
+def verify_image(dmg, expected, tools, env, run):
+    before_attributes = dict(package.attributes(dmg))
+    require_file(dmg, expected)
+    run([tools["hdiutil"], "verify", "-nocache", "-plist", str(dmg)],
+        env=env, phase="verification_failed", timeout=120)
+    verified = file_state(dmg)
+    after_attributes = dict(package.attributes(dmg))
+    require_file(dmg, verified)
+    cache = "com.apple.diskimages.recentcksum"
+    expected_attributes = {name: value for name, value in before_attributes.items() if name != cache}
+    if after_attributes != expected_attributes:
+        raise NotarizationError("artifact_changed", "Image verification changed unexpected extended attributes.",
+                                artifact_check="dmg_checksum_attributes")
+    if verified[:2] != expected[:2]:
+        raise NotarizationError("artifact_changed", "Image verification changed the DMG bytes or size.",
+                                artifact_check="dmg_checksum_bytes")
+    # hdiutil -nocache removes its pre-existing checksum cache, which changes ctime.
+    # Keep every other stat field, and accept ctime drift only for that exact removal.
+    before_stat, after_stat = expected[2], verified[2]
+    stable_before = before_stat[:5] + before_stat[6:]
+    stable_after = after_stat[:5] + after_stat[6:]
+    if (stable_before != stable_after
+            or (before_stat[5] != after_stat[5] and cache not in before_attributes)):
+        raise NotarizationError("artifact_changed", "Image verification changed the DMG identity or metadata.",
+                                artifact_check="dmg_checksum_identity")
+    return verified
+
+
 def prepare(app_value, identity, team, profile, output_value, run=distribution.run_command, *, keychain=None):
     state = {"stage": "preflight", "submissions": {}, "uploads_may_be_processing": []}
     owned = None
@@ -384,8 +412,8 @@ def prepare(app_value, identity, team, profile, output_value, run=distribution.r
         validate_ticket(dmg, "dmg", tools, env, run, state)
         state["stage"] = "dmg_verification"
         verify_dmg(dmg, identity, team, tools, env, run)
-        run([tools["hdiutil"], "verify", "-plist", str(dmg)],
-            env=env, phase="verification_failed", timeout=120)
+        state["stage"] = "dmg_checksum"
+        final_dmg = verify_image(dmg, final_dmg, tools, env, run)
         state["stage"] = "dmg_gatekeeper"
         gatekeeper(dmg, "dmg", tools, env, run)
         state["stage"] = "final_integrity"

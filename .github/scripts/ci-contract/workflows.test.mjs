@@ -756,7 +756,8 @@ function dependencyPreflightContract(config) {
     pull_request: { branches: ['pocket'], paths: [
       'Configuration/dmg/requirements.txt', '.github/workflows/release-dependency-preflight.yml',
       '.github/scripts/pocket_sign.py',
-      '.github/scripts/pocket_release.py', 'scripts/distribution.py', 'scripts/notarize.py', 'scripts/package.py',
+      '.github/scripts/pocket_release.py', '.github/scripts/check_dmg_verification.py',
+      'scripts/distribution.py', 'scripts/notarize.py', 'scripts/package.py',
     ] },
   });
   assert.deepEqual(config.permissions, { contents: 'read' });
@@ -769,7 +770,7 @@ function dependencyPreflightContract(config) {
   const job = config.jobs.preflight;
   assert.equal(job.name, 'Verify pinned DMG dependencies');
   assert.equal(job['runs-on'], 'macos-26');
-  assert.equal(job['timeout-minutes'], 20);
+  assert.equal(job['timeout-minutes'], 25);
   assert.equal(job.permissions, undefined);
   assert.equal(job.environment, undefined);
   assert.equal(job.if, undefined);
@@ -796,6 +797,8 @@ function dependencyPreflightContract(config) {
       } },
     { name: 'Verify release tools without credentials', 'timeout-minutes': 3,
       run: 'python3 --version\npython3 -B .github/scripts/pocket_sign.py tools\n' },
+    { name: 'Verify native DMG checksum metadata', 'timeout-minutes': 9,
+      run: 'python3 -B .github/scripts/check_dmg_verification.py' },
     { name: 'Verify pinned wheel download and offline install', 'timeout-minutes': 10, run: download },
     { name: 'Retain only verified public wheels',
       uses: pinnedAction(job, 'Retain only verified public wheels', 'actions/upload-artifact'),
@@ -818,15 +821,32 @@ for (const [name, mutate] of [
   ['lost concurrency bound', (c) => { delete c.concurrency; }],
   ['secret environment', (c) => { c.jobs.preflight.environment = 'notch-pocket-release'; }],
   ['credential operation', (c) => { c.jobs.preflight.steps[2].run = 'python3 -B .github/scripts/pocket_sign.py sign'; }],
-  ['hash checks removed', (c) => { c.jobs.preflight.steps[3].run = c.jobs.preflight.steps[3].run.replaceAll('--require-hashes ', ''); }],
-  ['online install fallback', (c) => { c.jobs.preflight.steps[3].run = c.jobs.preflight.steps[3].run.replace('--no-index ', ''); }],
-  ['non-isolated imports', (c) => { c.jobs.preflight.steps[3].run = c.jobs.preflight.steps[3].run.replaceAll(' -I ', ' '); }],
-  ['upload private build data', (c) => { c.jobs.preflight.steps[4].with.path = '.build/**'; }],
-  ['upload after failure', (c) => { c.jobs.preflight.steps[4].if = 'always()'; }],
-  ['hidden wheels silently omitted', (c) => { delete c.jobs.preflight.steps[4].with['include-hidden-files']; }],
+  ['hash checks removed', (c) => {
+    const entry = step(c.jobs.preflight, 'Verify pinned wheel download and offline install');
+    entry.run = entry.run.replaceAll('--require-hashes ', '');
+  }],
+  ['online install fallback', (c) => {
+    const entry = step(c.jobs.preflight, 'Verify pinned wheel download and offline install');
+    entry.run = entry.run.replace('--no-index ', '');
+  }],
+  ['non-isolated imports', (c) => {
+    const entry = step(c.jobs.preflight, 'Verify pinned wheel download and offline install');
+    entry.run = entry.run.replaceAll(' -I ', ' ');
+  }],
+  ['upload private build data', (c) => { step(c.jobs.preflight, 'Retain only verified public wheels').with.path = '.build/**'; }],
+  ['upload after failure', (c) => { step(c.jobs.preflight, 'Retain only verified public wheels').if = 'always()'; }],
+  ['hidden wheels silently omitted', (c) => { delete step(c.jobs.preflight, 'Retain only verified public wheels').with['include-hidden-files']; }],
   ['unchecked manual source', (c) => { c.jobs.preflight.steps.shift(); }],
   ['tag trigger', (c) => { c.on.push = { tags: ['*'] }; }],
-  ['ignored install failure', (c) => { c.jobs.preflight.steps[3]['continue-on-error'] = true; }],
+  ['ignored install failure', (c) => {
+    step(c.jobs.preflight, 'Verify pinned wheel download and offline install')['continue-on-error'] = true;
+  }],
+  ['missing native checksum proof', (c) => {
+    c.jobs.preflight.steps = c.jobs.preflight.steps.filter(({ name }) => name !== 'Verify native DMG checksum metadata');
+  }],
+  ['masked native checksum failure', (c) => { step(c.jobs.preflight, 'Verify native DMG checksum metadata').run += ' || true'; }],
+  ['skipped native checksum proof', (c) => { step(c.jobs.preflight, 'Verify native DMG checksum metadata').if = 'false'; }],
+  ['ignored native checksum failure', (c) => { step(c.jobs.preflight, 'Verify native DMG checksum metadata')['continue-on-error'] = true; }],
 ]) {
   test(`reject dependency preflight mutation: ${name}`, () => {
     const config = workflow('release-dependency-preflight');
