@@ -134,6 +134,11 @@ export is used. Never place keys, passwords or identities in workflow inputs.
    full source commit, filename, **final** SHA-256/size and both notarization
    UUIDs. The only workflow artifact contains those two files, retained seven
    days; no ZIP, app, raw log, key, scratch directory or private evidence dump.
+   This upload alone sets `include-hidden-files: true` because `.build` is a
+   hidden ancestor. Its allowlist remains the two exact validated public file
+   paths: no directory or glob is passed to the uploader, and private `.build`
+   trees are not traversed or uploaded. The exact-two-regular-file manifest
+   validation remains mandatory.
 9. The independent Ubuntu publisher verifies both transferred files and
    rechecks tag/check status before creating a **new draft** for the existing
    exact tag. Any existing release or draft blocks: no asset replacement,

@@ -133,6 +133,7 @@ jobs:
           path: |
             .build/pocket-release-assets/notch-pocket-${{ needs.gate.outputs.version }}.dmg
             .build/pocket-release-assets/manifest.json
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
