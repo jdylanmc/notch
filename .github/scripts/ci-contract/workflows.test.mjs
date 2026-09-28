@@ -109,7 +109,7 @@ function codeqlContract(config) {
   assert.deepEqual(Object.keys(config.jobs), ['analyze']);
   const job = config.jobs.analyze;
   assert.equal(job.name, 'Analyze (${{ matrix.language }})');
-  assert.equal(job['runs-on'], "${{ (matrix.language == 'swift' && 'xcode-27') || 'ubuntu-latest' }}");
+  assert.equal(job['runs-on'], "${{ (matrix.language == 'swift' && 'macos-26') || 'ubuntu-latest' }}");
   assert.deepEqual(job.permissions, {
     'security-events': 'write', packages: 'read', actions: 'read', contents: 'read',
   });
@@ -121,11 +121,17 @@ function codeqlContract(config) {
   assert.equal(job.if, undefined);
   assert.equal(job['continue-on-error'], undefined);
   assert.deepEqual(job.steps.map(({ name }) => name), [
-    'Checkout repository', 'Resolve Swift package dependencies', 'Initialize CodeQL',
+    'Checkout repository', 'Select stable Swift toolchain', 'Resolve Swift package dependencies', 'Initialize CodeQL',
     'Build Notch Pocket', 'Build notch-control', 'Perform CodeQL Analysis',
   ]);
   assert.deepEqual(step(job, 'Checkout repository'), {
     name: 'Checkout repository', uses: pinnedAction(job, 'Checkout repository', checkout), with: { 'persist-credentials': false },
+  });
+  assert.deepEqual(step(job, 'Select stable Swift toolchain'), {
+    name: 'Select stable Swift toolchain', if: "matrix.language == 'swift'",
+    run: 'developer=/Applications/Xcode_26.6.app/Contents/Developer\n'
+      + 'test -x "$developer/usr/bin/xcodebuild"\n'
+      + 'echo "DEVELOPER_DIR=$developer" >> "$GITHUB_ENV"\n',
   });
   assert.equal(step(job, 'Resolve Swift package dependencies').if, "matrix.language == 'swift'");
   const init = pinnedAction(job, 'Initialize CodeQL', `${codeql}/init`);
@@ -463,6 +469,23 @@ const mutations = [
     step(c.jobs.build, 'Test build wrapper contracts').run += ' || true';
   }],
   ['changed CodeQL schedule', 'codeql', codeqlContract, (c) => { c.on.schedule = []; }],
+  ['preview Swift scan runner', 'codeql', codeqlContract, (c) => {
+    c.jobs.analyze['runs-on'] = "${{ (matrix.language == 'swift' && 'xcode-27') || 'ubuntu-latest' }}";
+  }],
+  ['missing stable Swift toolchain', 'codeql', codeqlContract, (c) => {
+    c.jobs.analyze.steps = c.jobs.analyze.steps.filter(({ name }) => name !== 'Select stable Swift toolchain');
+  }],
+  ['unselected stable Swift toolchain', 'codeql', codeqlContract, (c) => {
+    step(c.jobs.analyze, 'Select stable Swift toolchain').run = 'xcodebuild -version';
+  }],
+  ['ignored stable toolchain failure', 'codeql', codeqlContract, (c) => {
+    step(c.jobs.analyze, 'Select stable Swift toolchain')['continue-on-error'] = true;
+  }],
+  ['stable toolchain after CodeQL init', 'codeql', codeqlContract, (c) => {
+    const steps = c.jobs.analyze.steps;
+    const selection = steps.splice(steps.findIndex(({ name }) => name === 'Select stable Swift toolchain'), 1)[0];
+    steps.splice(steps.findIndex(({ name }) => name === 'Initialize CodeQL') + 1, 0, selection);
+  }],
   ['lost scan language', 'codeql', codeqlContract, (c) => { c.jobs.analyze.strategy.matrix.include.shift(); }],
   ['lost scan permission', 'codeql', codeqlContract, (c) => { delete c.jobs.analyze.permissions['security-events']; }],
   ['lost Swift-only dependency resolution', 'codeql', codeqlContract, (c) => {
@@ -478,7 +501,8 @@ const mutations = [
   ['helper replacing app extraction', 'codeql', codeqlContract, (c) => { step(c.jobs.analyze, 'Build Notch Pocket').run = `${helper} build`; }],
   ['helper before CodeQL init', 'codeql', codeqlContract, (c) => {
     const steps = c.jobs.analyze.steps;
-    steps.splice(1, 0, steps.splice(4, 1)[0]);
+    const build = steps.splice(steps.findIndex(({ name }) => name === 'Build notch-control'), 1)[0];
+    steps.splice(1, 0, build);
   }],
   ['helper path filter', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => { c.on.pull_request.paths = ['scripts/**']; }],
   ['helper tests filtered', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => { step(c.jobs.validate, 'Test helper').run += ' --filter one'; }],
