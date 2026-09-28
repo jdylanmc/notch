@@ -23,12 +23,24 @@ final class ShelfPersistenceService {
             .appendingPathComponent("Shelf", isDirectory: true)
     }
 
-    private init() {
+    private convenience init() {
         let fm = FileManager.default
         let support = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let dir = Self.shelfDirectory(in: support ?? fm.temporaryDirectory)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        fileURL = dir.appendingPathComponent("items.json")
+        self.init(fileURL: dir.appendingPathComponent("items.json"))
+    }
+
+    convenience init(storageDirectory: URL) throws {
+        guard storageDirectory.isFileURL else {
+            throw CocoaError(.fileWriteUnsupportedScheme)
+        }
+        try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
+        self.init(fileURL: storageDirectory.appendingPathComponent("items.json"))
+    }
+
+    private init(fileURL: URL) {
+        self.fileURL = fileURL
         encoder.outputFormatting = [.prettyPrinted]
         decoder.dateDecodingStrategy = .iso8601
         encoder.dateEncodingStrategy = .iso8601
