@@ -3,6 +3,7 @@
 
 import argparse
 import ast
+import base64
 import hashlib
 import json
 import os
@@ -137,7 +138,8 @@ class GitHub:
                     raise
                 location = exc.headers.get("Location", "")
                 target = urlparse(location)
-                require(target.scheme == "https" and target.hostname == "release-assets.githubusercontent.com"
+                require(target.scheme == "https"
+                        and target.hostname in ("release-assets.githubusercontent.com", "objects.githubusercontent.com")
                         and target.port in (None, 443) and not target.username and not target.password,
                         "asset_redirect", "Unexpected release asset download host.")
                 # Never forward the repository token to the signed asset URL.
@@ -191,6 +193,7 @@ def check_commit(api, sha):
 
 
 def no_release(api, tag):
+    """Reject visible releases; the read-only gate cannot prove absence of drafts."""
     require(not any(item.get("tag_name") == tag for item in api.pages("/releases")),
             "release_exists", "Release/draft already exists; explicit reconciliation required, no blind retry.")
 
@@ -231,6 +234,15 @@ def file_digest(path):
     return digest.hexdigest(), info.st_size
 
 
+def validated_submissions(value):
+    require(isinstance(value, dict) and set(value) == {"app", "dmg"}
+            and all(isinstance(identifier, str) and re.fullmatch(
+                r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", identifier)
+                for identifier in value.values()),
+            "invalid_submissions", "Both notarization submission UUIDs are required.")
+    return dict(value)
+
+
 def asset_manifest(folder, sha, version):
     source_sha(sha)
     tag = "notch-pocket-v" + version
@@ -246,12 +258,7 @@ def asset_manifest(folder, sha, version):
             and manifest["version"] == version and manifest["tag"] == tag
             and manifest["source_commit"] == sha and manifest["filename"] == name,
             "invalid_manifest", "Manifest identity does not match the gated source.")
-    require(isinstance(manifest["notarization_ids"], dict)
-            and set(manifest["notarization_ids"]) == {"app", "dmg"}
-            and all(isinstance(value, str) and re.fullmatch(
-                r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", value)
-                for value in manifest["notarization_ids"].values()),
-            "invalid_manifest", "Both notarization submission UUIDs are required.")
+    validated_submissions(manifest["notarization_ids"])
     require(isinstance(manifest["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", manifest["sha256"])
             and type(manifest["size_bytes"]) is int and manifest["size_bytes"] > 0
             and file_digest(folder / name) == (manifest["sha256"], manifest["size_bytes"]),
@@ -281,7 +288,7 @@ def publish(api, folder, sha, version):
     check_commit(api, sha)
     no_release(api, manifest["tag"])
     release = api.request("/releases", "POST", {
-        "tag_name": manifest["tag"], "target_commitish": sha, "name": "Notch Pocket " + version,
+        "tag_name": manifest["tag"], "name": "Notch Pocket " + version,
         "draft": True, "prerelease": False,
         "body": ("Notch Pocket for macOS 14 Sonoma or later. Developer ID signed and notarized; "
                  "the app and DMG are stapled. Spotify is the committed player support; file shelf retained.\n\n"
@@ -326,24 +333,46 @@ def tap_ready(api):
     require(repo.get("full_name") == TAP and repo.get("private") is False
             and repo.get("default_branch") == "main", "tap_config",
             "Expected public jdylanmc/homebrew-notch with initialized main.")
+    require(isinstance(repo.get("permissions"), dict) and repo["permissions"].get("push") is True,
+            "tap_permissions", "HOMEBREW_TAP_TOKEN must report push permission for the owned tap.")
     return source_sha(api.request("/git/ref/heads/main")["object"]["sha"])
 
 
-def tap_pr(api, manifest):
-    import base64
+def managed_cask(value):
+    require(isinstance(value, dict) and value.get("type") == "file"
+            and value.get("path") == "Casks/notch-pocket.rb" and value.get("encoding") == "base64"
+            and isinstance(value.get("content"), str)
+            and isinstance(value.get("sha"), str) and re.fullmatch(r"[0-9a-f]{40}", value["sha"]),
+            "tap_conflict", "Existing cask metadata is not a complete ordinary file; reconcile before updating.")
+    try:
+        text = base64.b64decode("".join(value["content"].split()), validate=True).decode("utf-8")
+    except (ValueError, UnicodeError) as exc:
+        raise ReleaseError("tap_conflict", "Cannot decode the existing cask; reconcile before updating.") from exc
+    match = re.match(r'\Acask "notch-pocket" do\n  version "([^"\n]+)"\n  sha256 "([0-9a-f]{64})"\n', text)
+    require(match is not None, "tap_conflict", "Existing cask is not the managed template; preserve human edits.")
+    version, digest = match.groups()
+    require(text == cask(version, digest), "tap_conflict",
+            "Existing cask differs from the managed template; preserve human edits and reconcile.")
+    return version, digest
 
+
+def tap_pr(api, manifest):
+    content = cask(manifest["version"], manifest["sha256"])
     base = tap_ready(api)
     branch = "release/notch-pocket-" + manifest["version"]
     require(api.request("/git/ref/heads/" + branch, missing=True) is None,
             "tap_branch_exists", "Owned tap branch already exists; reconcile its PR before retry.")
     path = "/contents/Casks/notch-pocket.rb"
     existing = api.request(path + "?ref=" + base, missing=True)
-    require(existing is None or (existing.get("type") == "file"
-                                 and existing.get("path") == "Casks/notch-pocket.rb"),
-            "tap_conflict", "Cask destination is not an ordinary file.")
+    if existing is not None:
+        version, digest = managed_cask(existing)
+        require((version, digest) != (manifest["version"], manifest["sha256"]),
+                "tap_already_current", "Cask already matches this release; reconcile instead of creating another PR.")
+        require(tuple(map(int, version.split("."))) < tuple(map(int, manifest["version"].split("."))),
+                "tap_conflict", "Cask downgrade or equal-version hash change requires explicit reconciliation.")
     api.request("/git/refs", "POST", {"ref": "refs/heads/" + branch, "sha": base})
     value = {"message": "Update Notch Pocket to " + manifest["version"], "branch": branch,
-             "content": base64.b64encode(cask(manifest["version"], manifest["sha256"]).encode()).decode()}
+             "content": base64.b64encode(content.encode()).decode()}
     if existing is not None:
         value["sha"] = existing["sha"]
     api.request(path, "PUT", value)

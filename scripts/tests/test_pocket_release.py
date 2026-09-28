@@ -38,6 +38,11 @@ def credentials():
     }
 
 
+def cask_file(content):
+    return {"type": "file", "path": "Casks/notch-pocket.rb", "sha": "b" * 40,
+            "encoding": "base64", "content": base64.encodebytes(content.encode()).decode()}
+
+
 class PortableTest(unittest.TestCase):
     def setUp(self):
         ROOT.joinpath(".build").mkdir(exist_ok=True)
@@ -186,6 +191,16 @@ class SourceGateTests(PortableTest):
 
 
 class AssetAndPublicationTests(PortableTest):
+    def test_recovery_submission_ids_are_validated_and_copied(self):
+        valid = {"app": APP_ID, "dmg": DMG_ID}
+        result = release.validated_submissions(valid)
+        valid["app"] = "FAKE-SECRET"
+        self.assertEqual(result, {"app": APP_ID, "dmg": DMG_ID})
+        for value in (None, [], {"app": APP_ID}, valid, {"app": APP_ID, "dmg": DMG_ID, "raw": "FAKE-SECRET"}):
+            with self.subTest(value=value), self.assertRaises(release.ReleaseError) as error:
+                release.validated_submissions(value)
+            self.assertNotIn("FAKE-SECRET", str(error.exception))
+
     def test_transfer_requires_exact_final_digest_and_only_public_files(self):
         folder, manifest = self.assets()
         self.assertEqual(release.asset_manifest(folder, SHA, "0.1.0"), manifest)
@@ -265,8 +280,30 @@ class AssetAndPublicationTests(PortableTest):
             release.publish(api, folder, SHA, "0.1.0")
         self.assertEqual(events, ["upload", "upload", "verified"])
         self.assertTrue(api.request.call_args_list[0].args[2]["draft"])
+        self.assertEqual(api.request.call_args_list[0].args[2]["tag_name"], TAG)
+        self.assertNotIn("target_commitish", api.request.call_args_list[0].args[2])
         self.assertEqual(api.request.call_args_list[1].args,
                          ("/releases/7", "PATCH", {"draft": False, "make_latest": "true"}))
+
+    def test_missing_or_moved_tag_blocks_release_creation(self):
+        folder, _ = self.assets()
+        for result in (release.ReleaseError("github_api", "Tag missing"), "b" * 40):
+            api = self.api()
+            with self.subTest(result=result), patch.object(release, "resolve_tag", side_effect=[result]), \
+                    self.assertRaises(release.ReleaseError):
+                release.publish(api, folder, SHA, "0.1.0")
+            api.request.assert_not_called()
+            api.upload.assert_not_called()
+
+    def test_tag_moved_after_asset_verification_cannot_publish_draft(self):
+        folder, _ = self.assets()
+        api = self.api()
+        api.request.return_value = {"id": 7, "draft": True}
+        with patch.object(release, "resolve_tag", side_effect=[SHA, "b" * 40]), \
+                patch.object(release, "check_commit"), patch.object(release, "verify_remote"), \
+                self.assertRaises(release.ReleaseError):
+            release.publish(api, folder, SHA, "0.1.0")
+        self.assertEqual([call.args[1] for call in api.request.call_args_list], ["POST"])
 
     def test_asset_failure_leaves_draft_and_never_publishes_or_deletes(self):
         folder, _ = self.assets()
@@ -301,7 +338,7 @@ end
     def test_tap_writes_only_owned_branch_and_one_cask_then_draft_pr(self):
         _, manifest = self.assets()
         api = self.api()
-        api.request.side_effect = [None, {"type": "file", "path": "Casks/notch-pocket.rb", "sha": "old"},
+        api.request.side_effect = [None, cask_file(release.cask("0.0.9", "d" * 64)),
                                    {}, {}, {}]
         with patch.object(release, "tap_ready", return_value="b" * 40):
             release.tap_pr(api, manifest)
@@ -310,11 +347,64 @@ end
                          {"ref": "refs/heads/release/notch-pocket-0.1.0", "sha": "b" * 40}))
         update = calls[3].args[2]
         self.assertEqual(update["branch"], "release/notch-pocket-0.1.0")
-        self.assertEqual(update["sha"], "old")
+        self.assertEqual(update["sha"], "b" * 40)
         self.assertEqual(base64.b64decode(update["content"]).decode(), release.cask("0.1.0", manifest["sha256"]))
         self.assertEqual(calls[4].args[:2], ("/pulls", "POST"))
         self.assertEqual(calls[4].args[2]["base"], "main")
         self.assertTrue(calls[4].args[2]["draft"])
+
+    def test_tap_first_cask_creation_uses_only_the_verified_release_hash(self):
+        _, manifest = self.assets()
+        api = self.api()
+        api.request.side_effect = [None, None, {}, {}, {}]
+        with patch.object(release, "tap_ready", return_value=SHA):
+            release.tap_pr(api, manifest)
+        update = api.request.call_args_list[3].args[2]
+        self.assertNotIn("sha", update)
+        self.assertEqual(base64.b64decode(update["content"]).decode(),
+                         release.cask(manifest["version"], manifest["sha256"]))
+
+    def test_customized_or_malformed_cask_is_not_overwritten_or_branched(self):
+        _, manifest = self.assets()
+        canonical = release.cask("0.0.9", "d" * 64)
+        for text in (canonical + "# Human note\n", canonical.replace('name "Notch Pocket"', 'name "Custom"'),
+                     canonical.replace("0.0.9", "00.0.9"), canonical.replace("d" * 64, "invalid"),
+                     canonical.replace("\n\n  app", "\n  app"), canonical.replace("\n", "\r\n"),
+                     "unrelated Ruby content\n"):
+            api = self.api()
+            api.request.side_effect = [None, cask_file(text)]
+            with self.subTest(text=text), patch.object(release, "tap_ready", return_value=SHA), \
+                    self.assertRaises(release.ReleaseError):
+                release.tap_pr(api, manifest)
+            self.assertTrue(all(len(call.args) == 1 for call in api.request.call_args_list))
+        for value in ({"encoding": "none"}, {"content": "not base64!"}, {"content": None},
+                      {"type": "symlink"}, {"content": base64.b64encode(b"\xff").decode()}):
+            api = self.api()
+            api.request.side_effect = [None, {**cask_file(canonical), **value}]
+            with self.subTest(value=value), patch.object(release, "tap_ready", return_value=SHA), \
+                    self.assertRaises(release.ReleaseError):
+                release.tap_pr(api, manifest)
+            self.assertTrue(all(len(call.args) == 1 for call in api.request.call_args_list))
+
+    def test_tap_rejects_downgrade_or_equal_version_without_writing(self):
+        _, manifest = self.assets()
+        for version, digest in (("0.1.1", "d" * 64), ("1.0.0", "d" * 64),
+                                ("0.1.0", "d" * 64), ("0.1.0", manifest["sha256"])):
+            api = self.api()
+            api.request.side_effect = [None, cask_file(release.cask(version, digest))]
+            with self.subTest(version=version, digest=digest), patch.object(release, "tap_ready", return_value=SHA), \
+                    self.assertRaises(release.ReleaseError):
+                release.tap_pr(api, manifest)
+            self.assertTrue(all(len(call.args) == 1 for call in api.request.call_args_list))
+
+    def test_tap_upgrade_compares_numeric_not_lexical_versions(self):
+        _, manifest = self.assets()
+        manifest.update(version="0.10.0", tag="notch-pocket-v0.10.0")
+        api = self.api()
+        api.request.side_effect = [None, cask_file(release.cask("0.9.0", "d" * 64)), {}, {}, {}]
+        with patch.object(release, "tap_ready", return_value=SHA):
+            release.tap_pr(api, manifest)
+        self.assertEqual(api.request.call_args_list[3].args[2]["branch"], "release/notch-pocket-0.10.0")
 
     def test_existing_tap_branch_stops_without_any_writes(self):
         _, manifest = self.assets()
@@ -326,13 +416,23 @@ end
 
     def test_tap_readiness_requires_the_owned_public_initialized_main(self):
         api = self.api()
-        repo = {"full_name": release.TAP, "private": False, "default_branch": "main"}
+        repo = {"full_name": release.TAP, "private": False, "default_branch": "main", "permissions": {"push": True}}
         api.request.side_effect = [repo, {"object": {"sha": SHA}}]
         self.assertEqual(release.tap_ready(api), SHA)
         for field, value in (("full_name", "other/tap"), ("private", True), ("default_branch", "dev")):
             api.request.side_effect = [dict(repo, **{field: value})]
             with self.subTest(field=field), self.assertRaises(release.ReleaseError):
                 release.tap_ready(api)
+
+    def test_tap_read_only_or_unreported_push_permission_fails_without_write_probe(self):
+        for permissions in ({"push": False}, {}, None, {"push": "true"}):
+            api = self.api()
+            api.request.return_value = {"full_name": release.TAP, "private": False, "default_branch": "main",
+                                        "permissions": permissions}
+            with self.subTest(permissions=permissions), self.assertRaisesRegex(
+                    release.ReleaseError, "HOMEBREW_TAP_TOKEN"):
+                release.tap_ready(api)
+            api.request.assert_called_once_with("")
 
     def test_tap_entrypoint_scopes_token_and_requires_a_published_verified_release(self):
         folder, manifest = self.assets()
@@ -457,6 +557,15 @@ class CredentialTests(PortableTest):
         signing.cleanup_credentials(folder, run)
         self.assertFalse(folder.exists())
 
+    def test_cleanup_stat_failure_is_not_treated_as_an_absent_directory(self):
+        run = Mock()
+        with patch.object(Path, "lstat", side_effect=PermissionError("FAKE-SECRET")), \
+                self.assertRaises(release.ReleaseError) as error:
+            signing.cleanup_credentials(self.root / "credentials", run)
+        self.assertEqual(error.exception.code, "cleanup_failed")
+        self.assertNotIn("FAKE-SECRET", str(error.exception))
+        run.assert_not_called()
+
     def test_unknown_paths_and_symlink_targets_are_left_alone(self):
         run, folder = self.fake_security(), self.root / "credentials"
         values, cert = signing.configuration(credentials())
@@ -479,12 +588,17 @@ class CredentialTests(PortableTest):
         app = self.root / ".build/pocket-release-build/Products/Release/notch-pocket.app"
         output = self.root / ".build/pocket-release-notarized"
         events = []
+        setup = signing.setup_credentials
+        run = self.fake_security()
 
-        def notarize(app_value, identity, team, profile, output_value):
+        def notarize(app_value, identity, team, profile, output_value, *, keychain):
             self.assertEqual(app_value, str(app))
             self.assertEqual(output_value, str(output))
             self.assertEqual((identity, team, profile),
                              (credentials()["APPLE_SIGNING_IDENTITY"], "0123456789", "profile"))
+            store = next(command for command in self.commands if command[1:3] == ["notarytool", "store-credentials"])
+            self.assertEqual(keychain, store[store.index("--keychain") + 1])
+            self.assertEqual(keychain, str(self.root / "credentials/release.keychain-db"))
             output.mkdir()
             dmg = output / "notch-pocket-0.1.0.dmg"
             dmg.write_bytes(b"FINAL STAPLED")
@@ -497,7 +611,8 @@ class CredentialTests(PortableTest):
         with patch.object(signing, "ROOT", self.root), patch.object(signing, "git", return_value=SHA), \
                 patch.dict(os.environ, {**credentials(), "SOURCE_SHA": SHA, "VERSION": "0.1.0"}), \
                 patch.object(signing, "credential_paths", return_value=(self.root / "credentials", "profile")), \
-                patch.object(signing, "tools"), patch.object(signing, "setup_credentials"), \
+                patch.object(signing, "tools"), \
+                patch.object(signing, "setup_credentials", side_effect=lambda *args: setup(*args, run=run)), \
                 patch.object(signing, "cleanup_credentials", side_effect=lambda *args: events.append("cleanup")), \
                 patch.object(signing.distribution, "build_distribution", return_value={
                     "ok": True, "status": "signed", "configuration": "Release", "version": "0.1.0", "app": str(app)}), \
@@ -546,12 +661,13 @@ class CredentialTests(PortableTest):
         self.assertNotIn("FAKE-SECRET", json.dumps(error.exception.details))
         self.assertFalse((self.root / ".build/pocket-release-assets").exists())
 
-    def test_successful_notarization_still_cannot_export_after_cleanup_failure(self):
+    def test_main_preserves_successful_notary_ids_on_cleanup_failure_without_export(self):
         app = self.root / ".build/pocket-release-build/Products/Release/notch-pocket.app"
         result = {"ok": True, "status": "notarized", "public_artifact_ready": True,
                   "publication": "not-published", "version": "0.1.0", "source_app": str(app),
                   "dmg": str(self.root / ".build/pocket-release-notarized/notch-pocket-0.1.0.dmg"),
-                  "source_unchanged": True, "mount": "detached", "gatekeeper": "Notarized Developer ID"}
+                  "source_unchanged": True, "mount": "detached", "gatekeeper": "Notarized Developer ID",
+                  "submissions": {"app": APP_ID, "dmg": DMG_ID}, "raw": "FAKE-SECRET"}
         with patch.object(signing, "ROOT", self.root), patch.object(signing, "git", return_value=SHA), \
                 patch.dict(os.environ, {**credentials(), "SOURCE_SHA": SHA, "VERSION": "0.1.0"}), \
                 patch.object(signing, "credential_paths", return_value=(self.root / "credentials", "profile")), \
@@ -560,8 +676,40 @@ class CredentialTests(PortableTest):
                 patch.object(signing.distribution, "build_distribution", return_value={
                     "ok": True, "status": "signed", "configuration": "Release", "version": "0.1.0", "app": str(app)}), \
                 patch.object(signing.notarize, "prepare", return_value=result), \
-                self.assertRaisesRegex(release.ReleaseError, "failed"):
-            signing.sign()
+                patch.object(sys, "argv", ["pocket_sign.py", "sign"]), \
+                patch.object(signing.os, "umask"), patch.object(signing.signal, "signal"), \
+                contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
+            self.assertEqual(signing.main(), 1)
+        failure = json.loads(stderr.getvalue())
+        self.assertEqual(failure["error"], "cleanup_failed")
+        self.assertFalse(failure["ok"])
+        self.assertFalse(failure["public_artifact_ready"])
+        self.assertEqual(failure["notarization"], {
+            "status": "notarized", "submissions": {"app": APP_ID, "dmg": DMG_ID},
+        })
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertNotIn("FAKE-SECRET", stderr.getvalue())
+        self.assertFalse((self.root / ".build/pocket-release-assets").exists())
+
+    def test_main_preserves_primary_release_error_when_cleanup_also_fails(self):
+        primary = release.ReleaseError("invalid_native_result", "Do not echo FAKE-SECRET",
+                                       stage="result_verification", raw="FAKE-SECRET")
+        with patch.object(signing, "ROOT", self.root), patch.object(signing, "git", return_value=SHA), \
+                patch.dict(os.environ, {**credentials(), "SOURCE_SHA": SHA, "VERSION": "0.1.0"}), \
+                patch.object(signing, "credential_paths", return_value=(self.root / "credentials", "profile")), \
+                patch.object(signing, "tools"), patch.object(signing, "setup_credentials"), \
+                patch.object(signing, "cleanup_credentials", side_effect=release.ReleaseError("cleanup_failed", "failed")), \
+                patch.object(signing.distribution, "build_distribution", side_effect=primary), \
+                patch.object(sys, "argv", ["pocket_sign.py", "sign"]), \
+                patch.object(signing.os, "umask"), patch.object(signing.signal, "signal"), \
+                contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
+            self.assertEqual(signing.main(), 1)
+        failure = json.loads(stderr.getvalue())
+        self.assertEqual(failure["error"], "cleanup_failed")
+        self.assertEqual(failure["primary_failure"], {"error": "invalid_native_result", "stage": "result_verification"})
+        self.assertNotIn("notarization", failure)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertNotIn("FAKE-SECRET", stderr.getvalue())
         self.assertFalse((self.root / ".build/pocket-release-assets").exists())
 
 
@@ -583,21 +731,40 @@ class TransportTests(PortableTest):
         self.assertEqual(api.request.call_args.args, ("/jobs?filter=latest&per_page=100&page=2",))
 
     def test_redirect_never_receives_repository_token(self):
-        api = release.GitHub("FAKE-SECRET", release.SOURCE)
-        api.open = Mock(side_effect=HTTPError("https://api.github.com", 302, "", {
-            "Location": "https://release-assets.githubusercontent.com/signed-download"}, None))
-        api.opener = Mock()
-        api.opener.open.return_value = io.BytesIO(b"final")
-        self.assertEqual(api.asset_digest(7), (hashlib.sha256(b"final").hexdigest(), 5))
-        request = api.opener.open.call_args.args[0]
-        self.assertNotIn("Authorization", request.headers)
+        for host in ("release-assets.githubusercontent.com", "objects.githubusercontent.com"):
+            api = release.GitHub("FAKE-SECRET", release.SOURCE)
+            api.open = Mock(side_effect=HTTPError("https://api.github.com", 302, "", {
+                "Location": f"https://{host}/signed-download"}, None))
+            api.opener = Mock()
+            api.opener.open.return_value = io.BytesIO(b"final")
+            with self.subTest(host=host):
+                self.assertEqual(api.asset_digest(7), (hashlib.sha256(b"final").hexdigest(), 5))
+            request = api.opener.open.call_args.args[0]
+            self.assertNotIn("Authorization", request.headers)
 
     def test_unexpected_redirect_host_is_rejected(self):
+        for location in ("https://other.example/collect", "http://objects.githubusercontent.com/path",
+                         "https://objects.githubusercontent.com.evil.example/path",
+                         "https://user@objects.githubusercontent.com/path",
+                         "https://objects.githubusercontent.com:444/path"):
+            api = release.GitHub("token", release.SOURCE)
+            api.open = Mock(side_effect=HTTPError("https://api.github.com", 302, "", {"Location": location}, None))
+            api.opener = Mock()
+            with self.subTest(location=location), self.assertRaises(release.ReleaseError):
+                api.asset_digest(7)
+            api.opener.open.assert_not_called()
+
+    def test_second_asset_redirect_fails_closed_without_retry(self):
         api = release.GitHub("token", release.SOURCE)
         api.open = Mock(side_effect=HTTPError("https://api.github.com", 302, "", {
-            "Location": "https://other.example/collect"}, None))
+            "Location": "https://objects.githubusercontent.com/first"}, None))
+        api.opener = Mock()
+        api.opener.open.side_effect = HTTPError("https://objects.githubusercontent.com/first", 302, "", {
+            "Location": "https://release-assets.githubusercontent.com/second"}, None)
         with self.assertRaises(release.ReleaseError):
             api.asset_digest(7)
+        api.opener.open.assert_called_once()
+        self.assertNotIn("Authorization", api.opener.open.call_args.args[0].headers)
 
 
 if __name__ == "__main__":

@@ -52,6 +52,10 @@ read-only for the source gate/signing/tap jobs, contents-write only in the
 separate publisher. The tap token is present only in tap-readiness/PR steps;
 Apple secrets are present only in the signing job's configuration/signing steps.
 The source publisher needs Actions read permission to recheck exact-commit jobs.
+Tap readiness requires the repository metadata to report `permissions.push:
+true` for `HOMEBREW_TAP_TOKEN`. This is read-only metadata inspection, not a
+write probe: **Pull requests write permission cannot be proved by this check**.
+The owner must still configure that permission explicitly; later writes can fail.
 
 Empty/malformed configuration fails before credential import/build/submission
 with named `missing_config`/`invalid_config` errors; missing
@@ -74,7 +78,11 @@ export is used. Never place keys, passwords or identities in workflow inputs.
    tagged `scripts/distribution.py`'s `VERSION`, remote tag identity, and commit
    ancestry from freshly fetched `origin/pocket`. It reads the version as data,
    not by executing tag-supplied code. Its only job outputs are validated full
-   source SHA and version; all later checkouts pin that SHA.
+   source SHA and version; all later checkouts pin that SHA. Its read-only
+   release lookup rejects visible releases but **cannot prove absence of drafts**.
+   The publisher's contents-write token performs the authoritative no-clobber
+   check before creating a draft; no source write privilege is added to the gate
+   or tap token.
 4. For each product workflow, the gate queries that SHA's latest `pocket` push
    run and its latest-attempt jobs. Both workflow and every named job must be
    completed/successful, on the exact SHA/current attempt. Missing, duplicate,
@@ -108,9 +116,13 @@ export is used. Never place keys, passwords or identities in workflow inputs.
    the default keychain. Selectors/passwords are argument data, never shell text.
    Secret environment values are removed before calling the native scripts;
    raw native output is neither printed nor uploaded.
-7. Unchanged `distribution.build_distribution` builds the exact fresh Release
+7. `distribution.build_distribution` builds the exact fresh Release
    app in `.build/pocket-release-build`; its verified result path is passed to
-   unchanged `notarize.prepare` with new `.build/pocket-release-notarized`.
+   `notarize.prepare` with new `.build/pocket-release-notarized` and keyword-only
+   `keychain` set to the **same** temporary `release.keychain-db` used by
+   `store-credentials`. This requires the separately integrated notarization
+   change forwarding explicit `--keychain` to both submit and wait; profile
+   name/search-list membership alone is not the credential lookup contract.
    All native gates described below must pass. Cleanup restores/verifies the
    original keychain search list and deletes only the owned keychain/profile,
    key files and bookkeeping. A `finally` block plus an `always()` step handle
@@ -125,13 +137,20 @@ export is used. Never place keys, passwords or identities in workflow inputs.
 9. The independent Ubuntu publisher verifies both transferred files and
    rechecks tag/check status before creating a **new draft** for the existing
    exact tag. Any existing release or draft blocks: no asset replacement,
-   clobber or deletion. It uploads exactly the two assets, checks GitHub's
+   clobber or deletion. Release creation supplies `tag_name`, without the
+   redundant `target_commitish`; existing/moved-tag guards remain in force.
+   It uploads exactly the two assets, checks GitHub's
    SHA-256/size and downloads/hashes the remote bytes, then publishes with
    explicit `make_latest: "true"` so inherited `v2.x` does not win.
 10. Only after publication, the tap job again verifies published bytes and
     creates `release/notch-pocket-0.1.0` from tap `main`, changes only
     `Casks/notch-pocket.rb`, and opens a **draft PR**. Existing branch/destination
-    conflicts stop instead of overwriting. The cask uses the final digest,
+    conflicts stop instead of overwriting. Before creating a branch, any
+    existing cask must decode to the exact managed template with its own strict
+    numeric version and SHA-256. Human edits, malformed content, downgrades and
+    equal-version hash changes require explicit reconciliation. An already
+    matching version/hash also stops without creating another PR.
+    The cask uses the final digest,
     product-qualified versioned download URL, macOS Sonoma minimum and
     `notch-pocket.app`; no quarantine stripping, `auto_updates`, privileged or
     forced installation, `zap`, or data removal. **Unattended means PR creation,
@@ -148,7 +167,10 @@ acceptance, respectively.
 An ordinary failure blocks every later job. Apple may nevertheless continue a
 submission after a timeout; preserve the safe printed submission IDs/stage and
 reconcile with Apple as described below. A secondary cleanup failure preserves
-available native failure IDs in its diagnostic. Run-owned build/notary residue
+available native failure IDs or the validated successful notarization status
+and both submission UUIDs in its diagnostic, plus safe primary-error context
+when applicable. It still reports `public_artifact_ready: false` and creates
+no public asset directory. Run-owned build/notary residue
 is not uploaded and disappears with the ephemeral hosted runner; raw logs stay
 private. Catastrophic runner termination can prevent any cleanup handler from
 running: Actions must discard that runner, and the owner must investigate and
@@ -156,11 +178,18 @@ rotate credentials if exposure is suspected. Portable tests cannot prove that
 platform guarantee.
 
 Never select **Re-run all jobs** to repair a partially published release.
+**The operator must check for drafts before any rerun**: the initial read-only
+gate cannot guarantee their visibility, and its success is not absence proof.
 If a draft/upload exists, inspect its exact tag/commit/assets and Apple IDs;
 the owner must explicitly decide how to reconcile it before another attempt.
 There is no automated resume, release deletion, asset replacement or resubmission.
 Asset digest availability and latest-release verification fail closed; a failure
 after publication does not unpublish or recreate the release.
+Remote byte verification permits one HTTPS redirect only to
+`release-assets.githubusercontent.com` or `objects.githubusercontent.com`,
+without forwarding the source token. Foreign hosts and further redirects fail
+closed; inspect the download path and reconcile the draft explicitly rather
+than widening hosts, retrying uploads, or bypassing final digest verification.
 
 A failed tap PR does not roll back the already public release. Reconcile its
 owned branch/partial cask commit/PR first, then the owner may rerun only that

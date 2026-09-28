@@ -15,7 +15,10 @@ import signal
 import stat
 import sys
 
-from pocket_release import ROOT, SOURCE, ReleaseError, asset_manifest, file_digest, git, required, require, source_sha
+from pocket_release import (
+    ROOT, SOURCE, ReleaseError, asset_manifest, file_digest, git, required, require,
+    source_sha, validated_submissions,
+)
 
 sys.path.insert(0, str(ROOT / "scripts"))
 import distribution
@@ -118,9 +121,12 @@ def owned_file(path):
 
 
 def cleanup_credentials(folder, run=native):
-    if not os.path.lexists(folder):
+    try:
+        info = folder.lstat()
+    except FileNotFoundError:
         return
-    info = folder.lstat()
+    except OSError as exc:
+        raise ReleaseError("cleanup_failed", "Cannot inspect credential directory; cleanup is unresolved.") from exc
     require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and not info.st_mode & 0o077,
             "cleanup_failed", "Unexpected credential-directory ownership or type; retained.")
     failures = []
@@ -191,6 +197,7 @@ def sign():
     build, output = ROOT / ".build/pocket-release-build", ROOT / ".build/pocket-release-notarized"
     require(not os.path.lexists(folder) and not os.path.lexists(build) and not os.path.lexists(output),
             "output_exists", "Release paths already exist; reconcile instead of reusing them.")
+    completed_notarization = None
     try:
         setup_credentials(folder, profile, values, certificate)
         signed = distribution.build_distribution(values["APPLE_SIGNING_IDENTITY"], values["APPLE_TEAM_ID"], str(build))
@@ -199,21 +206,33 @@ def sign():
                 and signed.get("app") == str(build / "Products/Release/notch-pocket.app"),
                 "invalid_native_result", "Distribution did not return the exact verified Release app.")
         result = notarize.prepare(signed["app"], values["APPLE_SIGNING_IDENTITY"], values["APPLE_TEAM_ID"],
-                                  profile, str(output))
-        require(result.get("ok") is True and result.get("status") == "notarized"
+                                  profile, str(output), keychain=str(folder / "release.keychain-db"))
+        require(isinstance(result, dict) and result.get("ok") is True and result.get("status") == "notarized"
                 and result.get("public_artifact_ready") is True and result.get("publication") == "not-published"
                 and result.get("version") == version and result.get("source_app") == signed["app"]
                 and result.get("dmg") == str(output / f"notch-pocket-{version}.dmg")
                 and result.get("source_unchanged") is True and result.get("mount") == "detached"
                 and result.get("gatekeeper") == "Notarized Developer ID",
                 "invalid_native_result", "Notarization did not return the exact final verified DMG.")
+        completed_notarization = {
+            "status": "notarized", "submissions": validated_submissions(result.get("submissions")),
+        }
     finally:
         primary = sys.exc_info()[1]
         try:
             cleanup_credentials(folder)
         except ReleaseError as cleanup:
+            cleanup.details["public_artifact_ready"] = False
+            if completed_notarization is not None:
+                cleanup.details["notarization"] = completed_notarization
             if isinstance(primary, (distribution.DistributionError, notarize.NotarizationError)):
                 cleanup.details["native_failure"] = native_failure(primary)
+            elif isinstance(primary, ReleaseError):
+                cleanup.details["primary_failure"] = native_failure(primary)
+            elif primary is not None:
+                cleanup.details["primary_failure"] = {
+                    "error": "interrupted" if isinstance(primary, KeyboardInterrupt) else "release_io",
+                }
             raise
     assets = ROOT / ".build/pocket-release-assets"
     assets.mkdir(mode=0o700)
