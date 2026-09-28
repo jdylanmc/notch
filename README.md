@@ -4,14 +4,15 @@ An independent macOS notch app maintained at
 [jdylanmc/notch](https://github.com/jdylanmc/notch).
 Historical source and artwork attribution: [Third-party notices](THIRD_PARTY_LICENSES).
 
-The independent development version is **0.1.0**. Settings and the macOS app menu
+The first independent release is **0.1.0**. Settings and the macOS app menu
 use **Notch Pocket**; the existing bundle identities, build counter, and
 `notch-pocket.app` filename are unchanged.
 
-The first independent release will use tag **`notch-pocket-v0.1.0`** and
+The release uses tag **`notch-pocket-v0.1.0`** and
 Homebrew cask version **`0.1.0`**. App and embedded helper versions match.
 Historical upstream `v2.x` tags do not identify Notch Pocket releases.
-Version alignment is release preparation, not evidence of publication or notarization.
+The [published release and verification record](docs/releases.md#published-010)
+bind the notarized download to its exact source and checksum.
 
 See [notarized releases](docs/releases.md) for the scoped hosted Actions workflow,
 manual credential configuration, exact-commit gates, final-DMG publication,
@@ -35,12 +36,21 @@ symbol is separate and unchanged.
 
 ## Availability
 
-**No independent Notch Pocket binary releases are available yet.** Build locally
-from `pocket`. Upstream downloads and Homebrew casks install a different product;
-they are not Notch Pocket installation options. There is no independent download
-site, sponsorship destination, or notarized release to advertise. The owned
-[Homebrew tap](https://github.com/jdylanmc/homebrew-notch) is prepared for the first
-release; installation availability requires publication and a reviewed cask PR.
+**Notch Pocket 0.1.0 is available through the owned Homebrew tap:**
+
+```bash
+brew install --cask jdylanmc/notch/notch-pocket
+```
+
+Or download the [signed, notarized and stapled DMG](https://github.com/jdylanmc/notch/releases/tag/notch-pocket-v0.1.0).
+The cask verifies the final download's SHA-256 and installs `notch-pocket.app`;
+it does not strip quarantine or bypass Gatekeeper. Upstream downloads/casks
+install a different product and are not Notch Pocket installation options.
+
+Additional-Mac install, launch, permission and coexistence acceptance is still
+pending under [#9](https://github.com/jdylanmc/notch/issues/9). Publication and
+native artifact checks do not claim that acceptance or completion of the broader
+application regression work.
 
 The deployment target is macOS **14 Sonoma** or later, on Apple Silicon or Intel.
 The build-host requirements below are separate.
@@ -48,7 +58,9 @@ The build-host requirements below are separate.
 **No in-app updater:** automatic/manual update checks and their dependency,
 feed/key, onboarding, and settings have been removed. The historical feed
 deployment and upstream tap publishing have also been removed. Future owned
-updates require separate implementation; rebuild locally for now.
+updates require separate implementation. Homebrew users can obtain future
+published cask versions with `brew upgrade --cask jdylanmc/notch/notch-pocket`;
+local development builds still require a rebuild.
 
 ## Building from Source
 

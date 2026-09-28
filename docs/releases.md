@@ -1,8 +1,7 @@
 # Notch Pocket releases
 
-Release automation for [#9](https://github.com/jdylanmc/notch/issues/9) is checked
-in, not evidence of a published release. **Source version 0.1.0 is not evidence
-that 0.1.0 has been released.** The first product tag is
+The first notarized Homebrew release for [#9](https://github.com/jdylanmc/notch/issues/9)
+is published. The product tag is
 `notch-pocket-v0.1.0` and Homebrew cask version is `0.1.0`; inherited `v2.x`
 tags/casks identify another product.
 
@@ -10,10 +9,45 @@ The user approved the hosted Actions notarized 0.1.0 public release and the
 owned public `jdylanmc/homebrew-notch` tap. The release owner still owns
 credential configuration, independent reviews, green-PR merges, tag creation,
 actual Actions execution/Apple submission/publication, and tap PR review/merge.
-No credentials are installed by this source change. **Native evidence is still
-pending.** Portable tests are not proof of Apple acceptance, a usable signing
-identity, stapled tickets, runner availability, or installation. Keep #9 open
-until the user reports additional-Mac acceptance **after publication**.
+Credential values are never committed. Portable tests alone are not proof of
+Apple acceptance, usable signing credentials, stapled tickets, runner
+availability, or installation. The specific native evidence below belongs to
+0.1.0; future releases need their own. Keep #9 open until the user reports
+additional-Mac acceptance **after publication**.
+
+## Published 0.1.0
+
+- [Release](https://github.com/jdylanmc/notch/releases/tag/notch-pocket-v0.1.0):
+  stable, published 2026-09-28.
+- [Successful release run](https://github.com/jdylanmc/notch/actions/runs/36453653813):
+  all source, signing/notarization, publication and tap-PR jobs succeeded.
+- Source: `7e8bfd321d38761b70e88b33821099bad05ad60a`.
+- Download: `notch-pocket-0.1.0.dmg`, **16,844,187 bytes**.
+- SHA-256: `f7337a53af778840be6b42f977be1b5d5d5d651609dcd0061bfef5a355ee1f11`.
+- [Public manifest](https://github.com/jdylanmc/notch/releases/download/notch-pocket-v0.1.0/manifest.json)
+  records the source, version, final checksum and both Apple submission IDs.
+- [Homebrew cask PR](https://github.com/jdylanmc/homebrew-notch/pull/2) merged as
+  `ce7721b21bc1e7af1e4a83b2a7e02df752cc9e6d`, after
+  [actual download/hash and strict online audit](https://github.com/jdylanmc/homebrew-notch/actions/runs/36457019906).
+
+The public DMG was downloaded and independently verified against the manifest:
+valid staple, Developer ID signature, image checksum and Gatekeeper
+`Notarized Developer ID` acceptance. A read-only, non-browsing mount verified
+the contained app version 0.1.0/minimum macOS 14, six physical Mach-O files and
+thirteen architecture slices, its staple and Gatekeeper acceptance. The exact
+owned mount was detached and image bytes remained unchanged. This inspection
+did **not** install or launch the application.
+
+```bash
+brew install --cask jdylanmc/notch/notch-pocket
+```
+
+Remaining acceptance is the owner's additional-Mac installation, launch,
+permissions and coexistence confirmation. No quarantine stripping, forced
+replacement, privacy changes or data reset is part of installation. Existing
+development installs that conflict with the cask need explicit reconciliation,
+not an automatic force install. Broader agent-control/regression work is not
+closed by distribution.
 
 ## Hosted Actions workflow
 

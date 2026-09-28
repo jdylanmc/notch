@@ -549,12 +549,13 @@ and migration requirements:
   and placeholders. Historical credit translations are retained in the license
   notices, not the runtime catalog. Crowdin is not an independent translation
   path for `pocket`.
-- **Unfinished distribution work:** release scripts consume
-  `notch-pocket.app`/`.dmg`, but no independent binaries are published or
-  implied. The isolated local Developer ID command is not a notarized release
-  pipeline. Release branch/merge policy, notarization/publication and future
-  owned update infrastructure still require separate work. Do not run public
-  release automation as part of naming or local setup.
+- **Distribution status:** the independent signed/notarized/stapled 0.1.0
+  release and owned Homebrew cask are published; see the exact
+  [release evidence](docs/releases.md#published-010). Additional-Mac
+  installation/coexistence acceptance remains pending under #9. The isolated
+  local Developer ID command is still not proof of notarization. Future releases
+  require fresh approval and artifact evidence; an in-app updater remains absent.
+  Do not run publication as a side effect of naming or local setup.
 
 ### Test what is testable, and say what is not
 

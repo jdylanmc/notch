@@ -9,8 +9,10 @@ You can contribute through code, documentation, or reports at [jdylanmc/notch](h
 Current work is the buildable, agent-operable foundation. Preserve existing media
 features, shared code, and the shelf. Spotify is the only committed player
 support; discuss scope before adding features or removing inherited integrations.
-There are no independent binary releases yet. Use local builds, not upstream
-downloads, and do not run publication workflows without explicit release approval.
+The independent 0.1.0 notarized release and owned Homebrew cask are published;
+see [installation and artifact evidence](docs/releases.md#published-010).
+Do not use upstream downloads or run publication workflows without explicit
+release approval. Additional-Mac acceptance remains open under #9.
 
 ## Table of Contents
 
@@ -424,9 +426,10 @@ Do not launch/install either app or change preferences, shelf or privacy.
 
 The parent owns independent review, publication of the bounded PR targeting
 `pocket`, and required hosted/Shepherd evidence or exact blockers. Only the human
-merges/releases. This does not close #9/#54: notarized tagged downloads,
-automated owned Homebrew version/checksum publication, and second-Mac clean
-installation/coexistence proof remain incomplete and separately approved.
+merges/releases. This local-signing slice alone does not close #9/#54.
+The separate [0.1.0 release record](docs/releases.md#published-010) now establishes
+notarized tagged downloads and owned Homebrew publication; second-Mac clean
+installation/coexistence acceptance is still pending.
 
 ### Project versus distribution artifact
 
