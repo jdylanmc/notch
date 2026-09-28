@@ -57,6 +57,12 @@ must already exist and be usable by the caller's Apple tools. The command does
 not discover/enumerate credentials, create profiles, unlock Keychains, import or
 export certificates/secrets, or read `local.env`. It passes only the explicit
 profile name to notarytool; do not supply a password/API key as that name.
+For a profile stored in a custom keychain, also pass
+`--keychain '/absolute/path/release.keychain-db'`. The same explicit keychain is
+used for both ZIP/DMG submissions and waits; adding it to the signing search
+list is not a substitute for selecting it for notarytool. Only path and ownership
+metadata are validated; the file's credential contents are never read or exported.
+Without this option, notarytool uses its default keychain lookup.
 Native verification/notary commands use the existing distribution helper's
 restricted environment, not inherited signing overrides or `DYLD_*` settings.
 The packager retains its separate existing environment and dependency `PATH`.

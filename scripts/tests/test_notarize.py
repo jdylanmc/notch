@@ -536,6 +536,30 @@ class NotarizationTests(unittest.TestCase):
         self.assertEqual(error.details["notary_status"], "Invalid")
         self.assertNotIn("do not echo", json.dumps(error.details))
 
+    def test_explicit_custom_keychain_is_used_for_each_submission_and_wait(self):
+        keychain = self.root / "release.keychain-db"
+        keychain.write_bytes(b"synthetic keychain, never read")
+        keychain.chmod(0o600)
+        self.prepare(keychain=str(keychain))
+        commands = [command for command, _ in self.calls if command[1] == "notarytool"]
+        self.assertEqual(len(commands), 4)
+        for command in commands:
+            self.assertEqual(command[command.index("--keychain") + 1], str(keychain))
+            self.assertEqual(command[command.index("--keychain-profile") + 1], PROFILE)
+        self.assertEqual(keychain.read_bytes(), b"synthetic keychain, never read")
+
+    def test_custom_keychain_alias_directory_and_shared_write_are_rejected(self):
+        keychain = self.root / "release.keychain-db"
+        keychain.write_bytes(b"synthetic keychain")
+        keychain.chmod(0o666)
+        self.assert_failure("invalid_input", keychain=str(keychain))
+        self.assert_failure("invalid_input", keychain=str(self.root))
+        alias = self.root / "keychain-alias"
+        alias.symlink_to(keychain)
+        self.assert_failure("invalid_input", keychain=str(alias))
+        self.assertEqual(self.events, [])
+        self.assertFalse(self.output.exists())
+
     def test_mismatched_release_version_is_rejected_before_upload(self):
         with mock.patch.object(distribution, "VERSION", "0.1.1"):
             self.assert_failure("invalid_output")

@@ -54,6 +54,17 @@ def validate_inputs(app_value, identity, team, profile, output_value):
     return app, output
 
 
+def validate_keychain(value):
+    if value is None:
+        return None
+    path = canonical_path(value)
+    info = path.lstat()
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+            or info.st_nlink != 1 or info.st_mode & 0o022):
+        raise NotarizationError("invalid_input", "Explicit keychain must be an owned regular file without shared write.")
+    return str(path)
+
+
 def owned_snapshot(app):
     entries, fingerprints = package.snapshot(app)
     for relative, entry in entries.items():
@@ -170,8 +181,10 @@ def submission_id(value):
     return value.lower()
 
 
-def upload(artifact, kind, profile, tools, env, run, state):
+def upload(artifact, kind, profile, tools, env, run, state, keychain=None):
     arguments = ["--keychain-profile", profile, "--output-format", "json"]
+    if keychain is not None:
+        arguments += ["--keychain", keychain]
     state["stage"] = kind + "_submit"
     state["uploads_may_be_processing"].append(kind)
     try:
@@ -302,13 +315,14 @@ def require_file(path, original):
         raise NotarizationError("artifact_changed", "Artifact changed outside its signing/stapling stage.")
 
 
-def prepare(app_value, identity, team, profile, output_value, run=distribution.run_command):
+def prepare(app_value, identity, team, profile, output_value, run=distribution.run_command, *, keychain=None):
     state = {"stage": "preflight", "submissions": {}, "uploads_may_be_processing": []}
     owned = None
     source = None
     failure = None
     try:
         app, output = validate_inputs(app_value, identity, team, profile, output_value)
+        keychain = validate_keychain(keychain)
         source = owned_snapshot(app)
         env = distribution.environment()
         tools = find_tools(env, run)
@@ -343,7 +357,7 @@ def prepare(app_value, identity, team, profile, output_value, run=distribution.r
             env=env, phase="verification_failed", timeout=300)
         zipped = file_state(archive)
         require_snapshot(staged, copied, "artifact_changed")
-        upload(archive, "app", profile, tools, env, run, state)
+        upload(archive, "app", profile, tools, env, run, state, keychain)
         require_file(archive, zipped)
         require_snapshot(staged, copied, "artifact_changed")
         staple(staged, "app", tools, env, run, state)
@@ -363,7 +377,7 @@ def prepare(app_value, identity, team, profile, output_value, run=distribution.r
         state["stage"] = "dmg_signature"
         verify_dmg(dmg, identity, team, tools, env, run)
         signed_dmg = file_state(dmg)
-        upload(dmg, "dmg", profile, tools, env, run, state)
+        upload(dmg, "dmg", profile, tools, env, run, state, keychain)
         require_file(dmg, signed_dmg)
         staple(dmg, "dmg", tools, env, run, state)
         final_dmg = file_state(dmg)
@@ -435,11 +449,12 @@ def main(argv=None):
     parser.add_argument("--identity", required=True, help="Full existing Developer ID Application certificate name")
     parser.add_argument("--team", required=True, help="Explicit ten-character Apple team ID")
     parser.add_argument("--keychain-profile", required=True, help="Explicit pre-existing notarytool profile name")
+    parser.add_argument("--keychain", help="Canonical absolute custom keychain containing that profile; never read or exported")
     parser.add_argument("--output-dir", required=True, help="New private directory beneath this checkout's .build/")
     try:
         args = parser.parse_args(argv)
         result = prepare(app_value=args.app, identity=args.identity, team=args.team,
-                         profile=args.keychain_profile, output_value=args.output_dir)
+                         profile=args.keychain_profile, output_value=args.output_dir, keychain=args.keychain)
     except NotarizationError as exc:
         print(json.dumps({"ok": False, "public_artifact_ready": False, "error": exc.code,
                           "message": str(exc), **exc.details}, sort_keys=True), file=sys.stderr)
