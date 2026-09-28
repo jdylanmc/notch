@@ -13,6 +13,18 @@ import XCTest
 @testable import notchPocket
 
 final class IdentityCompatibilityTests: XCTestCase {
+    @MainActor
+    func testSettingsWindowExposesItsOwnedAccessibilityIdentifier() throws {
+        let controller = SettingsWindowController.shared
+        let window = try XCTUnwrap(controller.window)
+        XCTAssertEqual(window.identifier?.rawValue, "NotchPocketSettingsWindow")
+        // App-side marker wiring, not proof of cross-process Accessibility dispatch.
+        XCTAssertEqual(window.accessibilityIdentifier(), "NotchPocketSettingsWindow")
+        XCTAssertEqual(window.title, "Notch Pocket Settings")
+        XCTAssertTrue(window.styleMask.contains(.closable))
+        XCTAssertTrue(window.delegate === controller)
+    }
+
     func testTabAccessibilityContractIsStableAndVersioned() {
         XCTAssertEqual(NotchViews.dashboard.accessibilityIdentifier,
                        "com.jdylanmc.notchpocket.notch.v1.tab.dashboard")

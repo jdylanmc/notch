@@ -87,7 +87,8 @@ bounded polling/output. Tab-selection cases add exact identifier/parser
 contracts, one-press observation, already-selected no-op, stale mapping,
 disabled/unavailable Shelf, native failure and timeout coverage. Eleven Settings-close
 cases add explicit selectors, one native press, identity changes, unsupported
-actions, permission loss and late/failed/refused completion (66 tests total
+actions, permission loss and late/failed/refused completion. Three pane-wait
+cases cover selection, replacement, timeout and error propagation (69 tests total
 across three test source files). The existing subprocess test also covers invalid
 notch verbs and IDs before discovery. All original cases remain.
 They do **not** exercise Accessibility, ScreenCaptureKit, permissions, Settings UI, or the
@@ -170,6 +171,13 @@ unsupported panel or reuse a saved ID after window recreation.
 requires the unique app-owned `NotchPocketSettingsWindow`, freshly mapped to the
 requested native window ID. Missing, replaced, ambiguous or unmappable windows
 fail explicitly; an already-closed window is not a successful no-op.
+
+The app sets that marker explicitly with `setAccessibilityIdentifier`; setting
+only `NSWindow.identifier` is not equivalent. Older builds lacking the AX marker
+are unsupported rather than matched by title. The app-side marker XCTest does
+not establish cross-process behavior by itself. Pane completion uses observed
+selected rows in the same AX window, not a title assumption that SwiftUI may
+change during presentation.
 
 The helper resolves that window's native `AXCloseButton`, checks its button
 role, close-button subrole, enabled state, containing window and advertised

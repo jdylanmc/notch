@@ -227,6 +227,24 @@ public func closeSettingsWindow(
     return SettingsCloseResult(windowID: windowID, outcome: .closed)
 }
 
+public func waitForSettingsPane(
+    _ pane: String, budget: PollBudget, pause: (TimeInterval) -> Void,
+    observe: () throws -> (sameWindow: Bool, selectedPane: String?)?
+) throws {
+    guard ["general", "about"].contains(pane) else {
+        throw ControlFailure(.invalidInput, "Settings pane observation requires general or about.")
+    }
+    try budget.until(pause: pause) {
+        let current = try observe()
+        _ = try budget.remaining()
+        guard let current else { return false }
+        guard current.sameWindow else {
+            throw ControlFailure(.staleTarget, "Settings window changed during pane selection.")
+        }
+        return current.selectedPane == pane
+    }
+}
+
 public func selectApp(_ candidates: [AppIdentity], expectedPath: String?) throws -> AppIdentity {
     guard !candidates.isEmpty else {
         throw ControlFailure(.appMissing, "No running com.jdylanmc.notchpocket app.")

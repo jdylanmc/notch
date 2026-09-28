@@ -3,6 +3,52 @@ import Foundation
 import XCTest
 
 extension ControlCoreTests {
+    func testSettingsPaneWaitObservesSelectionWithoutDependingOnWindowTitle() throws {
+        var now: TimeInterval = 0
+        var observations = 0
+        try waitForSettingsPane("about", budget: PollBudget(timeout: 1, now: { now }), pause: { now += $0 }) {
+            observations += 1
+            return (true, observations < 3 ? "general" : "about")
+        }
+        XCTAssertEqual(observations, 3)
+        XCTAssertGreaterThan(now, 0)
+    }
+
+    func testSettingsPaneWaitRejectsReplacedWindowAndLateSelection() {
+        assertFailure(.staleTarget) {
+            try waitForSettingsPane("general", budget: PollBudget(timeout: 1), pause: { _ in }) {
+                (false, "general")
+            }
+        }
+        var now: TimeInterval = 0
+        assertFailure(.timeout) {
+            try waitForSettingsPane("about", budget: PollBudget(timeout: 1, now: { now }), pause: { _ in }) {
+                now = 2
+                return (true, "about")
+            }
+        }
+    }
+
+    func testSettingsPaneWaitTimesOutPropagatesErrorsAndRejectsInvalidDestination() {
+        var now: TimeInterval = 0
+        assertFailure(.timeout) {
+            try waitForSettingsPane("about", budget: PollBudget(timeout: 0.5, now: { now }), pause: { now += $0 }) {
+                (true, nil)
+            }
+        }
+        assertFailure(.permissionDenied) {
+            try waitForSettingsPane("general", budget: PollBudget(timeout: 1), pause: { _ in }) {
+                throw ControlFailure(.permissionDenied, "fixture")
+            }
+        }
+        assertFailure(.invalidInput) {
+            try waitForSettingsPane("close", budget: PollBudget(timeout: 1), pause: { _ in }) {
+                XCTFail("Closing must not enter pane navigation")
+                return nil
+            }
+        }
+    }
+
     func testSettingsCloseRequiresItsOwnExplicitWindowSelector() throws {
         let options = try Options.parse(["settings", "close", "--window", "17", "--app-path", app.path])
         XCTAssertEqual(options.command, .settings)

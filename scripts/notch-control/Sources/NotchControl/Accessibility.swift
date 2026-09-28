@@ -370,16 +370,20 @@ final class SettingsControl: BoundedAccessibilityReader {
         return try target.windowID(matching: CGRect(origin: position, size: size))
     }
 
-    func state() throws -> SettingsState {
-        guard let window = try settingsWindow() else {
-            return SettingsState(status: "closed", selectedPane: nil)
-        }
+    private func selectedPane(in window: AXUIElement) throws -> String? {
         let rows = try elements(outline(window), kAXSelectedRowsAttribute)
         var labels: [String] = []
         for label in ["General", "About"] where try rows.contains(where: { try rowHasLabel($0, label) }) {
             labels.append(label.lowercased())
         }
-        return SettingsState(status: "open", selectedPane: labels.count == 1 ? labels.first : nil,
+        return labels.count == 1 ? labels.first : nil
+    }
+
+    func state() throws -> SettingsState {
+        guard let window = try settingsWindow() else {
+            return SettingsState(status: "closed", selectedPane: nil)
+        }
+        return SettingsState(status: "open", selectedPane: try selectedPane(in: window),
                              windowID: try captureID(window))
     }
 
@@ -456,6 +460,9 @@ final class SettingsControl: BoundedAccessibilityReader {
     }
 
     func navigate(_ pane: String) throws -> SettingsState {
+        guard ["open", "general", "about"].contains(pane) else {
+            throw ControlFailure(.invalidInput, "Settings navigation requires open, general, or about.")
+        }
         if try settingsWindow() == nil {
             let item = try selectSettingsMenuItem(
                 immediateChildren: elements(application, kAXChildrenAttribute),
@@ -490,11 +497,12 @@ final class SettingsControl: BoundedAccessibilityReader {
         guard result == .success else {
             throw ControlFailure(.accessibilityFailed, "Settings selection failed (AX \(result.rawValue)).")
         }
-        try target.budget.until(pause: Thread.sleep(forTimeInterval:)) {
-            guard let current = try self.settingsWindow() else { return false }
-            let state = try self.state()
-            let title = try self.string(current, kAXTitleAttribute)
-            return state.selectedPane == pane && title == label
+        try waitForSettingsPane(pane, budget: target.budget, pause: Thread.sleep(forTimeInterval:)) {
+            guard let current = try self.settingsWindow() else { return nil }
+            guard CFEqual(current, window) else { return (false, nil) }
+            let selected = try self.selectedPane(in: current)
+            let after = try self.settingsWindow()
+            return (after.map { CFEqual($0, current) } ?? false, selected)
         }
         return try state()
     }
