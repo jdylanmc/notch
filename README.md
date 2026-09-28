@@ -13,6 +13,10 @@ Homebrew cask version **`0.1.0`**. App and embedded helper versions match.
 Historical upstream `v2.x` tags do not identify Notch Pocket releases.
 Version alignment is release preparation, not evidence of publication or notarization.
 
+See [notarized release preparation](docs/releases.md) for the explicit-input
+app/DMG notarization command, retained-artifact recovery, and pending native
+release evidence. It does not publish a release or configure Apple credentials.
+
 The foundation milestone preserves existing media features, shared media code,
 and the file shelf. **Spotify is the only committed player support.** Other
 inherited integrations remain in the source; their presence is not a broader
