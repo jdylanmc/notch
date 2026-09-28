@@ -60,6 +60,22 @@ class BoundedAccessibilityReader {
         }
         return number.boolValue
     }
+
+    func actionNames(_ element: AXUIElement) throws -> [String] {
+        try target.budget.read(pause: Thread.sleep(forTimeInterval:), prepare: { try self.prepare(element) }, attempt: {
+            var value: CFArray?
+            let result = AXUIElementCopyActionNames(element, &value)
+            if result == .cannotComplete { return .cannotComplete(result.rawValue) }
+            if result == .noValue || result == .notImplemented { return .value([]) }
+            guard result == .success else {
+                throw ControlFailure(.accessibilityFailed, "Accessibility action discovery failed (AX \(result.rawValue)).")
+            }
+            guard let names = value as? [String], names.count <= 600 else {
+                throw ControlFailure(.unsupportedControl, "Accessibility action names have an unsupported shape.")
+            }
+            return .value(names)
+        })
+    }
 }
 
 final class NotchObservationControl: BoundedAccessibilityReader {
@@ -185,22 +201,6 @@ final class NotchObservationControl: BoundedAccessibilityReader {
             status: .observed,
             panels: states.sorted { $0.windowID < $1.windowID }
         )
-    }
-
-    private func actionNames(_ element: AXUIElement) throws -> [String] {
-        try target.budget.read(pause: Thread.sleep(forTimeInterval:), prepare: { try self.prepare(element) }, attempt: {
-            var value: CFArray?
-            let result = AXUIElementCopyActionNames(element, &value)
-            if result == .cannotComplete { return .cannotComplete(result.rawValue) }
-            if result == .noValue || result == .notImplemented { return .value([]) }
-            guard result == .success else {
-                throw ControlFailure(.accessibilityFailed, "Accessibility action discovery failed (AX \(result.rawValue)).")
-            }
-            guard let names = value as? [String], names.count <= 600 else {
-                throw ControlFailure(.unsupportedControl, "Accessibility action names have an unsupported shape.")
-            }
-            return .value(names)
-        })
     }
 
     func change(_ action: NotchAction, windowID: UInt32) throws -> NotchActionResult {
@@ -331,6 +331,9 @@ final class SettingsControl: BoundedAccessibilityReader {
 
     private func settingsWindow() throws -> AXUIElement? {
         let windows = try elements(application, kAXWindowsAttribute)
+        guard windows.count <= 600 else {
+            throw ControlFailure(.unsupportedControl, "Settings windows exceed the observation limit.")
+        }
         let matching = try windows.filter { try string($0, kAXIdentifierAttribute) == settingsID }
         guard matching.count <= 1 else {
             throw ControlFailure(.unsupportedControl, "Multiple Settings windows; no guessed target.")
@@ -378,6 +381,78 @@ final class SettingsControl: BoundedAccessibilityReader {
         }
         return SettingsState(status: "open", selectedPane: labels.count == 1 ? labels.first : nil,
                              windowID: try captureID(window))
+    }
+
+    private func element(_ parent: AXUIElement, _ attribute: String) throws -> AXUIElement {
+        guard let value = try read(parent, attribute, optional: true),
+              CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            throw ControlFailure(.unsupportedControl, "Settings close control has an unsupported shape.")
+        }
+        return unsafeBitCast(value, to: AXUIElement.self)
+    }
+
+    func close(windowID: UInt32) throws -> SettingsCloseResult {
+        var selectedWindow: AXUIElement?
+        var selectedButton: AXUIElement?
+        var dispatched = false
+        func currentWindow() throws -> AXUIElement? {
+            guard let window = try settingsWindow() else { return nil }
+            guard try string(window, kAXRoleAttribute) == kAXWindowRole,
+                  selectedWindow == nil || CFEqual(selectedWindow, window) else {
+                throw ControlFailure(.staleTarget, "Settings close target changed.")
+            }
+            if let mapped = try captureID(window) {
+                guard mapped == windowID else {
+                    throw ControlFailure(.staleTarget, "Settings native window changed.")
+                }
+            } else if !dispatched {
+                throw ControlFailure(.staleTarget, "Settings close target cannot be mapped uniquely.")
+            }
+            // After dispatch, an off-screen but still exposed AX window must settle, not count as closed.
+            selectedWindow = window
+            return window
+        }
+        func closeButton() throws -> AXUIElement {
+            guard let window = try currentWindow() else {
+                throw ControlFailure(.staleTarget, "Settings window disappeared before close.")
+            }
+            let button = try element(window, kAXCloseButtonAttribute)
+            guard try string(button, kAXRoleAttribute) == kAXButtonRole,
+                  try string(button, kAXSubroleAttribute) == kAXCloseButtonSubrole,
+                  try bool(button, kAXEnabledAttribute) == true,
+                  CFEqual(try element(button, kAXWindowAttribute), window),
+                  selectedButton == nil || CFEqual(selectedButton, button) else {
+                throw ControlFailure(.unsupportedControl, "Settings close button is unavailable, disabled or changed.")
+            }
+            selectedButton = button
+            return button
+        }
+        let transport = SettingsCloseTransport(
+            observe: {
+                let window = try currentWindow()
+                try self.target.requireAccessibility()
+                if window == nil {
+                    let stillVisible = try self.target.windows().contains { $0.id == windowID && $0.onScreen }
+                    return stillVisible ? windowID : nil
+                }
+                return windowID
+            },
+            actionNames: { try self.actionNames(closeButton()) },
+            perform: { name in
+                let button = try closeButton()
+                try self.prepare(button)
+                _ = try self.target.budget.remaining()
+                let result = AXUIElementPerformAction(button, name as CFString)
+                guard result == .success else {
+                    throw ControlFailure(.accessibilityFailed, "Settings close failed (AX \(result.rawValue)); not retried.")
+                }
+                dispatched = true
+            }
+        )
+        return try closeSettingsWindow(
+            windowID: windowID, budget: target.budget,
+            pause: Thread.sleep(forTimeInterval:), transport: transport
+        )
     }
 
     func navigate(_ pane: String) throws -> SettingsState {

@@ -102,7 +102,7 @@ an authoring-only phase.
 After reconciliation, helper checks are
 `bash scripts/notch-control/control.sh build` and
 `bash scripts/notch-control/control.sh test`, in addition to the app gates.
-Use `bash scripts/notch-control/control.sh lint` for the package's nine Swift
+Use `bash scripts/notch-control/control.sh lint` for the package's ten Swift
 files: it supplies script-input files to the root config, avoiding an app scan.
 The package test command builds the helper for a permission-free invalid-input
 subprocess contract check; it does not launch the app.
@@ -325,7 +325,7 @@ The isolated package parses real YAML and tests structural drift without
 executing workflow shell blocks. Its package-local `.gitignore` excludes only
 generated `/node_modules/`; use ordinary npm installation and imports. The existing
 policy suite uses mocked APIs; neither suite requires live repository writes.
-Hosted helper checks run canonical build/test/nine-file lint without app
+Hosted helper checks run canonical build/test/ten-file lint without app
 launch, screenshots, or privacy grants. Swift CodeQL extraction must retain
 the app build and a separate helper build after initialization.
 Static contracts are not proof of runner availability, passing hosted checks,

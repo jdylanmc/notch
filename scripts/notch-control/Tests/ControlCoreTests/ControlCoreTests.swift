@@ -424,7 +424,9 @@ extension ControlCoreTests {
     }
 
     func testInvalidInputExecutableWireContract() throws {
-        try assertInvalidExecutable(["settings", "close"], message: "settings requires open, general, or about.")
+        try assertInvalidExecutable(["settings", "close"],
+                                    message: "settings close requires a canonical positive --window ID and no --output.")
+        try assertInvalidExecutable(["settings", "unknown"], message: "settings requires open, general, about, or close.")
         try assertInvalidExecutable(["notch", "toggle"], message: "notch requires open or close.")
         try assertInvalidExecutable(["notch", "open", "--window", "015"],
                                     message: "notch requires a canonical positive --window ID and no --output.")

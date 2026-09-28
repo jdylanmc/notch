@@ -1,6 +1,6 @@
 ---
 name: notch
-description: Inspect the running Notch Pocket app and read-only per-panel notch/tab state, explicitly open/close one identified notch panel, select an implemented tab, open Settings or select General/About using app-scoped Accessibility, and capture one selected app-owned window locally for UI debugging. Does not control playback, shelf data, notifications, or lock notch visibility.
+description: Inspect the running Notch Pocket app and read-only per-panel notch/tab state, explicitly open/close one identified notch panel, select an implemented tab, open Settings or select General/About, close an explicitly selected Settings window using app-scoped Accessibility, and capture one selected app-owned window locally for UI debugging. Does not control playback, shelf data, notifications, or lock notch visibility.
 ---
 
 # Notch Pocket local UI debugging
@@ -125,7 +125,21 @@ helper's contract rather than retrying with broader permissions or input scope.
 
 For the reversible validation example: capture/view General, navigate to About,
 capture/view About, then restore the recorded pane. A human restores unsupported
-original panes or closes Settings if it was originally closed. Preserve shelf,
+original panes. If this task opened previously closed Settings, re-inspect and
+use its fresh `settings.windowID` to restore closed visibility:
+
+```bash
+bash scripts/notch-control/control.sh run settings close --window WINDOW_ID \
+  --app-path /absolute/built/notch-pocket.app
+```
+
+The helper requires that exact app-owned Settings window and its native enabled
+close button, dispatches one `AXPress`, and observes Settings disappear. Missing,
+stale, replaced, refused or timed-out targets are failures, not no-op success.
+It never opens Settings while closing or sends global keystrokes. After a failure,
+inspect again rather than retrying blindly; report blocked restoration explicitly.
+Do not close a pre-existing human Settings session. Window visibility restoration
+does not prove restoration of all OS focus, geometry or pane state. Preserve shelf,
 persistent preferences, app identity and existing privacy grants.
 For the notch slice, the parent verifies closed → open → closed on the exact
 signed candidate and views fresh selected-panel captures only if already
