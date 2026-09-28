@@ -18,11 +18,17 @@ until the user reports additional-Mac acceptance **after publication**.
 ## Hosted Actions workflow
 
 Use only [Notch Pocket notarized release](../.github/workflows/pocket-native-release.yml).
-It does not call the inherited `release.yml`, `build_reusable.yml` or
-`manual_build.yml`; those retain their deferred `dev`/`main`, Apple Development,
-version-write and automatic-merge paths. Do not run them or configure their
+The inherited `release.yml`, `build_reusable.yml` and `manual_build.yml` are
+removed, along with their unused comment-version parser. Their `dev`/`main`,
+Apple Development, version-write and automatic-merge paths are no longer
+checked-in release entry points. Do not restore them or configure their
 `BUILD_CERTIFICATE_BASE64`, `P12_PASSWORD`, `KEYCHAIN_PASSWORD` or `RELEASE_TOKEN`
-secrets for this release. Their retirement is separate scope. Crowdin is unchanged.
+secrets for this release. Repository contracts guard the retired files, calls
+to the retired builder, and known tag-push/create, release, comment and
+repository-dispatch routes. Future workflow changes still need independent
+review; this inventory is not a generic release-authorization engine.
+Historical workflow runs/tags are not
+deleted by source retirement. Crowdin is unchanged.
 The issue-form dropdown is now **manual dispatch only**, so a product tag or
 release cannot cause its unrelated default-branch commits.
 
@@ -73,7 +79,7 @@ export is used. Never place keys, passwords or identities in workflow inputs.
    or dispatches this workflow **from `pocket`** with input `tag:
    notch-pocket-v0.1.0`. Dispatch never creates a tag. The workflow must also be
    available under GitHub's default-branch dispatch rules; do not change branch
-   policy or run inherited release automation to bypass that prerequisite.
+   policy or restore inherited release automation to bypass that prerequisite.
 3. An Ubuntu gate checks strict product-tag syntax, exact equality with the
    tagged `scripts/distribution.py`'s `VERSION`, remote tag identity, and commit
    ancestry from freshly fetched `origin/pocket`. It reads the version as data,

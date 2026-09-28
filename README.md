@@ -84,8 +84,9 @@ An explicit `DEVELOPER_DIR` is respected. Optional stable local signing uses
 Local signing is not notarization or distribution signing.
 
 `CONFIGURATION=Release scripts/build.sh` builds locally in Release configuration.
-Do not run the inherited public-release workflows as part of local setup:
-they perform remote writes/uploads and do not establish distribution readiness.
+The inherited manual/reusable/comment-triggered release workflows have been
+removed. Use only the [owned release workflow](docs/releases.md) for separately
+approved distribution; a local build is not publication.
 Only the user approves merges and releases.
 
 ### Local DMG preparation
@@ -308,9 +309,9 @@ See the [CI and packaging inventory](CONTRIBUTING.md#ci-and-packaging-inventory)
 for source evidence, safe commands, generated dependency handling, and deferred
 workflows. `notchPocket` is the project/scheme; packaging consumes
 `notch-pocket.app` and `notch-pocket.dmg`. Static agreement on those names is
-not distribution proof: inherited manual/release Xcode 16.4 defaults,
-`dev` → `main` release merges, signing/publication, and Crowdin ownership remain
-outside product-CI validation. Do not activate those workflows.
+not distribution proof. The former Xcode 16.4 / `dev` → `main` release paths are
+retired; signing/notarization/publication still require the owned workflow's
+credential and exact-artifact gates. Crowdin ownership remains separate.
 
 ## Local UI debugging
 
