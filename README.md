@@ -47,10 +47,10 @@ The cask verifies the final download's SHA-256 and installs `notch-pocket.app`;
 it does not strip quarantine or bypass Gatekeeper. Upstream downloads/casks
 install a different product and are not Notch Pocket installation options.
 
-Additional-Mac install, launch, permission and coexistence acceptance is still
-pending under [#9](https://github.com/jdylanmc/notch/issues/9). Publication and
-native artifact checks do not claim that acceptance or completion of the broader
-application regression work.
+On 2026-09-28, the owner confirmed Homebrew installation on another Mac and
+accepted distribution, closing [#9](https://github.com/jdylanmc/notch/issues/9).
+See the [acceptance scope](docs/releases.md#post-publication-acceptance);
+broader application regression work is not closed by distribution.
 
 The deployment target is macOS **14 Sonoma** or later, on Apple Silicon or Intel.
 The build-host requirements below are separate.
@@ -197,8 +197,9 @@ separate parent-owned native proof after author reconciliation.
 It does not complete #9/#54, provide a downloadable release or Homebrew tap,
 establish Gatekeeper acceptance, or authorize installation, app launch, Apple
 uploads or publication. Only the user approves merges/releases. Tagged
-downloads, notarization, automated Homebrew version/checksum updates, and a
-second-Mac clean installation/coexistence check remain separate work.
+downloads, notarization, automated Homebrew version/checksum updates and
+additional-Mac acceptance are established separately in the
+[0.1.0 release record](docs/releases.md#published-010), not by this local command.
 
 After author/parent reconciliation and the declared validation gates, use the
 separate Python **3.9+**, standard-library command. Supply the **full existing

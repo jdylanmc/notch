@@ -303,8 +303,8 @@ plus the canonical new Python command, fresh native signing and exact-app DMG
 evidence, independent review and the `pocket` PR/hosted checks. See the complete
 command list in CONTRIBUTING. Mock contracts do not prove native signing,
 packaging or runtime behavior. Human alone merges/releases; tagged notarized
-downloads, Homebrew version/checksum automation and second-Mac
-installation/coexistence remain separate work.
+downloads, Homebrew version/checksum automation and additional-Mac acceptance
+require separate evidence; see the [0.1.0 record](docs/releases.md#published-010).
 
 The lint script and `pocket` push/PR SwiftLint workflow use `.swiftlint.yml`.
 Install SwiftLint with `brew install swiftlint` if missing. Preserve the
@@ -551,8 +551,10 @@ and migration requirements:
   path for `pocket`.
 - **Distribution status:** the independent signed/notarized/stapled 0.1.0
   release and owned Homebrew cask are published; see the exact
-  [release evidence](docs/releases.md#published-010). Additional-Mac
-  installation/coexistence acceptance remains pending under #9. The isolated
+  [release evidence](docs/releases.md#published-010). The owner confirmed
+  installation on another Mac and accepted distribution on 2026-09-28, closing
+  #9; preserve the [acceptance scope](docs/releases.md#post-publication-acceptance).
+  The isolated
   local Developer ID command is still not proof of notarization. Future releases
   require fresh approval and artifact evidence; an in-app updater remains absent.
   Do not run publication as a side effect of naming or local setup.

@@ -12,8 +12,8 @@ actual Actions execution/Apple submission/publication, and tap PR review/merge.
 Credential values are never committed. Portable tests alone are not proof of
 Apple acceptance, usable signing credentials, stapled tickets, runner
 availability, or installation. The specific native evidence below belongs to
-0.1.0; future releases need their own. Keep #9 open until the user reports
-additional-Mac acceptance **after publication**.
+0.1.0; future releases need their own. The owner confirmed additional-Mac
+installation and accepted distribution **after publication**, closing #9.
 
 ## Published 0.1.0
 
@@ -42,8 +42,9 @@ did **not** install or launch the application.
 brew install --cask jdylanmc/notch/notch-pocket
 ```
 
-Remaining acceptance is the owner's additional-Mac installation, launch,
-permissions and coexistence confirmation. No quarantine stripping, forced
+The owner confirmed installation on another Mac and accepted distribution on
+2026-09-28; see the [acceptance scope](#post-publication-acceptance).
+No quarantine stripping, forced
 replacement, privacy changes or data reset is part of installation. Existing
 development installs that conflict with the cask need explicit reconciliation,
 not an automatic force install. Broader agent-control/regression work is not
@@ -253,8 +254,8 @@ export is used. Never place keys, passwords or identities in workflow inputs.
 Runs serialize without canceling an active signing job. Jobs, steps, Git/API
 requests and native subprocesses have time bounds. The workflow does not merge
 source or tap PRs and never installs/launches an app. Final download/Gatekeeper
-and second-Mac behavior still need actual hosted/publication evidence and user
-acceptance, respectively.
+and second-Mac behavior require actual hosted/publication evidence and user
+acceptance, respectively; source-level checks alone establish neither.
 
 ### Hosted failure recovery: no blind retry
 
@@ -557,7 +558,13 @@ operations. None is established by source version alignment or portable tests.
 
 ### Post-publication acceptance
 
-The owner will test the published Homebrew release on additional Macs and report
-installation, launch, permission prompts and coexistence results. This is
-**after publication**, not a prerequisite to publishing the approved first release.
-Keep #9 and dependent distribution acceptance open until that confirmation arrives.
+On 2026-09-28, **after publication**, the owner reported:
+
+> brew install worked on another mac. distribution is successful
+
+Issue [#9](https://github.com/jdylanmc/notch/issues/9) is closed on that explicit
+distribution acceptance. The report establishes successful Homebrew installation
+on another Mac; it does not separately itemize launch, permission-prompt or
+upstream-coexistence results. Do not turn owner acceptance into claims of
+exhaustive runtime or compatibility coverage. Broader foundation and
+agent-control/regression work remains separate and parked.
