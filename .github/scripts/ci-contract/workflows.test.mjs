@@ -188,6 +188,7 @@ function hostedContract(config, kind) {
           { name: 'Test PR target policy', run: 'node --test .github/scripts/pr-target-policy.test.cjs' },
           { name: 'Test local packaging policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'" },
           { name: 'Test local distribution signing policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'" },
+          { name: 'Test notarization preparation policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_notarize.py'" },
         ]),
       ],
     },
@@ -545,6 +546,21 @@ const mutations = [
   }],
   ['masked distribution signing exit status', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
     step(c.jobs.test, 'Test local distribution signing policy').run += ' || true';
+  }],
+  ['missing notarization tests', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    c.jobs.test.steps = c.jobs.test.steps.filter(({ name }) => name !== 'Test notarization preparation policy');
+  }],
+  ['filtered notarization tests', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    step(c.jobs.test, 'Test notarization preparation policy').run += ' -k success';
+  }],
+  ['skipped notarization tests', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    step(c.jobs.test, 'Test notarization preparation policy').if = 'false';
+  }],
+  ['ignored notarization failures', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    step(c.jobs.test, 'Test notarization preparation policy')['continue-on-error'] = true;
+  }],
+  ['masked notarization exit status', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+    step(c.jobs.test, 'Test notarization preparation policy').run += ' || true';
   }],
 ];
 for (const [name, file, check, mutate] of mutations) {

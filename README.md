@@ -13,6 +13,10 @@ Homebrew cask version **`0.1.0`**. App and embedded helper versions match.
 Historical upstream `v2.x` tags do not identify Notch Pocket releases.
 Version alignment is release preparation, not evidence of publication or notarization.
 
+See [notarized release preparation](docs/releases.md) for the explicit-input
+app/DMG notarization command, retained-artifact recovery, and pending native
+release evidence. It does not publish a release or configure Apple credentials.
+
 The foundation milestone preserves existing media features, shared media code,
 and the file shelf. **Spotify is the only committed player support.** Other
 inherited integrations remain in the source; their presence is not a broader
@@ -290,11 +294,11 @@ belongs in an authoring-only phase.
 
 App build/test, SwiftLint, CodeQL, native-helper validation, and CI contract
 tests run for pushes to `pocket` and PRs targeting `pocket`. The app retains its
-three-leg Xcode matrix. Helper CI runs its canonical build, all 41 package tests,
+three-leg Xcode matrix. Helper CI runs its canonical build, all 55 package tests,
 and nine-file lint without launching the app or requesting privacy grants.
 Contract checks use Node.js 22+ with an isolated, pinned YAML parser and also run
-the existing 22 PR-policy tests plus the portable local-packaging and distribution-
-signing unittest commands. CI does not use a signing identity, build a distribution
+the existing 22 PR-policy tests plus the portable local-packaging, distribution-
+signing and notarization-preparation unittest commands. CI does not use a signing identity, build a distribution
 candidate, or build/upload a DMG.
 
 See the [CI and packaging inventory](CONTRIBUTING.md#ci-and-packaging-inventory)
