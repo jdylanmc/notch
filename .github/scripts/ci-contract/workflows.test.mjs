@@ -182,6 +182,7 @@ function hostedContract(config, kind) {
           { name: 'Build helper', run: `${helper} build` },
           { name: 'Test helper', run: `${helper} test` },
           { name: 'Lint helper', run: `${helper} lint` },
+          { name: 'Test regression pixel oracle', run: 'bash experiments/tart-regression/test-oracle.sh "$PWD/.build/regression-oracle"' },
         ] : [
           { name: 'Install contract test dependency', run: install },
           { name: 'Test workflow contracts', run: 'npm test --prefix .github/scripts/ci-contract' },
@@ -190,6 +191,7 @@ function hostedContract(config, kind) {
           { name: 'Test local distribution signing policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'" },
           { name: 'Test notarization preparation policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_notarize.py'" },
           { name: 'Test hosted release boundaries', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_pocket_release.py'" },
+          { name: 'Test regression probe policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_regression_probe.py'" },
         ]),
       ],
     },

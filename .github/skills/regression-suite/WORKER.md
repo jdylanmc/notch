@@ -1,0 +1,55 @@
+# Independent test-worker contract
+
+Use this as the bounded worker assignment, not an implementation task.
+
+## Inputs from the coordinator
+
+- Approved expected behavior and relevant issue/PR context.
+- Exact installed candidate manifest and its provenance/signature qualification.
+- Exact test source revision, compiled standalone runner and scenario registry.
+- Full suite or explicitly requested subset; negative controls, if requested.
+- Existing local/custom Tart setup instructions, named guest, unique output path.
+- Requester and actual worker identities; dispatch reference establishing that
+  this is a separate agent context, not another shell in the implementation agent.
+
+## Worker responsibilities
+
+1. Independently read the supplied expectations and inspect inputs. Verify the
+   manifest against the actual installed candidate, not the implementer's claimed
+   pass. Record test-source/registry/runner identity.
+2. Inspect the named VM's current state. Start only the approved prepared guest
+   when needed, headlessly, without taking over host input. Confirm the graphical
+   guest session is usable. Preserve unrelated VMs and host settings.
+3. Obtain exclusive run ownership. `run-suite.py` also uses a guest-wide lock;
+   an existing lock is a blocker, not permission to kill another run or delete
+   its lock. Record who started the VM and who owns shutdown.
+   Prepare required fixtures using the submitted executable fixture code; do not
+   author or patch fixture/test code during verification.
+4. Run the registered suite with explicit candidate and actor identities. The
+   application must already be installed; the worker may build the submitted
+   standalone harness but must not rebuild/replace/re-sign the app, edit tests,
+   change expectations or implement repairs.
+5. Inspect actual output evidence, raw XCTest result, executed-test count,
+   candidate/run/capture identity and restoration. Export only expected
+   app-filtered/public scenario artifacts; no host or personal desktop capture.
+6. Preserve FAIL and BLOCKED. Do not rerun until green, hide skips, treat planned
+   negative controls as application bugs, or manufacture missing evidence.
+7. Return report and relinquish owned jobs/locks. Shut down only the VM this
+   assignment owns, normally, or explicitly transfer continued ownership.
+
+## Return to the main agent
+
+Return `report.json` plus a short account containing:
+
+- Candidate and test inputs actually used; dispatch/worker identity.
+- Full/subset scope, per-case raw verdicts and suite aggregation.
+- Commands, native framework outcomes, local evidence paths and cleanup.
+- Potential bugs: scenario, expected/actual behavior, reproduction, evidence,
+  confidence, and whether the suspected fault is app, harness or environment.
+- Missing coverage, skipped cases, blocked prerequisites and limitations.
+
+Potential bugs are **not confirmed GitHub issues**. Main agent owns validation
+and routing. The worker must not file issues, modify product/test source, merge,
+release, approve exceptions or replace the main agent's delivery ownership.
+Fresh-context isolation is workflow evidence, not a filesystem sandbox or a
+security claim established by merely supplying different strings to the runner.

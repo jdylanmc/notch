@@ -1,0 +1,333 @@
+import AppKit
+import CoreGraphics
+import CryptoKit
+import Darwin
+import Foundation
+import Vision
+import XCTest
+
+final class GuestRegressionProbe: XCTestCase {
+    private enum Blocked: Error {
+        case reason(String)
+    }
+
+    @MainActor
+    private final class RunState {
+        var verdict = "BLOCKED"
+        var reason = "preconditions_not_established"
+        var cleanup = "not_needed"
+        var screenshotHash: String?
+        var candidateVerified = false
+        var nativeError: [String: Any]?
+        var observed: [String: Bool] = [:]
+        var window: XCUIElement?
+        var app: XCUIApplication?
+        var originalPID: pid_t?
+        var needsRestoration = false
+        var originalPane: String?
+        var originalBuildVisible: Bool?
+        var buildLabel = ""
+        var attemptedSettingsOpen = false
+        var openedSettings = false
+        var pointerReturn: XCUICoordinate?
+        var discovery: [String: Any] = [:]
+    }
+
+    private let candidate = URL(fileURLWithPath: "/Applications/notch-pocket.app")
+    private var expectedHash: String {
+        ProcessInfo.processInfo.environment["NOTCH_VM_EXPECTED_SHA256"] ?? ""
+    }
+
+    private func require(_ condition: Bool, _ reason: String) throws {
+        guard condition else { throw Blocked.reason(reason) }
+    }
+
+    private func hardwareModel() throws -> String {
+        var size = 0
+        try require(sysctlbyname("hw.model", nil, &size, nil, 0) == 0, "hardware_model_unavailable")
+        var bytes = [CChar](repeating: 0, count: size)
+        try require(sysctlbyname("hw.model", &bytes, &size, nil, 0) == 0, "hardware_model_unavailable")
+        return String(cString: bytes)
+    }
+
+    private func candidateHash() throws -> String {
+        let data = try Data(contentsOf: candidate.appendingPathComponent("Contents/MacOS/notch-pocket"))
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func currentCandidatePID() -> pid_t? {
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: "com.jdylanmc.notchpocket")
+        guard running.count == 1, running[0].bundleURL == candidate else { return nil }
+        return running[0].processIdentifier
+    }
+
+    @MainActor
+    private func waitHittable(_ element: XCUIElement) -> Bool {
+        let ready = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND hittable == true"), object: element
+        )
+        return XCTWaiter.wait(for: [ready], timeout: 5) == .completed
+    }
+
+    @MainActor
+    private func restore(_ state: RunState) {
+        state.cleanup = state.needsRestoration || state.attemptedSettingsOpen ? "pending" : "not_needed"
+        state.pointerReturn?.hover()
+        if state.needsRestoration, let settings = state.window {
+            let targetPane = state.openedSettings ? "General" : state.originalPane
+            guard let targetPane else {
+                state.cleanup = "blocked"
+                return
+            }
+            let control = settings.staticTexts[targetPane]
+            guard currentCandidatePID() == state.originalPID && settings.exists else {
+                state.cleanup = "blocked"
+                return
+            }
+            let row = settings.descendants(matching: .outlineRow).containing(.staticText, identifier: targetPane).firstMatch
+            let alreadySelected = row.exists && row.isSelected
+            state.discovery["restorationPaneAlreadySelected"] = alreadySelected
+            if !alreadySelected {
+                guard waitHittable(control) else {
+                    state.cleanup = "blocked"
+                    return
+                }
+                control.click()
+            }
+            let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: row)
+            guard XCTWaiter.wait(for: [selected], timeout: 5) == .completed else {
+                state.cleanup = "blocked"
+                return
+            }
+            if state.openedSettings {
+                let close = settings.buttons[XCUIIdentifierCloseWindow]
+                guard waitHittable(close) else {
+                    state.cleanup = "blocked"
+                    return
+                }
+                close.click()
+                let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: settings)
+                state.cleanup = XCTWaiter.wait(for: [closed], timeout: 5) == .completed ? "restored_closed_settings" : "blocked"
+            } else {
+                if let originalBuildVisible = state.originalBuildVisible {
+                    let build = settings.staticTexts[state.buildLabel]
+                    if build.exists != originalBuildVisible {
+                        let version = settings.staticTexts["Version"]
+                        guard waitHittable(version) else {
+                            state.cleanup = "blocked"
+                            return
+                        }
+                        version.click()
+                    }
+                    let restored = XCTNSPredicateExpectation(
+                        predicate: NSPredicate(format: "exists == %@", NSNumber(value: originalBuildVisible)), object: build
+                    )
+                    guard XCTWaiter.wait(for: [restored], timeout: 5) == .completed else {
+                        state.cleanup = "blocked"
+                        return
+                    }
+                }
+                state.cleanup = "restored_original_state"
+            }
+        } else if state.attemptedSettingsOpen {
+            state.cleanup = "blocked"
+        }
+    }
+
+    @MainActor
+    private func finish(_ state: RunState, runID: String, mode: String) {
+        let primaryVerdict = state.verdict
+        let primaryReason = state.reason
+        let nativeFailures = testRun?.failureCount ?? 0
+        if nativeFailures > 0 && state.reason == "preconditions_not_established" {
+            state.reason = "native_interaction_aborted"
+        }
+        if state.cleanup == "pending" || state.cleanup == "blocked" {
+            state.verdict = "BLOCKED"
+            state.reason = "restoration_unverified"
+        }
+        if state.needsRestoration {
+            do {
+                try require(try candidateHash() == expectedHash, "candidate_integrity_changed")
+            } catch {
+                state.verdict = "BLOCKED"
+                state.reason = "candidate_integrity_unverified"
+            }
+        }
+        var receipt: [String: Any] = [
+            "runID": runID, "scenario": mode, "verdict": state.verdict, "reason": state.reason,
+            "testIdentifier": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+            "cleanup": state.cleanup, "expectedCandidateSHA256": expectedHash,
+            "candidateVerified": state.candidateVerified, "observedPublicText": state.observed,
+            "openedSettings": state.openedSettings, "discovery": state.discovery,
+            "originalPane": state.originalPane ?? "closed",
+            "primaryVerdict": primaryVerdict, "primaryReason": primaryReason,
+            "nativeFailureCountBeforeReport": nativeFailures
+        ]
+        if let hash = state.screenshotHash { receipt["screenshotSHA256"] = hash }
+        if let error = state.nativeError { receipt["nativeError"] = error }
+        do {
+            let data = try JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys])
+            print("NOTCH_VM_RESULT " + String(decoding: data, as: UTF8.self))
+        } catch {
+            XCTFail("BLOCKED: result_serialization_failed")
+            return
+        }
+        if state.verdict != "PASS" && nativeFailures == 0 { XCTFail("\(state.verdict): \(state.reason)") }
+    }
+
+    @MainActor
+    func testInstalledAboutOutput() {
+        continueAfterFailure = false
+        let state = RunState()
+        let environment = ProcessInfo.processInfo.environment
+        let runID = environment["NOTCH_VM_RUN_ID"] ?? ""
+        let mode = environment["NOTCH_VM_SCENARIO"] ?? ""
+        let expectedVersion = environment["NOTCH_VM_EXPECTED_VERSION"] ?? ""
+        let expectedBuild = environment["NOTCH_VM_EXPECTED_BUILD"] ?? ""
+        let buildLabel = "(\(expectedBuild))"
+        state.buildLabel = buildLabel
+
+        // Teardown is LIFO: emit even if native XCTest unwinding aborts restoration.
+        addTeardownBlock { @MainActor in self.finish(state, runID: runID, mode: mode) }
+        addTeardownBlock { @MainActor in self.restore(state) }
+
+        do {
+            try require(try hardwareModel().hasPrefix("VirtualMac"), "host_execution_refused")
+            guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else {
+                throw Blocked.reason("guest_session_unavailable")
+            }
+            try require(session["CGSSessionScreenIsLocked"] as? Bool != true, "guest_locked")
+            try require(session[kCGSessionOnConsoleKey as String] as? Bool == true
+                        && session[kCGSessionLoginDoneKey as String] as? Bool == true, "guest_graphical_session_unavailable")
+            try require(UUID(uuidString: runID) != nil, "run_identity_missing")
+            try require(expectedHash.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil
+                        && !expectedVersion.isEmpty && !expectedBuild.isEmpty, "candidate_expectations_missing")
+            try require(Set(["Release name", "Notch Pocket", "Version", expectedVersion, buildLabel]).count == 5,
+                        "candidate_expectations_ambiguous")
+            try require(["visual-pass", "visual-fail", "stale-evidence", "visual-no-reveal",
+                         "native-abort-after-open", "native-abort-after-about"].contains(mode), "scenario_invalid")
+            try require(try candidateHash() == expectedHash, "candidate_hash_mismatch")
+            let bundle = Bundle(url: candidate)
+            try require(bundle?.bundleIdentifier == "com.jdylanmc.notchpocket"
+                        && bundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == expectedVersion
+                        && bundle?.object(forInfoDictionaryKey: "CFBundleVersion") as? String == expectedBuild,
+                        "candidate_metadata_mismatch")
+            state.candidateVerified = true
+            state.originalPID = currentCandidatePID()
+            try require(state.originalPID != nil, "exact_running_candidate_required")
+
+            let application = XCUIApplication(url: candidate)
+            state.app = application
+            application.activate()
+            let matches = application.descendants(matching: .any).matching(identifier: "NotchPocketSettingsWindow")
+            state.discovery = ["initialSettingsMarkerCount": matches.count]
+            let settings = matches.firstMatch
+            state.window = settings
+            if !settings.exists {
+                state.attemptedSettingsOpen = true
+                let panels = application.dialogs.matching(
+                    NSPredicate(format: "identifier BEGINSWITH %@", "com.jdylanmc.notchpocket.notch.v1.window.")
+                )
+                try require(panels.count == 1, "exact_notch_panel_required")
+                let panel = panels.firstMatch
+                let frame = panel.frame
+                guard let pointer = CGEvent(source: nil)?.location else {
+                    throw Blocked.reason("guest_pointer_unavailable")
+                }
+                let origin = panel.coordinate(withNormalizedOffset: .zero)
+                state.pointerReturn = origin.withOffset(CGVector(dx: pointer.x - frame.minX, dy: pointer.y - frame.minY))
+                origin.withOffset(CGVector(dx: frame.width / 2, dy: 5)).hover()
+                let gear = panel.buttons.matching(NSPredicate(format: "label IN %@ OR identifier IN %@", ["Settings", "gear"], ["Settings", "gear"]))
+                let visible = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: gear.firstMatch)
+                let ready = XCTWaiter.wait(for: [visible], timeout: 5) == .completed
+                try require(gear.count == 1 && ready, "notch_settings_gear_unavailable")
+                gear.firstMatch.click()
+                try require(settings.waitForExistence(timeout: 5), "settings_open_not_observed")
+                state.openedSettings = true
+                state.needsRestoration = true
+                state.pointerReturn?.hover()
+                state.pointerReturn = nil
+            }
+            try require(matches.count == 1, "settings_marker_ambiguous")
+            let generalRow = settings.descendants(matching: .outlineRow).containing(.staticText, identifier: "General").firstMatch
+            if !state.openedSettings {
+                let aboutRow = settings.descendants(matching: .outlineRow).containing(.staticText, identifier: "About").firstMatch
+                if generalRow.exists && generalRow.isSelected {
+                    state.originalPane = "General"
+                } else if aboutRow.exists && aboutRow.isSelected {
+                    state.originalPane = "About"
+                    state.originalBuildVisible = settings.staticTexts[buildLabel].exists
+                } else {
+                    throw Blocked.reason("unsupported_original_settings_pane")
+                }
+            }
+            state.needsRestoration = true
+            if mode == "native-abort-after-open" {
+                state.reason = "native_interaction_aborted"
+                XCTFail("Controlled native XCTest failure after Settings opened")
+                return
+            }
+            if generalRow.exists && !generalRow.isSelected {
+                let general = settings.staticTexts["General"]
+                try require(waitHittable(general), "general_control_unavailable")
+                general.click()
+                let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: generalRow)
+                try require(XCTWaiter.wait(for: [selected], timeout: 5) == .completed, "general_selection_not_observed")
+            }
+            try require(generalRow.exists && generalRow.isSelected, "prepared_general_pane_required")
+            let about = settings.staticTexts["About"]
+            try require(waitHittable(about), "about_control_unavailable")
+            about.click()
+            let version = settings.staticTexts["Version"]
+            try require(waitHittable(version), "version_control_unavailable")
+            if mode == "native-abort-after-about" {
+                state.reason = "native_interaction_aborted"
+                XCTFail("Controlled native XCTest failure after About selected")
+                return
+            }
+            let revealed = settings.staticTexts[buildLabel]
+            if mode != "visual-no-reveal" { version.click() }
+            let buildObserved = mode != "visual-no-reveal" && revealed.waitForExistence(timeout: 3)
+            state.discovery["buildRevealObserved"] = buildObserved
+            if mode == "visual-fail" {
+                try require(buildObserved, "negative_control_prerequisite_missing")
+                version.click()
+                let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: revealed)
+                _ = XCTWaiter.wait(for: [hidden], timeout: 3)
+            }
+
+            try require(currentCandidatePID() == state.originalPID, "candidate_process_changed")
+            let capture = settings.screenshot()
+            let capturedRunID = mode == "stale-evidence" ? "deliberately-wrong-run" : runID
+            try require(capturedRunID == runID, "capture_identity_mismatch")
+            state.screenshotHash = SHA256.hash(data: capture.pngRepresentation).map { String(format: "%02x", $0) }.joined()
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.recognitionLanguages = ["en-US"]
+            request.usesLanguageCorrection = false
+            guard let image = capture.image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                throw Blocked.reason("capture_pixels_unavailable")
+            }
+            try VNImageRequestHandler(cgImage: image).perform([request])
+            let observations = (request.results ?? []).compactMap { observation -> AboutOutputOracle.Observation? in
+                guard let text = observation.topCandidates(1).first?.string else { return nil }
+                return AboutOutputOracle.Observation(text: text, frame: observation.boundingBox)
+            }
+            try require(!observations.isEmpty, "ocr_unavailable")
+            state.observed = AboutOutputOracle.evaluate(observations, version: expectedVersion, build: expectedBuild)
+            let attachment = XCTAttachment(screenshot: capture)
+            attachment.name = "guest-public-about-\(runID)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            state.verdict = state.observed.values.allSatisfy { $0 } ? "PASS" : "FAIL"
+            state.reason = state.verdict == "PASS" ? "rendered_output_verified" : "rendered_output_mismatch"
+        } catch Blocked.reason(let reason) {
+            state.reason = reason
+        } catch {
+            state.reason = "native_or_evidence_error"
+            let error = error as NSError
+            state.nativeError = ["domain": error.domain, "code": error.code]
+        }
+    }
+}
