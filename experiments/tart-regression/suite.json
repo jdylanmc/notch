@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "about-version",
+      "kind": "regression",
+      "scenario": "visual-pass",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/about-version.md"
+    },
+    {
+      "id": "about-wrong-output",
+      "kind": "control",
+      "scenario": "visual-fail",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+      "expectedVerdict": "FAIL",
+      "expectedReason": "rendered_output_mismatch",
+      "notes": "scenarios/about-version.md"
+    },
+    {
+      "id": "about-stale-evidence",
+      "kind": "control",
+      "scenario": "stale-evidence",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+      "expectedVerdict": "BLOCKED",
+      "expectedReason": "capture_identity_mismatch",
+      "notes": "scenarios/about-version.md"
+    },
+    {
+      "id": "about-missing-reveal",
+      "kind": "control",
+      "scenario": "visual-no-reveal",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+      "expectedVerdict": "FAIL",
+      "expectedReason": "rendered_output_mismatch",
+      "notes": "scenarios/about-version.md"
+    },
+    {
+      "id": "abort-after-settings-open",
+      "kind": "control",
+      "scenario": "native-abort-after-open",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+      "expectedVerdict": "BLOCKED",
+      "expectedReason": "native_interaction_aborted",
+      "notes": "scenarios/about-version.md"
+    },
+    {
+      "id": "abort-after-about-selection",
+      "kind": "control",
+      "scenario": "native-abort-after-about",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+      "expectedVerdict": "BLOCKED",
+      "expectedReason": "native_interaction_aborted",
+      "notes": "scenarios/about-version.md"
+    }
+  ]
+}

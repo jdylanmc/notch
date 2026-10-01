@@ -25,6 +25,22 @@ Known traps: [inherited branch/CI policy](#branch-topology),
 [update isolation](#update-isolation).
 These are constraints to inspect, not claims that setup or runtime is solved.
 
+For the optional machine-local Tart regression experiment, read
+[the reconstruction guide](docs/agents/vm-regression.md). If
+`.local/vm-regression/AGENTS.md` exists, read it before operating that environment.
+The local directory contains ignored VM disks, runtime credentials, tools and
+evidence; never force-add it. A cloned repository does not contain a prepared VM.
+
+For app-behavior changes, use the owned
+[`regression-test`](.github/skills/regression-test/SKILL.md) contribution workflow
+and [`regression-suite`](.github/skills/regression-suite/SKILL.md) independent
+verification alongside the existing unit/build/lint gates. Missing required
+regression evidence is a readiness gap, not a pass. VM preparation uses the
+user-only [`setup-regression-suite`](.github/skills/setup-regression-suite/SKILL.md).
+These repository rules reinforce delivery without editing imported Ship, Patch
+or Refactor packages. A full suite covers its registered scenarios, not all app
+features; do not demand unrelated retrospective backfill.
+
 ## What this repository is
 
 **Notch Pocket** is an independent macOS app. Historical source and artwork

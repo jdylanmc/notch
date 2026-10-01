@@ -27,3 +27,5 @@ jobs:
         run: bash scripts/notch-control/control.sh test
       - name: Lint helper
         run: bash scripts/notch-control/control.sh lint
+      - name: Test regression pixel oracle
+        run: bash experiments/tart-regression/test-oracle.sh "$PWD/.build/regression-oracle"
