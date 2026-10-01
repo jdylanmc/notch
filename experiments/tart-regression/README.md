@@ -156,6 +156,9 @@ Use [`regression-test`](../../.github/skills/regression-test/SKILL.md).
    the environment, actual `testIdentifier`, candidate hash/verification,
    PASS/FAIL/BLOCKED reason, restoration result, and capture SHA-256 for output
    assertions. Use the About implementation as the initial contract example.
+   Controls must also retain `primaryReason`, matching their registered expected
+   reason. A generic final error category alone cannot prove an intentional
+   fault was exercised.
    A new observation type needs a deliberate evaluator change and policy tests,
    not a success-shaped placeholder.
 3. Register an ID, native test selector, scenario mode, expected verdict/reason,
