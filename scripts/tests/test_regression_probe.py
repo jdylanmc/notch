@@ -139,7 +139,7 @@ class RegressionSuiteContractTests(unittest.TestCase):
         value = {"scenario": scenario, "testIdentifier": self.case["test"],
                  "expectedCandidateSHA256": "a" * 64, "candidateVerified": True,
                  "frameworkCountVerified": True, "cleanup": "restored_closed_settings",
-                 "verdict": verdict, "reason": reason, "suiteExit": SUITE.EXITS[verdict],
+                 "verdict": verdict, "reason": reason, "primaryReason": reason, "suiteExit": SUITE.EXITS[verdict],
                  "xcodeExit": 0 if verdict == "PASS" else 65}
         if verdict != "BLOCKED":
             value["screenshotSHA256"] = "b" * 64
@@ -216,6 +216,11 @@ class RegressionSuiteContractTests(unittest.TestCase):
                      expectedReason="capture_identity_mismatch")
         self.assertEqual(SUITE.evaluate(stale, self.receipt("BLOCKED", "stale-evidence", "capture_identity_mismatch"),
                                         self.framework(False), 20, "a" * 64)[0], "PASS")
+        aborted = dict(self.control, scenario="native-abort-after-open", expectedVerdict="BLOCKED",
+                       expectedReason="native_interaction_aborted")
+        unrelated_abort = dict(self.receipt("BLOCKED", "native-abort-after-open", "native_interaction_aborted"),
+                               primaryReason="preconditions_not_established")
+        self.assertEqual(SUITE.evaluate(aborted, unrelated_abort, self.framework(False), 20, "a" * 64)[0], "BLOCKED")
 
     def args(self):
         return SimpleNamespace(candidate=self.candidate, registry=self.registry, output=self.root / "report",

@@ -92,7 +92,8 @@ def evaluate(case, receipt, framework, command_exit, candidate_hash):
         if raw == "PASS" and receipt.get("reason") != case["expectedReason"]:
             return "BLOCKED", "success_assertion_not_reached"
         return raw, receipt.get("reason", "missing_reason")
-    if raw != case["expectedVerdict"] or receipt.get("reason") != case["expectedReason"]:
+    if (raw != case["expectedVerdict"] or receipt.get("reason") != case["expectedReason"]
+            or receipt.get("primaryReason") != case["expectedReason"]):
         return "BLOCKED", "negative_control_did_not_reach_expected_outcome"
     return "PASS", "expected_control_outcome_verified"
 
