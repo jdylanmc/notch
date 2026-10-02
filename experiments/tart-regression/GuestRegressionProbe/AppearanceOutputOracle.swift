@@ -13,13 +13,16 @@ struct AppearanceOutputOracle {
         contentFrame: CGRect,
         controls: [String: Bool]
     ) -> [String: Bool] {
-        let text = observations.filter { contentFrame.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }
-            .map { AboutOutputOracle.normalize($0.text) }
+        let content = observations.filter {
+            $0.frame.height > 0 && contentFrame.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY))
+        }
+        let rows = content.map { AboutOutputOracle.rowText(anchor: $0, observations: content) }
         var result = Dictionary(uniqueKeysWithValues: retainedLabels.map {
-            ($0, text.contains($0) && controls[$0] == true)
+            let label = $0
+            return (label, rows.contains { $0 == label || $0.hasPrefix(label + " ") } && controls[label] == true)
         })
-        // The native tail visit checks Accessibility; pixels independently reject a rendered remnant.
-        let rendered = text.joined(separator: " ").lowercased()
+        // The native full-form fit checks Accessibility; pixels independently reject a rendered remnant.
+        let rendered = rows.joined(separator: " ").lowercased()
         result["faceControlAbsent"] = controls["faceControlAbsent"] == true && !rendered.contains("face animation")
         result["additionalFeaturesAbsent"] =
             controls["additionalFeaturesAbsent"] == true && !rendered.contains("additional features")

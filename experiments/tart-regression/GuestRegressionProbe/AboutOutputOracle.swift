@@ -11,6 +11,16 @@ struct AboutOutputOracle {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
+    static func rowText(anchor: Observation, observations: [Observation]) -> String {
+        let row = observations.filter {
+            let overlap = min($0.frame.maxY, anchor.frame.maxY) - max($0.frame.minY, anchor.frame.minY)
+            return $0.frame.midX >= anchor.frame.minX
+                && $0.frame.height <= anchor.frame.height * 2
+                && overlap >= min($0.frame.height, anchor.frame.height) / 2
+        }.sorted { $0.frame.minX < $1.frame.minX }
+        return normalize(row.map(\.text).joined(separator: " "))
+    }
+
     static func rowValue(_ label: String, observations: [Observation]) -> String? {
         let anchors = observations.filter {
             let text = normalize($0.text)
@@ -18,13 +28,7 @@ struct AboutOutputOracle {
                 && !(label == "Version" && text.hasPrefix("Version info"))
         }
         guard anchors.count == 1, let anchor = anchors.first, anchor.frame.height > 0 else { return nil }
-        let row = observations.filter {
-            let overlap = min($0.frame.maxY, anchor.frame.maxY) - max($0.frame.minY, anchor.frame.minY)
-            return $0.frame.midX >= anchor.frame.minX
-                && $0.frame.height <= anchor.frame.height * 2
-                && overlap >= min($0.frame.height, anchor.frame.height) / 2
-        }.sorted { $0.frame.minX < $1.frame.minX }
-        let text = normalize(row.map(\.text).joined(separator: " "))
+        let text = rowText(anchor: anchor, observations: observations)
         guard text == label || text.hasPrefix(label + " ") else { return nil }
         return normalize(String(text.dropFirst(label.count)))
     }

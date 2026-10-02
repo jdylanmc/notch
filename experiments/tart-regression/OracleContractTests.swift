@@ -83,6 +83,32 @@ enum OracleContractTests {
             Observation(text: $0.text, frame: CGRect(x: 0, y: $0.frame.minY, width: 0.2, height: 0.03))
         }
         try check("sidebar text is not detail output", sidebarOnly, controls, passes: false)
+        for (index, label) in labels.enumerated() {
+            let original = rendered[index]
+            let words = label.split(separator: " ", maxSplits: 1).map(String.init)
+            let left = Observation(text: words[0],
+                                   frame: CGRect(x: 0.4, y: original.frame.minY, width: 0.1, height: 0.03))
+            let right = Observation(text: words[1],
+                                    frame: CGRect(x: 0.51, y: original.frame.minY, width: 0.3, height: 0.03))
+            let others = rendered.filter { $0.text != label }
+            try check("exact split OCR row: \(label)", others + [left, right], controls, passes: true)
+            let differentRow = Observation(text: words[1],
+                                           frame: CGRect(x: 0.51, y: 0.02, width: 0.3, height: 0.03))
+            try check("fragments on different rows: \(label)", others + [left, differentRow], controls, passes: false)
+            let suffix = Observation(text: label + "x", frame: original.frame)
+            try check("near-match is not exact label: \(label)", others + [suffix], controls, passes: false)
+            let offscreen = Observation(text: label, frame: CGRect(x: 0.4, y: 1.1, width: 0.5, height: 0.03))
+            try check("offscreen text is not visible output: \(label)", others + [offscreen], controls, passes: false)
+        }
+        let splitSection = [
+            Observation(text: "Additional", frame: CGRect(x: 0.4, y: 0.1, width: 0.15, height: 0.03)),
+            Observation(text: "features", frame: CGRect(x: 0.56, y: 0.1, width: 0.15, height: 0.03))
+        ]
+        try check("split removed header is still detected", rendered + splitSection, controls, passes: false)
+        var missingControls = controls
+        missingControls["Colored spectrogram"] = false
+        missingControls["Slider color"] = false
+        try check("former prerequisite controls are output failures", rendered, missingControls, passes: false)
         print("Appearance output oracle: \(count) cases passed.")
     }
 }

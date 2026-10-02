@@ -55,6 +55,11 @@ PY
 
 Candidate selection, provenance and a before/after code-signature check remain
 the operator's responsibility. A valid signature is not a notarization claim.
+For the Appearance old/new comparison, the independent report must record both
+executable hashes and source/build provenance separately; both apps can be
+0.1.0 (272). The available old artifact is the PR97 preview from `4fff039`, not a
+build of the removal branch's base. See the scenario's exact pins and report
+requirements; the minimal launcher manifest alone is insufficient provenance.
 
 ## Exercise the installed app in the guest
 
@@ -140,6 +145,12 @@ Retained automatic system attachments are disabled.
 - It covers About version/build and
   [Appearance idle-face removal](scenarios/appearance-idle-face-removed.md), not
   all retained features. New features need their own independent scenarios.
+- Appearance uses typed static-text value lookup, row-scoped sidebar navigation,
+  and structural form mapping. Its single screenshot requires positive full-form
+  fit at both scroll endpoints, plus the same AXLabel/static-text header class
+  for General/Media and the removed section. Missing retained controls are
+  output failures after pane setup, never setup guards. OCR shares About's
+  same-row fragment geometry; this does not authorize offscreen absence claims.
 - Readiness and cleanup are checked, but this remains prototype code, not a
   hardened multi-user execution service or an authorization boundary.
 - User-controlled OS consent, guest idle lock, hardware and application readiness

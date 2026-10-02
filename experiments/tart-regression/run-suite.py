@@ -99,7 +99,11 @@ def evaluate(case, receipt, framework, command_exit, candidate_hash):
         if (not isinstance(observed, dict) or set(observed) != expected
                 or any(type(value) is not bool for value in observed.values())
                 or (raw == "PASS") != all(observed.values())
-                or not isinstance(discovery, dict) or discovery.get("appearancePaneSelected") is not True):
+                or not isinstance(discovery, dict)
+                or any(discovery.get(field) is not True for field in [
+                    "appearancePaneSelected", "appearanceFormMapped", "appearanceFullFormVisible",
+                    "appearanceSectionHeaderClassVerified",
+                ])):
             return "BLOCKED", "appearance_assertions_unverified"
     if case["kind"] == "regression":
         if raw == "PASS" and receipt.get("reason") != case["expectedReason"]:

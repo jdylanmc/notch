@@ -81,12 +81,12 @@ final class GuestRegressionProbe: XCTestCase {
                 state.cleanup = "blocked"
                 return
             }
-            let control = settings.staticTexts[targetPane]
             guard currentCandidatePID() == state.originalPID && settings.exists else {
                 state.cleanup = "blocked"
                 return
             }
             let row = settings.descendants(matching: .outlineRow).containing(.staticText, identifier: targetPane).firstMatch
+            let control = row.staticTexts[targetPane]
             let alreadySelected = row.exists && row.isSelected
             state.discovery["restorationPaneAlreadySelected"] = alreadySelected
             if !alreadySelected {
@@ -194,26 +194,46 @@ final class GuestRegressionProbe: XCTestCase {
 
     @MainActor
     private func inspectAppearance(_ settings: XCUIElement, state: RunState) throws {
-        func control(_ label: String) -> XCUIElement {
-            settings.descendants(matching: .any).matching(
-                NSPredicate(format: "label == %@ OR identifier == %@", label, label)
-            ).firstMatch
-        }
-        let appearance = settings.staticTexts["Appearance"]
+        let row = settings.descendants(matching: .outlineRow).containing(.staticText, identifier: "Appearance").firstMatch
+        let appearance = row.staticTexts["Appearance"]
         try require(waitHittable(appearance), "appearance_control_unavailable")
         appearance.click()
-        let row = settings.descendants(matching: .outlineRow).containing(.staticText, identifier: "Appearance").firstMatch
         let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: row)
         try require(XCTWaiter.wait(for: [selected], timeout: 5) == .completed, "appearance_selection_not_observed")
+        state.discovery["appearancePaneSelected"] = row.isSelected
         try require(settings.frame.width >= 700 && settings.frame.height >= 600, "appearance_window_too_small")
-        let anchor = control("Colored spectrogram")
-        try require(waitHittable(anchor), "appearance_content_unavailable")
-        let forms = settings.scrollViews.containing(.any, identifier: "Colored spectrogram")
-        try require(forms.count == 1, "appearance_form_ambiguous")
-        let form = forms.firstMatch
-        // Visit the tail, where the old face section lived, without changing any preference.
+        let scrollViews = settings.scrollViews.allElementsBoundByIndex
+        let sidebars = scrollViews.filter { $0.outlines.count == 1 }
+        let forms = scrollViews.filter { $0.outlines.count == 0 }
+        try require(sidebars.count == 1 && forms.count == 1, "appearance_form_ambiguous")
+        let form = forms[0]
+        try require(form.frame.minX >= sidebars[0].frame.maxX && settings.frame.contains(form.frame),
+                    "appearance_form_mapping_unverified")
+        state.discovery["appearanceFormMapped"] = true
+
+        // SwiftUI row text uses AXValue; section headers use AXLabel on the same static-text class.
+        func header(_ title: String) -> XCUIElementQuery {
+            form.staticTexts.matching(NSPredicate(format: "label == %@", title))
+        }
+        try require(header("General").count == 1 && header("Media").count == 1,
+                    "appearance_section_header_class_unverified")
+        state.discovery["appearanceSectionHeaderClassVerified"] = true
+
+        // One capture is valid only when the whole form fits at both native scroll endpoints.
+        // This guard uses container geometry, never the controls whose presence is under test.
+        func contentFrames() throws -> [CGRect] {
+            let snapshot = try form.snapshot()
+            let content = snapshot.children.filter { $0.elementType != .scrollBar && !$0.frame.isEmpty }
+            try require(!content.isEmpty && content.allSatisfy { snapshot.frame.contains($0.frame) },
+                        "appearance_full_form_not_visible")
+            return content.map(\.frame)
+        }
+        form.scroll(byDeltaX: 0, deltaY: 10_000)
+        let headFrames = try contentFrames()
         form.scroll(byDeltaX: 0, deltaY: -10_000)
-        try require(waitHittable(control("Slider color")), "appearance_tail_unavailable")
+        let tailFrames = try contentFrames()
+        try require(headFrames == tailFrames, "appearance_full_form_not_visible")
+        state.discovery["appearanceFullFormVisible"] = true
         let frame = form.frame
         let windowFrame = settings.frame
         state.appearanceContentFrame = CGRect(
@@ -222,12 +242,12 @@ final class GuestRegressionProbe: XCTestCase {
             width: frame.width / windowFrame.width, height: frame.height / windowFrame.height
         )
         state.appearanceControls = Dictionary(uniqueKeysWithValues: AppearanceOutputOracle.retainedLabels.map {
-            ($0, control($0).exists && control($0).isHittable)
+            let controls = form.staticTexts.matching(identifier: $0)
+            return ($0, controls.count == 1 && controls.firstMatch.isHittable)
         })
         state.appearanceControls["faceControlAbsent"] =
-            !control(AppearanceOutputOracle.faceLabel).exists
-        state.appearanceControls["additionalFeaturesAbsent"] = !control("Additional features").exists
-        state.discovery["appearancePaneSelected"] = row.isSelected
+            !form.staticTexts[AppearanceOutputOracle.faceLabel].exists
+        state.appearanceControls["additionalFeaturesAbsent"] = header("Additional features").count == 0
     }
 
     @MainActor
@@ -322,7 +342,7 @@ final class GuestRegressionProbe: XCTestCase {
                 return
             }
             if generalRow.exists && !generalRow.isSelected {
-                let general = settings.staticTexts["General"]
+                let general = generalRow.staticTexts["General"]
                 try require(waitHittable(general), "general_control_unavailable")
                 general.click()
                 let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: generalRow)
@@ -332,7 +352,8 @@ final class GuestRegressionProbe: XCTestCase {
             if mode == "appearance-idle-face-removed" {
                 try inspectAppearance(settings, state: state)
             } else {
-                let about = settings.staticTexts["About"]
+                let about = settings.descendants(matching: .outlineRow)
+                    .containing(.staticText, identifier: "About").firstMatch.staticTexts["About"]
                 try require(waitHittable(about), "about_control_unavailable")
                 about.click()
                 let version = settings.staticTexts["Version"]

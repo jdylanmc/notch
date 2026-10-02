@@ -171,8 +171,12 @@ class RegressionSuiteContractTests(unittest.TestCase):
             "Real-time audio waveform", "Player tinting", "Enable blur effect behind album art",
             "Slider color", "faceControlAbsent", "additionalFeaturesAbsent",
         ], True)
+        discovery = dict.fromkeys([
+            "appearancePaneSelected", "appearanceFormMapped", "appearanceFullFormVisible",
+            "appearanceSectionHeaderClassVerified",
+        ], True)
         receipt = dict(self.receipt(scenario=case["scenario"]), testIdentifier=case["test"],
-                       observedPublicText=observations, discovery={"appearancePaneSelected": True})
+                       observedPublicText=observations, discovery=discovery)
         self.assertEqual(SUITE.evaluate(case, receipt, self.framework(), 0, "a" * 64)[0], "PASS")
         for field in observations:
             with self.subTest(missing=field):
@@ -185,6 +189,16 @@ class RegressionSuiteContractTests(unittest.TestCase):
                 self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64)[0], "FAIL")
                 self.assertEqual(SUITE.evaluate(case, dict(receipt, observedPublicText=failed["observedPublicText"]),
                                                 self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        for field in discovery:
+            for value in [False, None, 1]:
+                with self.subTest(guard=field, value=value):
+                    self.assertEqual(SUITE.evaluate(case, dict(receipt, discovery=dict(discovery, **{field: value})),
+                                                    self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        missing_controls = dict(observations, **{"Colored spectrogram": False, "Slider color": False})
+        failed = dict(receipt, verdict="FAIL", reason="rendered_output_mismatch", suiteExit=10, xcodeExit=65,
+                      observedPublicText=missing_controls)
+        self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64),
+                         ("FAIL", "rendered_output_mismatch"))
         for change in [{"observedPublicText": None}, {"observedPublicText": {}},
                        {"observedPublicText": dict(observations, faceControlAbsent=1)},
                        {"observedPublicText": dict(observations, unexpected=True)},
@@ -438,6 +452,34 @@ class IdleFaceRemovalSourceContractTests(unittest.TestCase):
         appearance = (ROOT / "notchPocket/components/Settings/Views/AppearanceSettingsView.swift").read_text()
         self.assertNotIn("Show cool face animation while inactive", appearance)
         self.assertNotIn("Additional features", appearance)
+        lint = (ROOT / ".swiftlint.yml").read_text()
+        self.assertNotIn("NotchPocketFaceAnimation", lint)
+
+    def test_appearance_navigation_does_not_guard_on_controls_under_test(self):
+        native = (ROOT / "experiments/tart-regression/GuestRegressionProbe/GuestRegressionProbe.swift").read_text()
+        appearance = native.split("private func inspectAppearance(", 1)[1].split(
+            "private func runInstalledSettingsOutput(", 1)[0]
+        for label in ["Colored spectrogram", "Slider color"]:
+            self.assertNotIn('"' + label + '"', appearance)
+        for fragment in [
+            "let control = row.staticTexts[targetPane]",
+            "let appearance = row.staticTexts[\"Appearance\"]",
+            "form.staticTexts.matching(identifier: $0)",
+            'header("General").count == 1 && header("Media").count == 1',
+            'header("Additional features").count == 0',
+            "snapshot.frame.contains($0.frame)", "headFrames == tailFrames",
+        ]:
+            self.assertIn(fragment, native)
+        self.assertNotIn("appearance_content_unavailable", appearance)
+        self.assertNotIn("appearance_tail_unavailable", appearance)
+
+    def test_old_preview_provenance_is_not_inferred_from_version_or_branch_base(self):
+        scenario = (ROOT / "experiments/tart-regression/scenarios/appearance-idle-face-removed.md").read_text()
+        self.assertIn("4fff039f5a62249c7ac84466c5cb0c124b2c9a06", scenario)
+        self.assertIn("32331e682ed6fb6bba460019c1a949dee39e32ce92decafda48312ef0ce3aaaf", scenario)
+        self.assertIn("Both candidates", scenario)
+        self.assertIn("source provenance", scenario)
+        self.assertNotIn("identified pre-removal app from base", scenario)
 
     def test_retained_appearance_and_full_panel_paths_remain(self):
         appearance = (ROOT / "notchPocket/components/Settings/Views/AppearanceSettingsView.swift").read_text()
