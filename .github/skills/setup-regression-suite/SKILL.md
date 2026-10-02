@@ -47,6 +47,10 @@ Follow [the approved intent](intent.md), root `AGENTS.md`,
    human-only consent for the actual responsible runner. Record its stable
    ignored work path; do not overwrite an existing owner-granted runner.
    Signature readiness is not permission readiness or guaranteed TCC reuse.
+   Keep prepared Products immutable. Per-run xctestrun files belong in new
+   owned output directories, not Products; an interrupted output is not a
+   reason to modify the approved artifact. Native signatures are freshly
+   verified for every prepared invocation, not trusted from a prior run.
 8. Verify headless boot, graphical login, SSH access and effective idle settings.
    Keep readiness separate from application test results. Do not invoke the
    regression suite as an implicit setup step; return readiness to its caller.

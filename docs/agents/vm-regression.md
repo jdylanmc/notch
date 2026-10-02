@@ -86,6 +86,11 @@ those paths are not reconstruction dependencies.
    Preserve existing owner-granted runners during migration. A changed source
    hash with the same requirement still needs native permission/readiness proof;
    stable signing alone does not guarantee TCC reuse or a successful headless exit.
+   New cases declare the optional strict-boolean `requiresPreparedRunner`
+   evidence gate; the nine existing entries retain their default CLI.
+   Prepared per-run manifests are relocated into owned run outputs, never
+   Products. Reverify exact source, Products and native signatures on every
+   invocation; do not delete approved Products files after an interruption.
 8. **Prove reset and isolation.** Shut down the guest normally before cloning a
    baseline. Run one disposable clone at a time with
    `tart run <clone> --no-graphics --no-audio --no-clipboard --no-usb-accessories --net-host`.

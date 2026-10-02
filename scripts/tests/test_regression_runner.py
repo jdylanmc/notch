@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import copy
 import importlib.util
 import io
 import json
@@ -24,6 +25,14 @@ TEAM = "ABCDEFGHIJ"
 LEAF = "1234567890ABCDEF1234567890ABCDEF12345678"
 REVISION = "1" * 40
 CONFIG = RUNNER.signing(IDENTITY, TEAM, LEAF)
+NATIVE_FIXTURE = json.loads((Path(__file__).parent / "fixtures/runner-xcode27-requirements.json").read_text())
+
+
+def load_script(name):
+    spec = importlib.util.spec_from_file_location(name, SOURCE / name)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class RunnerContracts(unittest.TestCase):
@@ -67,22 +76,38 @@ class RunnerContracts(unittest.TestCase):
             binary = path / "Contents/MacOS" / executable
             binary.write_bytes(b"\xcf\xfa\xed\xfe" + b"not executed")
             binary.chmod(0o755)
-        framework = self.runner / "Contents/Frameworks/Example.framework"
-        (framework / "Versions/A").mkdir(parents=True)
-        (framework / "Versions/A/Example").write_bytes(b"\xcf\xfa\xed\xfe" + b"nested code")
-        (framework / "Versions/Current").symlink_to("A")
-        (framework / "Example").symlink_to("Versions/Current/Example")
         self.xctestrun = products / "GuestRegressionProbe_macosx-test-arm64.xctestrun"
         self.target = {
             "TestHostPath": "__TESTROOT__/Debug/GuestRegressionProbe-Runner.app",
             "TestBundlePath": "__TESTHOST__/Contents/PlugIns/GuestRegressionProbe.xctest",
             "TestHostBundleIdentifier": RUNNER.BUNDLE_ID + ".xctrunner",
             "UseUITargetAppProvidedByTests": True, "IsUITestBundle": True,
+            "DependentProductPaths": [
+                "__TESTROOT__/Debug/GuestRegressionProbe-Runner.app",
+                "__TESTHOST__/Contents/PlugIns/GuestRegressionProbe.xctest",
+            ],
+            "TestingEnvironmentVariables": {
+                "DYLD_FRAMEWORK_PATH": "__TESTROOT__/Debug:__SHAREDFRAMEWORKS__:"
+                                       "__PLATFORMS__/MacOSX.platform/Developer/Library/Frameworks",
+                "DYLD_LIBRARY_PATH": "__TESTROOT__/Debug:__PLATFORMS__/MacOSX.platform/Developer/usr/lib",
+            },
+            "UITargetAppEnvironmentVariables": {"DYLD_FRAMEWORK_PATH": "__TESTROOT__/Debug"},
         }
         self.save_target()
 
     def save_target(self):
-        self.xctestrun.write_bytes(plistlib.dumps({RUNNER.TARGET: self.target, "__xctestrun_metadata__": {}}))
+        self.xctestrun.write_bytes(plistlib.dumps({
+            RUNNER.TARGET: self.target, "__xctestrun_metadata__": {"FormatVersion": 1},
+        }))
+
+    def write_framework(self):
+        framework = self.runner / "Contents/Frameworks/Example.framework"
+        (framework / "Versions/A").mkdir(parents=True)
+        binary = framework / "Versions/A/Example"
+        binary.write_bytes(b"\xcf\xfa\xed\xfe" + b"nested code")
+        (framework / "Versions/Current").symlink_to("A")
+        (framework / "Example").symlink_to("Versions/Current/Example")
+        return binary
 
     def native(self, command, **kwargs):
         self.calls.append(command)
@@ -109,8 +134,11 @@ class RunnerContracts(unittest.TestCase):
         if "--entitlements" in command:
             return plistlib.dumps(self.entitlements), b""
         if "-r-" in command:
-            dr = self.dr_override or RUNNER.requirement(dict(CONFIG, certificateSHA1=None), identifier)[1:]
-            return b"", ("designated => " + dr.replace(" exists", " /* exists */") + "\n").encode()
+            fixture = NATIVE_FIXTURE["roles"]["runner" if binary.name.endswith("-Runner") else "testBundle"]
+            stdout = fixture["stdout"].replace(fixture["identifier"], identifier).replace(NATIVE_FIXTURE["team"], TEAM)
+            if self.dr_override is not None:
+                stdout = "designated => " + self.dr_override + "\n"
+            return stdout.encode(), ("Executable=" + str(binary) + "\n").encode()
         self.fail("Unexpected codesign operation " + repr(command))
 
     def verify(self, config=CONFIG):
@@ -122,7 +150,10 @@ class RunnerContracts(unittest.TestCase):
         xctestrun, roles = RUNNER.product_roles(self.products)
         files = {path.name: RUNNER.digest(path.read_bytes()) for path in self.source.iterdir()}
         value = {"schemaVersion": 1, "signing": CONFIG,
-                 "source": {"revision": REVISION, "files": files, "sha256": RUNNER.digest(RUNNER.json_bytes(files))},
+                 "source": {"revision": REVISION, "files": files, "sha256": RUNNER.digest(RUNNER.json_bytes(files)),
+                            "qualification": RUNNER.SOURCE_QUALIFICATION},
+                 "xcodeVersion": "Xcode 27.0\nBuild version 27A266a",
+                 "permissionReadiness": RUNNER.PERMISSION_READINESS,
                  "xctestrun": xctestrun, "roles": roles, "files": entries, "code": self.verify()}
         manifest = self.root / "runner-manifest.json"
         manifest.write_bytes(RUNNER.json_bytes(value))
@@ -135,7 +166,8 @@ class RunnerContracts(unittest.TestCase):
         self.assertIsNone(RUNNER.signing(IDENTITY, TEAM, None)["certificateSHA1"])
         for args in [(IDENTITY, None, None), (None, TEAM, None), (None, None, LEAF),
                      ("-", TEAM, LEAF), (IDENTITY, "WRONGTEAM1", LEAF),
-                     (IDENTITY, TEAM, "bad"), (IDENTITY + "\n", TEAM, LEAF), (IDENTITY, TEAM, LEAF, True)]:
+                     (IDENTITY, TEAM, "bad"), (IDENTITY, TEAM, 123), (IDENTITY, TEAM, True),
+                     (IDENTITY + "\n", TEAM, LEAF), (IDENTITY, TEAM, LEAF, True)]:
             with self.subTest(args=args), self.assertRaises(RUNNER.RunnerError):
                 RUNNER.signing(*args)
 
@@ -211,6 +243,7 @@ class RunnerContracts(unittest.TestCase):
             info.write_bytes(plistlib.dumps(data))
 
     def test_inventory_preserves_framework_symlinks_and_rejects_escapes(self):
+        self.write_framework()
         entries = RUNNER.inventory(self.products)
         self.assertTrue(any(entry.get("target") == "Versions/Current/Example" for entry in entries.values()))
         link = self.products / "escape"
@@ -228,15 +261,88 @@ class RunnerContracts(unittest.TestCase):
 
     def test_stable_code_exact_leaf_signer_all_code_and_debug_entitlements(self):
         records = self.verify()
-        self.assertEqual(len(records), 3)
+        self.assertEqual(len(records), 2)
         self.assertTrue(all(record["slices"][0]["entitlements"] == self.entitlements for record in records.values()))
         verifies = [command for command in self.calls if "--verify" in command]
-        self.assertEqual(len(verifies), 5)
+        self.assertEqual(len(verifies), 4)
         for command in verifies:
             self.assertIn("--strict", command)
             self.assertIn("--all-architectures", command)
-            self.assertIn('certificate leaf = H"' + LEAF + '"', command[command.index("-R") + 1])
+            constraint = command[command.index("-R") + 1]
+            for required in [
+                "anchor apple generic",
+                "certificate 1[field.1.2.840.113635.100.6.2.6] exists",
+                "certificate leaf[field.1.2.840.113635.100.6.1.13] exists",
+                'certificate leaf[subject.OU] = "' + TEAM + '"',
+                'certificate leaf = H"' + LEAF + '"',
+            ]:
+                self.assertIn(required, constraint)
+            self.assertNotIn(" or ", constraint)
         self.assertFalse(any("--sign" in command or "--force" in command for command in self.calls))
+
+    def test_no_copied_framework_signer_exception(self):
+        binary = self.write_framework()
+        native = self.native
+
+        def other_signer(command, **kwargs):
+            stdout, stderr = native(command, **kwargs)
+            if command[-1] == str(binary) and "--verbose=4" in command:
+                stderr = stderr.replace(IDENTITY.encode(), b"Apple Development: Not The Requested Signer")
+            return stdout, stderr
+
+        with patch.object(self, "native", side_effect=other_signer), \
+                self.assertRaisesRegex(RUNNER.RunnerError, "Unsupported code signer:.*Frameworks/Example"):
+            self.verify()
+        self.assertIn(str(binary.relative_to(self.products)), self.verify())
+
+    def test_recorded_native_requirements_stdout_not_executable_stderr(self):
+        for fixture in NATIVE_FIXTURE["roles"].values():
+            config = dict(CONFIG, team=NATIVE_FIXTURE["team"])
+            with self.subTest(identifier=fixture["identifier"]):
+                normal = RUNNER.stable_requirement(fixture["stdout"], fixture["identifier"], config)
+                self.assertIn(" or ", normal)
+                self.assertNotIn("cdhash", normal)
+                self.assertNotIn("/*", normal)
+                self.assertEqual(normal, RUNNER.stable_requirement(
+                    "designated => " + normal, fixture["identifier"], config))
+                with self.assertRaisesRegex(RUNNER.RunnerError, "Missing unique"):
+                    RUNNER.stable_requirement(fixture["stderr"], fixture["identifier"], config)
+        records = self.verify()
+        self.assertTrue(all(" or " in record["slices"][0]["designatedRequirement"] for record in records.values()))
+
+    def test_native_requirement_rejects_wrong_atoms_extra_or_precedence_anchor_and_cdhash(self):
+        for fixture in NATIVE_FIXTURE["roles"].values():
+            config = dict(CONFIG, team=NATIVE_FIXTURE["team"])
+            dr = fixture["stdout"]
+            apple = "certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */"
+            for invalid in [
+                dr.replace(fixture["identifier"], fixture["identifier"] + ".wrong"),
+                dr.replace(config["team"], "ZZZZZZZZZZ"),
+                dr.replace(config["team"], config["team"] + "0"),
+                dr.rstrip() + " or true",
+                dr.replace(" or ", " or true or "),
+                dr.replace(" or ", " and "),
+                dr.replace(" and (", " and ").replace(")\n", "\n"),
+                dr.replace(" and (", " or ("),
+                dr.replace("anchor apple generic", "anchor apple"),
+                dr.replace("anchor apple generic and ", ""),
+                dr.replace(apple, 'cdhash H"' + "a" * 40 + '"'),
+                dr.replace(" or ", " or identifier \"another\" and "),
+                dr.replace(" and certificate leaf[subject.OU]", ") and certificate leaf[subject.OU]"),
+                dr.rstrip() + ' and cdhash H"' + "a" * 40 + '"',
+                dr + dr,
+            ]:
+                with self.subTest(invalid=invalid), self.assertRaises(RUNNER.RunnerError):
+                    RUNNER.stable_requirement(invalid, fixture["identifier"], config)
+
+    def test_flat_requirement_semantics_normalize_without_collapsing_native_or(self):
+        identifier = RUNNER.BUNDLE_ID
+        flat = RUNNER.requirement(dict(CONFIG, certificateSHA1=None), identifier)[1:]
+        normal = RUNNER.stable_requirement("designated => " + flat, identifier, CONFIG)
+        reordered = " and ".join(reversed(flat.split(" and "))).replace(" exists", " /* exists */")
+        self.assertEqual(normal, RUNNER.stable_requirement("designated => " + reordered, identifier, CONFIG))
+        native = NATIVE_FIXTURE["roles"]["testBundle"]["stdout"].replace(NATIVE_FIXTURE["team"], TEAM)
+        self.assertNotEqual(normal, RUNNER.stable_requirement(native, identifier, CONFIG))
 
     def test_signature_native_failure_and_wrong_signer_team_runtime_arch(self):
         for field, value in [("signature_error", True), ("ad_hoc", True), ("leaf", "0" * 40),
@@ -267,16 +373,17 @@ class RunnerContracts(unittest.TestCase):
     def test_changed_code_hashes_do_not_change_normal_designated_requirement(self):
         before = self.verify()
         old_entries = RUNNER.inventory(self.products)
-        binary = self.bundle / "Contents/MacOS/GuestRegressionProbe"
-        binary.write_bytes(binary.read_bytes() + b"different test source")
+        for name in before:
+            binary = self.products / name
+            binary.write_bytes(binary.read_bytes() + b"different test source")
         after = self.verify()
         self.assertNotEqual(old_entries, RUNNER.inventory(self.products))
         self.assertEqual(
             [record["slices"][0]["designatedRequirement"] for record in before.values()],
             [record["slices"][0]["designatedRequirement"] for record in after.values()],
         )
-        name = str(binary.relative_to(self.products))
-        self.assertNotEqual(before[name]["slices"][0]["cdhash"], after[name]["slices"][0]["cdhash"])
+        for name in before:
+            self.assertNotEqual(before[name]["slices"][0]["cdhash"], after[name]["slices"][0]["cdhash"])
 
     def test_prepared_artifact_binds_guest_source_and_whole_products(self):
         manifest, sha = self.artifact()
@@ -304,6 +411,177 @@ class RunnerContracts(unittest.TestCase):
             RUNNER.verify_prepared(self.products, manifest, RUNNER.digest(manifest.read_bytes()),
                                    source=self.source, run=self.native)
 
+    def test_prepared_schema_and_source_scope_fail_closed(self):
+        manifest, _ = self.artifact()
+        original = json.loads(manifest.read_bytes())
+        mutations = [
+            lambda data: data.update(schemaVersion=True),
+            lambda data: data.update(unrecognized=True),
+            lambda data: data.update(signing=[]),
+            lambda data: data["signing"].update(unrecognized=True),
+            lambda data: data["signing"].update(certificateSHA1=123),
+            lambda data: data.update(source=[]),
+            lambda data: data["source"].update(revision="main"),
+            lambda data: data["source"].update(unrecognized=True),
+            lambda data: data["source"].update(qualification="trusted HEAD"),
+            lambda data: data["source"].update(files={"suite.json": "a" * 64}),
+            lambda data: data["code"][next(iter(data["code"]))]["slices"][0].update(flags=False),
+        ]
+        for mutate in mutations:
+            data = copy.deepcopy(original)
+            mutate(data)
+            with self.subTest(mutation=mutate), self.assertRaises(RUNNER.RunnerError):
+                manifest.write_bytes(RUNNER.json_bytes(data))
+                RUNNER.verify_prepared(self.products, manifest, RUNNER.digest(manifest.read_bytes()),
+                                       source=self.source, run=self.native)
+        for name, value in [
+            ("../outside.py", "a" * 64), (str(self.source / "outside.py"), "a" * 64),
+            ("Products/code.py", "a" * 64), ("runs/code.py", "a" * 64),
+            (".", "a" * 64), ("./code.py", "a" * 64), ("foo//code.py", "a" * 64), ("foo/../code.py", "a" * 64),
+            (".hidden", "a" * 64), ("code.py", True), ("code.py", "not-a-digest"),
+        ]:
+            data = copy.deepcopy(original)
+            data["source"]["files"][name] = value
+            data["source"]["sha256"] = RUNNER.digest(RUNNER.json_bytes(data["source"]["files"]))
+            with self.subTest(name=name, value=value), self.assertRaises(RUNNER.RunnerError):
+                manifest.write_bytes(RUNNER.json_bytes(data))
+                RUNNER.verify_prepared(self.products, manifest, RUNNER.digest(manifest.read_bytes()),
+                                       source=self.source, run=self.native)
+
+    def test_prepared_source_rechecked_after_native_verification(self):
+        manifest, sha = self.artifact()
+
+        def run(command, **kwargs):
+            (self.source / "build_runner.py").write_text("drift during native verification")
+            return self.native(command, **kwargs)
+
+        with self.assertRaisesRegex(RUNNER.RunnerError, "Guest test source differs"):
+            RUNNER.verify_prepared(self.products, manifest, sha, source=self.source, run=run)
+
+    def test_prepared_relocation_uses_original_host_and_root_recursively(self):
+        manifest, sha = self.artifact()
+        artifact = RUNNER.verify_prepared(self.products, manifest, sha, source=self.source, run=self.native)
+        before = RUNNER.inventory(self.products)
+        configured = RUNNER.prepared_test_manifest(self.products, artifact)
+        target = configured[RUNNER.TARGET]
+        self.assertEqual(target["TestHostPath"], str(self.runner))
+        self.assertEqual(target["TestBundlePath"], str(self.bundle))
+        self.assertEqual(target["DependentProductPaths"], [str(self.runner), str(self.bundle)])
+        self.assertEqual(target["UITargetAppEnvironmentVariables"]["DYLD_FRAMEWORK_PATH"],
+                         str(self.products / "Debug"))
+        self.assertEqual(target["TestingEnvironmentVariables"]["DYLD_FRAMEWORK_PATH"],
+                         str(self.products / "Debug") + ":__SHAREDFRAMEWORKS__:"
+                         "__PLATFORMS__/MacOSX.platform/Developer/Library/Frameworks")
+        self.assertNotIn("__TESTROOT__", repr(configured))
+        self.assertNotIn("__TESTHOST__", repr(configured))
+        self.assertEqual(before, RUNNER.inventory(self.products))
+        self.target["TestHostPath"] = "__TESTROOT__/wrong.app"
+        self.save_target()
+        with self.assertRaisesRegex(RUNNER.RunnerError, "changed after verification"):
+            RUNNER.prepared_test_manifest(self.products, artifact)
+
+    def test_prepared_manifest_rejects_unsupported_format_or_target_schema(self):
+        original = plistlib.loads(self.xctestrun.read_bytes())
+        for value in [
+            [], {RUNNER.TARGET: []}, dict(original, AnotherTarget={}),
+            dict(original, __xctestrun_metadata__={"FormatVersion": True}),
+            dict(original, __xctestrun_metadata__={"FormatVersion": 2}),
+            dict(original, __xctestrun_metadata__={}),
+            dict(original, **{RUNNER.TARGET: dict(self.target, EnvironmentVariables=[])}),
+            dict(original, **{RUNNER.TARGET: dict(self.target, TestingEnvironmentVariables={"invalid": False})}),
+            dict(original, **{RUNNER.TARGET: dict(self.target, DependentProductPaths="not-an-array")}),
+        ]:
+            with self.subTest(value=value), self.assertRaises(RUNNER.RunnerError):
+                self.xctestrun.write_bytes(plistlib.dumps(value))
+                RUNNER.product_roles(self.products)
+
+    def invoke_prepared_guest(self, manifest, sha, output, popen_effect=None, preserve_manifest=False):
+        guest = load_script("GuestRegressionProbe/run-guest.py")
+        candidate = self.root / "candidate.json"
+        candidate.write_text(json.dumps({"executableSHA256": "a" * 64, "version": "1", "build": "1"}))
+        args = ["run-guest.py", "--scenario", "visual-pass", "--candidate", str(candidate),
+                "--xctestrun", str(self.xctestrun), "--output", str(output),
+                "--runner-manifest", str(manifest), "--runner-manifest-sha256", sha,
+                "--requires-prepared-runner"]
+        configured_paths = []
+
+        def execute(command, **kwargs):
+            configured = Path(command[command.index("-xctestrun") + 1])
+            configured_paths.append(configured)
+            self.assertEqual(configured.parent, output)
+            target = plistlib.loads(configured.read_bytes())[RUNNER.TARGET]
+            self.assertEqual(target["TestBundlePath"], str(self.bundle))
+            self.assertEqual(target["TestHostPath"], str(self.runner))
+            self.assertEqual(len(list(self.products.glob("*.xctestrun"))), 1)
+            if popen_effect:
+                raise popen_effect
+            receipt = {
+                "runID": target["EnvironmentVariables"]["NOTCH_VM_RUN_ID"], "scenario": "visual-pass",
+                "testIdentifier": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+                "expectedCandidateSHA256": "a" * 64, "verdict": "PASS", "candidateVerified": True,
+                "cleanup": "restored_general", "screenshotSHA256": "b" * 64,
+            }
+            kwargs["stdout"].write("NOTCH_VM_RESULT " + json.dumps(receipt) + "\n")
+            (output / "result.xcresult").mkdir()
+            return Mock(returncode=0)
+
+        def verify(products, path, pin):
+            return RUNNER.verify_prepared(products, path, pin, source=self.source, run=self.native)
+
+        def run(command, **kwargs):
+            if command[0] == "/usr/sbin/sysctl":
+                return Mock(stdout="VirtualMac2,1\n")
+            if command[0] == "/usr/bin/codesign":
+                return Mock(returncode=0)
+            self.assertEqual(command[:3], ["/usr/bin/xcrun", "xcresulttool", "get"])
+            return Mock(stdout=json.dumps({"totalTestCount": 1, "passedTests": 1, "failedTests": 0,
+                                          "skippedTests": 0, "expectedFailures": 0}))
+
+        unlink = Path.unlink
+
+        def remove(path, *args, **kwargs):
+            if preserve_manifest and path in configured_paths:
+                return
+            return unlink(path, *args, **kwargs)
+
+        with patch.object(sys, "argv", args), patch.object(sys, "platform", "darwin"), \
+                patch.object(guest.subprocess, "run", side_effect=run), \
+                patch.object(guest.subprocess, "Popen", side_effect=execute), \
+                patch.object(guest, "verify_prepared", side_effect=verify), \
+                patch.object(Path, "unlink", remove), contextlib.redirect_stdout(io.StringIO()):
+            result = guest.main()
+        return result, configured_paths
+
+    def test_prepared_guest_success_and_interruption_never_mutate_products(self):
+        manifest, sha = self.artifact()
+        before = RUNNER.inventory(self.products)
+        self.calls.clear()
+        first = self.root / "run-one"
+        result, configured = self.invoke_prepared_guest(manifest, sha, first, preserve_manifest=True)
+        self.assertEqual(result, 0)
+        self.assertTrue(configured[0].is_file())
+        invocation = json.loads((first / "invocation.json").read_text())
+        self.assertFalse(invocation["temporaryManifestRemoved"])
+        self.assertEqual(invocation["preparedRunner"]["manifestSHA256"], sha)
+        self.assertEqual(RUNNER.inventory(self.products), before)
+        # A retained per-run file models interruption before cleanup; it cannot poison the next run.
+        result, configured = self.invoke_prepared_guest(manifest, sha, self.root / "run-two")
+        self.assertEqual(result, 0)
+        self.assertFalse(configured[0].exists())
+        self.assertEqual(len([command for command in self.calls if "--verify" in command]), 8)
+        with self.assertRaises(KeyboardInterrupt):
+            self.invoke_prepared_guest(manifest, sha, self.root / "run-interrupted", KeyboardInterrupt())
+        self.assertEqual(RUNNER.inventory(self.products), before)
+        self.assertEqual(list((self.root / "run-interrupted").glob("*.xctestrun")), [])
+
+    def test_prepared_output_inside_products_is_refused_before_writes(self):
+        manifest, sha = self.artifact()
+        before = RUNNER.inventory(self.products)
+        result, configured = self.invoke_prepared_guest(manifest, sha, self.products / "unsafe-run")
+        self.assertEqual(result, 20)
+        self.assertEqual(configured, [])
+        self.assertEqual(RUNNER.inventory(self.products), before)
+
     def test_paired_prepared_flags_and_old_cli_defaults(self):
         parser = argparse.ArgumentParser()
         RUNNER.add_prepared_arguments(parser)
@@ -316,6 +594,12 @@ class RunnerContracts(unittest.TestCase):
                                   "--runner-manifest-sha256", "a" * 64])
         self.assertEqual(RUNNER.prepared_arguments(args),
                          ["--runner-manifest", str(self.root / "manifest"), "--runner-manifest-sha256", "a" * 64])
+        with self.assertRaisesRegex(RUNNER.RunnerError, "requires prepared"):
+            RUNNER.prepared_arguments(parser.parse_args(["--requires-prepared-runner"]))
+        self.assertEqual(RUNNER.prepared_arguments(args, required=True)[-1], "--requires-prepared-runner")
+        for sha in ["bad", "A" * 64, "", "a" * 63]:
+            with self.subTest(sha=sha), self.assertRaises(RUNNER.RunnerError):
+                RUNNER.prepared_arguments(argparse.Namespace(runner_manifest=self.root, runner_manifest_sha256=sha))
 
     def test_each_old_cli_still_parses_without_prepared_flags(self):
         for filename, argv in [
@@ -346,7 +630,7 @@ class RunnerContracts(unittest.TestCase):
         candidate.write_text("{}")
         manifest, sha = self.artifact()
         args = ["run-gui-probe.py", "prepared-case", "visual-pass", "--candidate", str(candidate),
-                "--runner-manifest", str(manifest), "--runner-manifest-sha256", sha]
+                "--runner-manifest", str(manifest), "--runner-manifest-sha256", sha, "--requires-prepared-runner"]
         with patch.object(sys, "argv", args), patch.object(gui, "__file__", str(self.root / "run-gui-probe.py")), \
                 patch.object(Path, "home", return_value=Path("/Users/notch")), \
                 patch.object(gui.subprocess, "run", return_value=Mock(stdout="VirtualMac2,1\n")), \
@@ -354,8 +638,127 @@ class RunnerContracts(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(gui.main(), 0)
         job = plistlib.loads((self.root / "jobs/prepared-case.plist").read_bytes())
-        self.assertEqual(job["ProgramArguments"][-4:],
-                         ["--runner-manifest", str(manifest), "--runner-manifest-sha256", sha])
+        self.assertEqual(job["ProgramArguments"][-5:],
+                         ["--runner-manifest", str(manifest), "--runner-manifest-sha256", sha,
+                          "--requires-prepared-runner"])
+
+    def test_registry_optional_gate_is_strict_and_preserves_nine_existing_cases(self):
+        suite = load_script("run-suite.py")
+        original = json.loads((SOURCE / "suite.json").read_text())["cases"]
+        self.assertEqual(len(original), 9)
+        self.assertTrue(all("requiresPreparedRunner" not in case for case in original))
+        self.assertEqual(suite.load_registry(SOURCE / "suite.json"), original)
+        registry = self.root / "suite.json"
+        (self.root / "notes.md").write_text("Test-only registry.")
+        case = dict(original[0], notes="notes.md")
+        for flag in [True, False]:
+            expected = dict(case, requiresPreparedRunner=flag)
+            registry.write_text(json.dumps({"version": 1, "cases": [expected]}))
+            self.assertEqual(suite.load_registry(registry), [expected])
+        for extra in [{"requiresPreparedRunner": value} for value in [None, 0, 1, "true", "false", [], {}]] + [
+            {"requiresPreparedRunner": True, "unknown": False}, {"requiresPreparedRunnner": True},
+        ]:
+            registry.write_text(json.dumps({"version": 1, "cases": [dict(case, **extra)]}))
+            with self.subTest(extra=extra), self.assertRaisesRegex(ValueError, "registry case fields"):
+                suite.load_registry(registry)
+
+    def test_required_direct_entrypoints_block_before_native_work_without_evidence(self):
+        for filename, args in [
+            ("run-suite.py", ["run", "--candidate", "candidate.json", "--output", "out",
+                              "--context", "ad-hoc", "--requester-id", "parent", "--worker-id", "worker",
+                              "--dispatch-ref", "test-dispatch"]),
+            ("run-gui-probe.py", ["case", "visual-pass", "--candidate", "candidate.json"]),
+            ("GuestRegressionProbe/run-guest.py",
+             ["--scenario", "visual-pass", "--candidate", "candidate.json", "--xctestrun", "runner.xctestrun",
+              "--output", "out"]),
+        ]:
+            module = load_script(filename)
+            with self.subTest(filename=filename), \
+                    patch.object(sys, "argv", [filename, *args, "--requires-prepared-runner"]), \
+                    patch.object(module.subprocess, "run") as native, \
+                    patch.object(module.subprocess, "Popen") as popen, \
+                    self.assertRaisesRegex(RUNNER.RunnerError, "requires prepared"):
+                module.main()
+            native.assert_not_called()
+            popen.assert_not_called()
+
+    def test_suite_gate_selected_only_forwarded_and_checks_invocation_evidence(self):
+        suite = load_script("run-suite.py")
+        original = suite.load_registry(SOURCE / "suite.json")[0]
+        cases = [dict(original, id="legacy", notes="notes.md"),
+                 dict(original, id="prepared", notes="notes.md", requiresPreparedRunner=True)]
+        registry = self.root / "suite.json"
+        registry.write_text(json.dumps({"version": 1, "cases": cases}))
+        (self.root / "notes.md").write_text("Test-only registry.")
+        candidate = self.root / "candidate.json"
+        candidate.write_text(json.dumps({"executableSHA256": "a" * 64, "version": "1", "build": "1"}))
+        manifest, sha = self.artifact()
+        commands = []
+        provide_identity = True
+        cleaned = True
+
+        def run(command, **kwargs):
+            if command[0] == "/usr/sbin/sysctl":
+                return Mock(stdout="VirtualMac2,1")
+            commands.append(command)
+            native_run = self.root / "runs" / command[2]
+            native_run.mkdir(parents=True)
+            receipt = {
+                "scenario": original["scenario"], "testIdentifier": original["test"],
+                "expectedCandidateSHA256": "a" * 64, "candidateVerified": True,
+                "frameworkCountVerified": True, "cleanup": "restored_general",
+                "verdict": "PASS", "reason": original["expectedReason"], "suiteExit": 0,
+                "xcodeExit": 0, "screenshotSHA256": "b" * 64,
+            }
+            (native_run / "result.json").write_text(json.dumps(receipt))
+            (native_run / "framework-summary.json").write_text(json.dumps({
+                "totalTestCount": 1, "passedTests": 1, "failedTests": 0, "skippedTests": 0, "expectedFailures": 0,
+            }))
+            (native_run / "invocation.json").write_text(json.dumps({
+                "timedOut": False, "xcodeExit": 0,
+                "temporaryManifestRemoved": cleaned,
+                "preparedRunner": {"manifestSHA256": sha} if provide_identity else None,
+            }))
+            return Mock(returncode=0, stderr="", stdout=json.dumps({"jobUnloaded": True, "jobExit": 0})
+                        + "\n" + json.dumps(receipt))
+
+        args = argparse.Namespace(
+            registry=registry, candidate=candidate, output=self.root / "missing-prepared", context="ad-hoc",
+            feature_ref=None, requester_id="parent", worker_id="worker", dispatch_ref="test-dispatch",
+            scenario=["prepared"], runner_manifest=None, runner_manifest_sha256=None,
+        )
+        with patch.object(suite, "ROOT", self.root), patch.object(sys, "platform", "darwin"), \
+                patch.object(Path, "home", return_value=self.root), patch.object(os, "geteuid", return_value=501), \
+                patch.object(suite.subprocess, "run", side_effect=run), \
+                patch.object(suite, "export_capture", return_value="mock-capture"), \
+                contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(RUNNER.RunnerError, "requires prepared"):
+                suite.run(args)
+            self.assertFalse(args.output.exists())
+            self.assertEqual(commands, [])
+            args.scenario = ["legacy"]
+            args.output = self.root / "legacy-output"
+            self.assertEqual(suite.run(args), 0)
+            self.assertNotIn("--requires-prepared-runner", commands[-1])
+            self.assertNotIn("--runner-manifest", commands[-1])
+            args.scenario = ["prepared"]
+            args.runner_manifest, args.runner_manifest_sha256 = manifest, sha
+            args.output = self.root / "prepared-output"
+            self.assertEqual(suite.run(args), 0)
+            self.assertEqual(commands[-1][-5:],
+                             ["--runner-manifest", str(manifest), "--runner-manifest-sha256", sha,
+                              "--requires-prepared-runner"])
+            provide_identity = False
+            args.output = self.root / "missing-identity-output"
+            self.assertEqual(suite.run(args), 20)
+            report = json.loads((args.output / "report.json").read_text())
+            self.assertIn("Prepared runner identity is unverified", report["cases"][0]["error"])
+            provide_identity = True
+            cleaned = False
+            args.output = self.root / "missing-cleanup-output"
+            self.assertEqual(suite.run(args), 20)
+            report = json.loads((args.output / "report.json").read_text())
+            self.assertIn("Prepared per-run manifest cleanup is unverified", report["cases"][0]["error"])
 
     def test_prepared_drift_blocks_guest_before_mutable_manifest_or_ui(self):
         spec = importlib.util.spec_from_file_location("guest_prepared", SOURCE / "GuestRegressionProbe/run-guest.py")
@@ -397,17 +800,28 @@ class RunnerContracts(unittest.TestCase):
                 RUNNER.source_snapshot("2" * 40, run)
 
     def test_timeout_kills_only_owned_process_group_including_children(self):
-        process = Mock(pid=123456, returncode=-9)
-        process.communicate.side_effect = [subprocess.TimeoutExpired("xcodebuild", 600), (b"", b"")]
+        process = Mock(pid=123456, returncode=None)
+
+        def communicate(timeout):
+            if timeout == 600:
+                raise subprocess.TimeoutExpired("xcodebuild", 600)
+            process.returncode = -9
+            return b"", b""
+
+        process.communicate.side_effect = communicate
         log = self.root / "commands.jsonl"
         with patch.object(RUNNER.subprocess, "Popen", return_value=process) as popen, \
-                patch.object(RUNNER.os, "killpg", side_effect=[None, ProcessLookupError]) as kill, \
+                patch.object(RUNNER.os, "getpgid", return_value=process.pid), \
+                patch.object(RUNNER.os, "getsid", return_value=process.pid), \
+                patch.object(RUNNER, "group_members", side_effect=[
+                    {123456: (os.getuid(), "Z"), 123457: (os.getuid(), "S")}, {}]), \
+                patch.object(RUNNER.os, "killpg") as kill, \
                 self.assertRaises(RUNNER.RunnerError) as failure:
             RUNNER.native(["xcodebuild"], env={}, timeout=600, log=log)
         self.assertTrue(failure.exception.details["timedOut"])
         self.assertTrue(popen.call_args.kwargs["start_new_session"])
-        self.assertEqual(kill.call_args_list[0].args, (123456, signal.SIGKILL))
-        self.assertEqual(kill.call_args_list[1].args, (123456, 0))
+        kill.assert_called_once_with(123456, signal.SIGKILL)
+        process.poll.assert_not_called()
         self.assertTrue(json.loads(log.read_text())["timedOut"])
 
     def test_native_failure_no_fallback_and_no_secret_diagnostics(self):
@@ -415,21 +829,86 @@ class RunnerContracts(unittest.TestCase):
         process.communicate.return_value = (b"secret diagnostic", b"private diagnostic")
         log = self.root / "commands.jsonl"
         with patch.object(RUNNER.subprocess, "Popen", return_value=process), \
-                patch.object(RUNNER.os, "killpg", side_effect=ProcessLookupError), \
+                patch.object(RUNNER, "group_members", return_value={}), \
+                patch.object(RUNNER.os, "killpg") as kill, \
                 self.assertRaises(RUNNER.RunnerError) as failure:
             RUNNER.native(["xcodebuild"], env={}, log=log)
         self.assertEqual(failure.exception.details["toolExit"], 65)
         self.assertNotIn("diagnostic", log.read_text())
-        self.assertEqual(process.communicate.call_count, 2)
+        self.assertEqual(process.communicate.call_count, 1)
+        kill.assert_not_called()
 
     def test_cleanup_failure_is_explicit_not_success(self):
         process = Mock(pid=123456, returncode=0)
         process.communicate.return_value = (b"", b"")
         with patch.object(RUNNER.subprocess, "Popen", return_value=process), \
-                patch.object(RUNNER.os, "killpg", side_effect=PermissionError), \
+                patch.object(RUNNER, "group_members", side_effect=PermissionError), \
                 self.assertRaises(RUNNER.RunnerError) as failure:
             RUNNER.native(["xcodebuild"], env={})
         self.assertFalse(failure.exception.details["cleanupVerified"])
+
+    def test_success_never_signals_reaped_pid_even_if_group_number_is_reused(self):
+        process = Mock(pid=123456, returncode=0)
+        process.communicate.return_value = (b"result", b"")
+        for members in [{}, {123456: (os.getuid(), "S")}]:
+            with self.subTest(members=members), \
+                    patch.object(RUNNER.subprocess, "Popen", return_value=process), \
+                    patch.object(RUNNER, "group_members", return_value=members), \
+                    patch.object(RUNNER.time, "monotonic", side_effect=[0, 6]), \
+                    patch.object(RUNNER.os, "killpg") as kill:
+                if members:
+                    with self.assertRaises(RUNNER.RunnerError):
+                        RUNNER.native(["xcodebuild"], env={})
+                else:
+                    self.assertEqual(RUNNER.native(["xcodebuild"], env={}), (b"result", b""))
+                kill.assert_not_called()
+
+    def test_cancel_refuses_reaped_or_changed_ownership_and_cleans_live_group(self):
+        process = Mock(pid=123456, returncode=None)
+        process.communicate.return_value = (b"", b"")
+        with patch.object(RUNNER.os, "killpg") as kill, \
+                patch.object(RUNNER.os, "getpgid", return_value=42), \
+                self.assertRaises(RUNNER.RunnerError):
+            RUNNER.stop_owned(process, cancel=True)
+        kill.assert_not_called()
+        process.returncode = 0
+        with patch.object(RUNNER.os, "killpg") as kill, \
+                patch.object(RUNNER, "group_members", return_value={}):
+            RUNNER.stop_owned(process, cancel=True)
+        kill.assert_not_called()
+        process.returncode = None
+        process.communicate.side_effect = [KeyboardInterrupt(), (b"", b"")]
+        with patch.object(RUNNER.subprocess, "Popen", return_value=process), \
+                patch.object(RUNNER.os, "getpgid", return_value=process.pid), \
+                patch.object(RUNNER.os, "getsid", return_value=process.pid), \
+                patch.object(RUNNER, "group_members", side_effect=[{123456: (os.getuid(), "S")}, {}]), \
+                patch.object(RUNNER.os, "killpg") as kill, self.assertRaises(KeyboardInterrupt):
+            RUNNER.native(["xcodebuild"], env={})
+        kill.assert_called_once_with(process.pid, signal.SIGKILL)
+
+    def test_real_timeout_preserves_unrelated_process_and_stops_owned_children(self):
+        pids = self.root / "owned-pids.json"
+        unrelated = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        program = (
+            "import json, os, pathlib, subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
+            "pathlib.Path(sys.argv[1]).write_text(json.dumps([os.getpid(), child.pid]))\n"
+            "time.sleep(30)\n"
+        )
+        try:
+            with self.assertRaises(RUNNER.RunnerError) as failure:
+                RUNNER.native([sys.executable, "-c", program, str(pids)], env=RUNNER.environment(), timeout=1)
+            self.assertTrue(failure.exception.details["timedOut"])
+            self.assertTrue(failure.exception.details["cleanupVerified"])
+            parent, child = json.loads(pids.read_text())
+            self.assertNotEqual(parent, unrelated.pid)
+            self.assertNotEqual(child, unrelated.pid)
+            self.assertFalse(any(not state.startswith("Z") for _, state in RUNNER.group_members(parent).values()))
+            self.assertIsNone(unrelated.poll())
+        finally:
+            if unrelated.poll() is None:
+                unrelated.terminate()
+            unrelated.wait(timeout=5)
 
     def test_invalid_explicit_xcode_never_falls_back(self):
         with patch.object(RUNNER.sys, "platform", "darwin"), \

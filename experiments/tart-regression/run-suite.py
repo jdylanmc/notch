@@ -34,7 +34,10 @@ def load_registry(path):
     seen = set()
     fields = {"id", "kind", "scenario", "test", "expectedVerdict", "expectedReason", "notes"}
     for case in data["cases"]:
-        if not isinstance(case, dict) or set(case) != fields or not all(isinstance(v, str) for v in case.values()):
+        if (not isinstance(case, dict) or not fields.issubset(case)
+                or set(case) - fields - {"requiresPreparedRunner"}
+                or not all(isinstance(case[key], str) for key in fields)
+                or ("requiresPreparedRunner" in case and type(case["requiresPreparedRunner"]) is not bool)):
             raise ValueError("Invalid registry case fields")
         if not ID.fullmatch(case["id"]) or case["id"] in seen or not ID.fullmatch(case["scenario"]):
             raise ValueError("Invalid or duplicate case identity")
@@ -208,6 +211,8 @@ def run(args):
         raise ValueError("Explicit candidate manifest required")
     cases = load_registry(args.registry)
     selected, full = select_cases(cases, args.scenario)
+    for case in selected:
+        prepared_arguments(args, required=case.get("requiresPreparedRunner", False))
     args.output.mkdir(mode=0o700, parents=False, exist_ok=False)
     output = args.output.resolve()
     report = {
@@ -239,7 +244,8 @@ def run(args):
             row = {"id": case["id"], "kind": case["kind"], "runName": name, "status": "BLOCKED"}
             try:
                 command = [sys.executable, str(ROOT / "run-gui-probe.py"), name, case["scenario"],
-                           "--test", case["test"], "--candidate", str(args.candidate.resolve()), *prepared]
+                           "--test", case["test"], "--candidate", str(args.candidate.resolve()),
+                           *prepared_arguments(args, required=case.get("requiresPreparedRunner", False))]
                 result = subprocess.run(command, capture_output=True, text=True, timeout=270)
                 (output / (case["id"] + ".log")).write_text(result.stdout + result.stderr)
                 records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
@@ -264,6 +270,8 @@ def run(args):
                     if (not isinstance(runner_identity, dict)
                             or runner_identity.get("manifestSHA256") != args.runner_manifest_sha256):
                         raise ValueError("Prepared runner identity is unverified")
+                    if invocation.get("temporaryManifestRemoved") is not True:
+                        raise ValueError("Prepared per-run manifest cleanup is unverified")
                     row["preparedRunner"] = runner_identity
                 status, reason = evaluate(case, receipt, framework, result.returncode, candidate["executableSHA256"])
                 row.update(status=status, reason=reason, rawVerdict=receipt.get("verdict"),

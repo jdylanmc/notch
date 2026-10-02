@@ -39,6 +39,11 @@ Use this as the bounded worker assignment, not an implementation task.
    runner, or assumptions that signature validity establishes permission
    readiness. The worker must not rebuild/replace/re-sign the app, edit tests,
    change expectations or implement repairs.
+   Honor each selected case's optional `requiresPreparedRunner` boolean; direct
+   invocations forward `--requires-prepared-runner`. The flag gates evidence,
+   not consent. Prepared invocations freshly verify source/Products/signatures;
+   their mutable manifest stays in the owned run output, never Products.
+   Do not delete Products manifests to bypass verification after an interruption.
 5. Inspect actual output evidence, raw XCTest result, executed-test count,
    candidate/run/capture identity and restoration. Export only expected
    app-filtered/public scenario artifacts; no host or personal desktop capture.

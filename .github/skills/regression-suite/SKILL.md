@@ -22,6 +22,10 @@ Read [the approved intent](intent.md), [worker contract](WORKER.md),
    Treat signature qualification and human-granted permission readiness as
    independent prerequisites; a new source hash must retain the verified
    designated requirement, not reuse stale authorized test code.
+   New cases declare `requiresPreparedRunner: true` in the registry. This
+   optional strict-boolean evidence gate applies only to selected declared cases;
+   the nine existing entries/default CLI remain unchanged. Direct launchers
+   receive `--requires-prepared-runner` as well as the paired manifest arguments.
 2. Read `.local/vm-regression/AGENTS.md` when present, or the user's custom setup
    location. Inspect Tart configuration, the named VM and guest readiness.
    Installed Tart alone is insufficient. A stopped prepared VM is not missing

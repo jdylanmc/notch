@@ -17,10 +17,16 @@ requirement independent of the executable hash. It does **not** establish
 Accessibility, Screen Recording, UI-testing authorization, or guaranteed reuse
 of Transparency, Consent, and Control (TCC) consent.
 
-About's existing permission-free route may still use a worker-built ad-hoc
-harness. New panel/ScreenCapture-dependent scenarios require parent-prepared
-stable Products and a separately verified human grant. Do not use an old
-authorized test binary to claim coverage of changed test source.
+The nine existing registry cases retain their unchanged default/ad-hoc CLI.
+New panel/ScreenCapture-dependent scenarios declare `"requiresPreparedRunner":
+true` in their registry entry and require parent-prepared stable Products and
+a separately verified human grant. This optional field accepts only JSON
+booleans; absent/false preserves the existing behavior, and unknown fields fail.
+Only selected cases impose their declared requirement. Direct callers forward
+`--requires-prepared-runner` to `run-gui-probe.py` or `run-guest.py`; all three
+entrypoints refuse a required invocation without the paired manifest arguments.
+The flag is an **evidence gate**, not a security boundary or OS authorization.
+Do not use an old authorized test binary to claim coverage of changed source.
 
 ## Build at the exact chosen checkout
 
@@ -68,17 +74,46 @@ Stable mode checks the Developer ID certificate chain, full signer, team and
 selected leaf (when supplied), and requires a normal identifier/Apple-chain/team
 designated requirement, not a cdhash-only or weakened expression.
 
+`codesign --display -r-` emits the designated requirement on **stdout**;
+`Executable=...` diagnostics are on stderr. The parser recognizes only:
+
+- The flat conjunction of the exact identifier, Apple generic anchor, Developer
+  ID intermediate/leaf certificate OIDs and expected leaf team.
+- The recorded Xcode 27 XCTest form:
+  `anchor apple generic and identifier "EXACT_ID" and (certificate leaf[field.1.2.840.113635.100.6.1.9] exists or certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = "EXPECTED_TEAM")`.
+
+The second form retains Apple's certificate alternative in its canonical
+representation; it is not collapsed into the stricter flat conjunction.
+Whitespace, printed `/* exists */` and team quoting are normalized, as is flat
+conjunction order. Other ORs, precedence, identifiers, teams, anchors or cdhash
+predicates are rejected. Independently, every actual binary must still pass
+the strict Developer ID chain/selected-leaf requirement and exact full signer
+and team checks **before** its recorded requirement is accepted. The parser is
+not a signature verifier and never authors or re-signs a custom requirement.
+
+The `stable-runner-native-a` receipt recorded two arm64 Mach-O files and **zero
+copied frameworks**. The exact public role requirements are regression fixtures;
+prior flat mocks/different-product review were not conformance proof for this
+actual XCTest output. There is no Apple-framework signer exception. Future code
+that cannot meet the existing strict signer contract is explicitly unsupported,
+not silently accepted. A new native build at a new path remains necessary.
+
 `runner-manifest.json` binds the entire Products tree (regular-file hashes,
 modes and relative framework symlinks), role paths/versions, each code slice's
 designated requirement, code hash and entitlements, and exact source file
-hashes. The supplied revision must equal this checkout's full HEAD. Uncommitted
+hashes. Schema types, scoped relative source paths and the original single-target
+xctestrun format 1 are checked; unknown manifest/source fields and unsupported
+xctestrun formats fail. The supplied revision must equal this checkout's full HEAD. Uncommitted
 inputs are allowed but explicitly identified by their **working-tree snapshot**;
 HEAD alone is never claimed as their source identity. Changes during the build
 or verification fail. Only success emits a manifest and its SHA-256.
 
 Builds have a fixed 600-second deadline; inspection commands have 30/120-second
-deadlines. Failure/interruption stops only the invocation's owned process group,
-including CodeSign children, and reports unverified cleanup explicitly. The new
+deadlines. Successful/reaped commands are never signalled. On timeout/cancellation,
+cleanup can kill only the live group anchored by the invocation's still-unreaped
+session leader, with matching user/group/session ownership; remaining live
+members are checked read-only. Lost ownership or failed cleanup is an explicit
+blocker, never a signal to a possibly recycled PID/group. The new
 private build directory is retained on success and failure; never consume a
 failed build's Products. `commands.jsonl` records controlled arguments,
 deadlines and exit/cleanup status, not environment variables or raw native
@@ -123,9 +158,21 @@ overwritten or recursively cleaned.
 5. A fresh worker passes the same two manifest arguments to `run-suite.py run`,
    `run-gui-probe.py`, or `GuestRegressionProbe/run-guest.py`. Existing invocations
    without them remain compatible for existing permission-free scenarios.
-   The guest verifies the prepared artifact **before** creating the mutable
-   per-run `.xctestrun` and records its identity in `invocation.json`; the suite
-   carries it into each case report. No execution/cleanup deadlines are relaxed.
+   The guest freshly verifies source, all Products and both actual signatures
+   **on every invocation**, before creating the mutable per-run `.xctestrun`.
+   No verification result is cached across cases. From the pinned original
+   single manifest, it resolves `__TESTROOT__` to Products and `__TESTHOST__` to
+   that manifest's runner, including nested environment/path arrays. Xcode's
+   platform-specific placeholders remain intact.
+   The mutable manifest lives only in the new owned output directory **outside
+   Products**. Normal/exception cleanup removes only that invocation's file;
+   an abrupt interruption can leave residue in its output, never a second
+   Products manifest that blocks all later cases. Never delete a stale file
+   from approved Products to bypass a hash/count mismatch: stage a newly
+   verified artifact instead. Legacy unprepared manifest placement is unchanged.
+   `invocation.json` records prepared identity and temporary-manifest removal;
+   the suite requires both, alongside existing exact framework counts, exits
+   and restoration. No execution/cleanup deadlines are relaxed.
 
 ## Parent-owned native acceptance
 

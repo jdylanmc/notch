@@ -24,6 +24,8 @@ MACH_MAGICS = {
     b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe",
     b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca", b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca",
 }
+SOURCE_QUALIFICATION = "Exact working-tree bytes; HEAD alone does not identify uncommitted inputs."
+PERMISSION_READINESS = "UNVERIFIED; signature validity is not OS consent."
 
 
 class RunnerError(ValueError):
@@ -46,25 +48,43 @@ def environment():
     return env
 
 
-def stop_owned(process):
-    # The process is a session leader; include codesign children even if Xcode exited.
+def group_members(group):
+    result = subprocess.run(
+        ["/bin/ps", "-axo", "pid=,pgid=,uid=,stat="], env=environment(),
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, timeout=5,
+    )
+    members = {}
+    for line in result.stdout.splitlines():
+        pid, pgid, uid, state = line.split()
+        if int(pgid) == group:
+            members[int(pid)] = (int(uid), state)
+    return members
+
+
+def stop_owned(process, *, cancel=False):
     try:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        process.communicate(timeout=10)
-    except (OSError, subprocess.TimeoutExpired) as error:
+        if cancel:
+            # Do not poll/reap before signalling: the unreaped leader reserves this PID/group.
+            if process.returncode is None:
+                try:
+                    if os.getpgid(process.pid) != process.pid or os.getsid(process.pid) != process.pid:
+                        raise RunnerError("Native process group ownership changed.", cleanupVerified=False)
+                    members = group_members(process.pid)
+                    if process.pid not in members or any(uid != os.getuid() for uid, _ in members.values()):
+                        raise RunnerError("Native process group ownership is unverified.", cleanupVerified=False)
+                    if any(not state.startswith("Z") for _, state in members.values()):
+                        os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            process.communicate(timeout=10)
+        deadline = time.monotonic() + 5
+        while any(not state.startswith("Z") for _, state in group_members(process.pid).values()):
+            if time.monotonic() >= deadline:
+                raise RunnerError("Owned process group has remaining live members.",
+                                  pid=process.pid, cleanupVerified=False)
+            time.sleep(0.05)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
         raise RunnerError("Unable to stop owned process group.", pid=process.pid, cleanupVerified=False) from error
-    deadline = time.monotonic() + 5
-    while True:
-        try:
-            os.killpg(process.pid, 0)
-        except ProcessLookupError:
-            return
-        if time.monotonic() >= deadline:
-            raise RunnerError("Owned process group did not stop.", pid=process.pid, cleanupVerified=False)
-        time.sleep(0.05)
 
 
 def native(command, *, env, timeout=30, log=None):
@@ -75,7 +95,12 @@ def native(command, *, env, timeout=30, log=None):
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
         try:
             output = process.communicate(timeout=timeout)
-        finally:
+        except (subprocess.TimeoutExpired, KeyboardInterrupt) as error:
+            record["timedOut" if isinstance(error, subprocess.TimeoutExpired) else "cancelled"] = True
+            stop_owned(process, cancel=True)
+            record.update(toolExit=process.returncode, cleanupVerified=True)
+            raise
+        else:
             stop_owned(process)
             record.update(toolExit=process.returncode, cleanupVerified=True)
         if process.returncode:
@@ -134,7 +159,8 @@ def signing(identity, team, certificate_sha1, unsigned=False):
             or not isinstance(identity, str)
             or not re.fullmatch(r"Developer ID Application: [^\x00-\x1f\x7f]+ \(" + team + r"\)", identity)):
         raise RunnerError("Stable signing needs the full Developer ID Application name and explicit team; no fallback.")
-    if certificate_sha1 is not None and not re.fullmatch(r"[a-fA-F0-9]{40}", certificate_sha1):
+    if certificate_sha1 is not None and (
+            not isinstance(certificate_sha1, str) or not re.fullmatch(r"[a-fA-F0-9]{40}", certificate_sha1)):
         raise RunnerError("Certificate selector must be a known public SHA-1: exactly 40 hex characters.")
     return {"mode": "stable", "identity": identity, "team": team,
             "certificateSHA1": certificate_sha1.upper() if certificate_sha1 else None}
@@ -185,8 +211,10 @@ def source_snapshot(revision, run):
         files[str(path.relative_to(SOURCE))] = digest(path.read_bytes())
     if "build_runner.py" not in files or "suite.json" not in files:
         raise RunnerError("Incomplete harness source snapshot.")
-    return {"revision": revision, "files": files, "sha256": digest(json_bytes(files)),
-            "qualification": "Exact working-tree bytes; HEAD alone does not identify uncommitted inputs."}
+    snapshot = {"revision": revision, "files": files, "sha256": digest(json_bytes(files)),
+                "qualification": SOURCE_QUALIFICATION}
+    verify_source(snapshot, SOURCE)
+    return snapshot
 
 
 def inventory(root):
@@ -221,20 +249,38 @@ def inventory(root):
     return entries
 
 
-def product_roles(products):
+def product_manifest(products):
     manifests = list(products.glob("*.xctestrun"))
-    if len(manifests) != 1 or manifests[0].is_symlink():
+    if len(manifests) != 1 or manifests[0].is_symlink() or not manifests[0].is_file():
         raise RunnerError("Exactly one regular xctestrun is required; no newest-file selection.")
     manifest = manifests[0]
-    data = plistlib.loads(manifest.read_bytes())
+    raw = manifest.read_bytes()
+    data = plistlib.loads(raw)
     if (not isinstance(data, dict)
-            or [key for key in data if not key.startswith("__")] != [TARGET]
+            or set(data) != {TARGET, "__xctestrun_metadata__"}
+            or not isinstance(data["__xctestrun_metadata__"], dict)
+            or type(data["__xctestrun_metadata__"].get("FormatVersion")) is not int
+            or data["__xctestrun_metadata__"]["FormatVersion"] != 1
             or not isinstance(data[TARGET], dict)):
-        raise RunnerError("Expected one standalone GuestRegressionProbe target.")
+        raise RunnerError("Expected one standalone GuestRegressionProbe target in xctestrun format 1.")
     target = data[TARGET]
     if (target.get("IsUITestBundle") is not True
             or target.get("UseUITargetAppProvidedByTests") is not True or target.get("UITargetAppPath")):
         raise RunnerError("Harness must not build or substitute the app candidate.")
+    for key in ("EnvironmentVariables", "TestingEnvironmentVariables", "UITargetAppEnvironmentVariables"):
+        if key in target and (not isinstance(target[key], dict)
+                              or not all(isinstance(value, str) for value in target[key].values())):
+            raise RunnerError("Invalid xctestrun environment: " + key)
+    for key in ("DependentProductPaths", "CommandLineArguments", "UITargetAppCommandLineArguments"):
+        if key in target and (not isinstance(target[key], list)
+                              or not all(isinstance(value, str) for value in target[key])):
+            raise RunnerError("Invalid xctestrun string array: " + key)
+    return manifest, data, raw
+
+
+def product_roles(products):
+    manifest, data, _ = product_manifest(products)
+    target = data[TARGET]
 
     def resolve(value, prefix, base):
         if not isinstance(value, str) or not value.startswith(prefix + "/"):
@@ -293,11 +339,21 @@ def stable_requirement(text, identifier, config):
     normal = lines[0].replace("/* exists */", "exists")
     normal = re.sub(r"\s+", " ", normal).strip()
     normal = normal.replace('= "' + config["team"] + '"', "= " + config["team"])
-    expected = requirement(dict(config, certificateSHA1=None), identifier)[1:]
-    expected = expected.replace('= "' + config["team"] + '"', "= " + config["team"])
-    if sorted(normal.split(" and ")) != sorted(expected.split(" and ")):
-        raise RunnerError("Not a normal stable Apple-chain/identifier/team requirement (cdhash-only is forbidden).")
-    return normal
+    flat = requirement(dict(config, certificateSHA1=None), identifier)[1:]
+    flat = flat.replace('= "' + config["team"] + '"', "= " + config["team"])
+    # Xcode 27's recorded XCTest form. The OR is inside the identifier/anchor conjunction.
+    native_form = (
+        'anchor apple generic and identifier "' + identifier + '" and ('
+        'certificate leaf[field.1.2.840.113635.100.6.1.9] exists or '
+        'certificate 1[field.1.2.840.113635.100.6.2.6] exists and '
+        'certificate leaf[field.1.2.840.113635.100.6.1.13] exists and '
+        'certificate leaf[subject.OU] = ' + config["team"] + ')'
+    )
+    if normal == native_form:
+        return native_form
+    if sorted(normal.split(" and ")) == sorted(flat.split(" and ")):
+        return flat
+    raise RunnerError("Not a recorded normal Apple requirement; arbitrary OR, cdhash and weakened forms are forbidden.")
 
 
 def verify_code(products, roles, entries, config, run):
@@ -348,7 +404,7 @@ def verify_code(products, roles, entries, config, run):
                 raise RunnerError("Signed role identifier mismatch.")
             if stable and (fields.get("Signature") or fields.get("Authority", [None])[0] != config["identity"]
                            or field("TeamIdentifier") != config["team"]):
-                raise RunnerError("Signature does not use the exact requested full signer/team.")
+                raise RunnerError("Unsupported code signer: exact requested full Developer ID signer/team required: " + name)
             flags = re.search(r"\bflags=0x([a-fA-F0-9]+)\b", field("CodeDirectory v"))
             if not flags or (name in role_binaries and int(flags[1], 16) & 0x10000):
                 raise RunnerError("XCTest roles must retain non-hardened test signing.")
@@ -358,7 +414,7 @@ def verify_code(products, roles, entries, config, run):
             if not isinstance(entitlements, dict):
                 raise RunnerError("Invalid signed test entitlements.")
             # Record Xcode's legitimate sandbox/debug/test entitlements, never distribution-strip them.
-            _, dr = run(["/usr/bin/codesign", "--display", "--arch", arch, "-r-", str(path)])
+            dr, _ = run(["/usr/bin/codesign", "--display", "--arch", arch, "-r-", str(path)])
             designated = stable_requirement(dr.decode(), identifier, config) if stable else dr.decode().strip()
             cdhash = field("CDHash")
             if not re.fullmatch(r"[a-f0-9]{40}", cdhash):
@@ -409,7 +465,7 @@ def build(args):
             raise RunnerError("Source or Products changed during build/verification.")
         manifest = {"schemaVersion": 1, "signing": config, "source": source, "xcodeVersion": version,
                     "xctestrun": xctestrun, "roles": roles, "files": entries, "code": code,
-                    "permissionReadiness": "UNVERIFIED; signature validity is not OS consent."}
+                    "permissionReadiness": PERMISSION_READINESS}
         output = path / "runner-manifest.json"
         with output.open("xb") as stream:
             stream.write(json_bytes(manifest))
@@ -421,6 +477,28 @@ def build(args):
         raise RunnerError(str(error), retainedBuildDir=str(path), **details) from error
 
 
+def verify_source(snapshot, source):
+    if (not isinstance(snapshot, dict) or set(snapshot) != {"revision", "files", "sha256", "qualification"}
+            or not isinstance(snapshot["revision"], str) or not re.fullmatch(r"[a-f0-9]{40}", snapshot["revision"])
+            or snapshot["qualification"] != SOURCE_QUALIFICATION
+            or not isinstance(snapshot["files"], dict)
+            or not {"build_runner.py", "suite.json"}.issubset(snapshot["files"])
+            or digest(json_bytes(snapshot["files"])) != snapshot["sha256"]):
+        raise RunnerError("Invalid source manifest.")
+    source = canonical(source)
+    for name, expected in snapshot["files"].items():
+        relative = Path(name)
+        if (not name or not relative.parts or relative.is_absolute() or relative.as_posix() != name
+                or any(part in {".", ".."} or part.startswith(".") for part in relative.parts)
+                or relative.parts[0] in {"Products", "Build", "DerivedData", "jobs", "runs", "runner-manifest.json"}
+                or "__pycache__" in relative.parts
+                or not isinstance(expected, str) or not re.fullmatch(r"[a-f0-9]{64}", expected)):
+            raise RunnerError("Invalid scoped source entry.")
+        path = canonical(source / relative)
+        if source not in path.parents or digest(path.read_bytes()) != expected:
+            raise RunnerError("Guest test source differs from the exact prepared source.")
+
+
 def verify_prepared(products, manifest_path, expected_sha256, *, source=SOURCE, run=None):
     if not isinstance(expected_sha256, str) or not re.fullmatch(r"[a-f0-9]{64}", expected_sha256):
         raise RunnerError("Prepared runner requires the parent's approved manifest SHA-256.")
@@ -428,22 +506,23 @@ def verify_prepared(products, manifest_path, expected_sha256, *, source=SOURCE, 
     if digest(data) != expected_sha256:
         raise RunnerError("Prepared runner manifest hash mismatch.")
     manifest = json.loads(data)
-    if manifest.get("schemaVersion") != 1 or manifest.get("signing", {}).get("mode") != "stable":
+    if (not isinstance(manifest, dict)
+            or set(manifest) != {"schemaVersion", "signing", "source", "xcodeVersion", "xctestrun",
+                                 "roles", "files", "code", "permissionReadiness"}
+            or type(manifest["schemaVersion"]) is not int or manifest["schemaVersion"] != 1
+            or not isinstance(manifest["signing"], dict) or manifest["signing"].get("mode") != "stable"
+            or not isinstance(manifest["xcodeVersion"], str) or not manifest["xcodeVersion"]
+            or manifest["permissionReadiness"] != PERMISSION_READINESS):
         raise RunnerError("Prepared permission-dependent runner requires stable signing.")
     config = manifest["signing"]
     if signing(config.get("identity"), config.get("team"), config.get("certificateSHA1")) != config:
         raise RunnerError("Invalid prepared signer contract.")
-    files = manifest["source"]["files"]
-    if not files or digest(json_bytes(files)) != manifest["source"]["sha256"]:
-        raise RunnerError("Invalid source manifest.")
-    for name, expected in files.items():
-        path = canonical(source / name)
-        if source not in path.parents or digest(path.read_bytes()) != expected:
-            raise RunnerError("Guest test source differs from the exact prepared source.")
+    verify_source(manifest["source"], source)
     products = canonical(products)
     entries = inventory(products)
     xctestrun, roles = product_roles(products)
-    if entries != manifest["files"] or roles != manifest["roles"] or xctestrun != manifest["xctestrun"]:
+    if (json_bytes(entries) != json_bytes(manifest["files"])
+            or json_bytes(roles) != json_bytes(manifest["roles"]) or xctestrun != manifest["xctestrun"]):
         raise RunnerError("Prepared Products/roles/xctestrun differ from the approved artifact.")
     if run is None:
         env = environment()
@@ -452,22 +531,50 @@ def verify_prepared(products, manifest_path, expected_sha256, *, source=SOURCE, 
             return native(command, env=env, timeout=timeout)
 
     code = verify_code(products, roles, entries, config, run)
-    if code != manifest["code"] or entries != inventory(products):
+    if json_bytes(code) != json_bytes(manifest["code"]) or entries != inventory(products):
         raise RunnerError("Prepared code requirements, hashes or entitlements changed.")
+    verify_source(manifest["source"], source)
     return manifest
+
+
+def prepared_test_manifest(products, artifact):
+    original, data, raw = product_manifest(products)
+    if (original.name != artifact["xctestrun"]
+            or digest(raw) != artifact["files"][original.name]["sha256"]):
+        raise RunnerError("Prepared xctestrun changed after verification.")
+    host = str(products / artifact["roles"]["runner"]["path"])
+
+    def relocate(value):
+        if isinstance(value, str):
+            return value.replace("__TESTROOT__", str(products)).replace("__TESTHOST__", host)
+        if isinstance(value, list):
+            return [relocate(item) for item in value]
+        if isinstance(value, dict):
+            return {key: relocate(item) for key, item in value.items()}
+        return value
+
+    return relocate(data)
 
 
 def add_prepared_arguments(parser):
     parser.add_argument("--runner-manifest", type=Path)
     parser.add_argument("--runner-manifest-sha256")
+    parser.add_argument("--requires-prepared-runner", action="store_true",
+                        help="Require prepared identity evidence; does not grant OS consent.")
 
 
-def prepared_arguments(args):
+def prepared_arguments(args, *, required=False):
     manifest = getattr(args, "runner_manifest", None)
     sha = getattr(args, "runner_manifest_sha256", None)
     if (manifest is None) != (sha is None):
         raise RunnerError("Supply both prepared runner manifest and its approved SHA-256.")
-    return ["--runner-manifest", str(manifest.resolve()), "--runner-manifest-sha256", sha] if manifest else []
+    required = required or getattr(args, "requires_prepared_runner", False)
+    if required and manifest is None:
+        raise RunnerError("This invocation requires prepared runner evidence.")
+    if sha is not None and (not isinstance(sha, str) or not re.fullmatch(r"[a-f0-9]{64}", sha)):
+        raise RunnerError("Prepared runner requires the parent's approved manifest SHA-256.")
+    arguments = ["--runner-manifest", str(manifest.resolve()), "--runner-manifest-sha256", sha] if manifest else []
+    return arguments + (["--requires-prepared-runner"] if required else [])
 
 
 def main(argv=None):

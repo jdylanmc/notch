@@ -80,8 +80,9 @@ def main():
 
     root = Path(__file__).resolve().parent
     candidate = args.candidate.resolve(strict=True)
-    manifests = list((root / "Products").glob("GuestRegressionProbe_*.xctestrun"))
-    if len(manifests) != 1:
+    manifests = list((root / "Products").glob("*.xctestrun" if prepared else "GuestRegressionProbe_*.xctestrun"))
+    if (len(manifests) != 1
+            or (prepared and (manifests[0].is_symlink() or not manifests[0].is_file()))):
         raise RuntimeError("Exactly one explicitly built runner manifest is required; do not select the newest")
     jobs = root / "jobs"
     runs = root / "runs"
