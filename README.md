@@ -258,7 +258,7 @@ certificate chain without changing or signing the artifact:
   umask 077 &&
   certificate_dir="$(mktemp -d "${TMPDIR:-/tmp}/notch-public-certificate.XXXXXX")" &&
   printf 'Public certificate scratch directory: %s\n' "$certificate_dir" &&
-  codesign --display --extract-certificates "$certificate_dir/cert-" \
+  codesign --display --extract-certificates="$certificate_dir/cert-" \
     '/absolute/path/to/already-approved/notch-pocket.app' &&
   openssl x509 -inform DER -in "$certificate_dir/cert-0" \
     -noout -fingerprint -sha1
