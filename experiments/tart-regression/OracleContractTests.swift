@@ -42,7 +42,9 @@ enum OracleContractTests {
         try checkAppearance()
         try checkSettingsRemoval(.notifications)
         try checkSettingsRemoval(.general)
-        try checkGeneralNativeLabelGeometry()
+        try checkSettingsRemoval(.panelSwipes)
+        try checkGeneralNativeLabelGeometry(.general)
+        try checkGeneralNativeLabelGeometry(.panelSwipes)
     }
 
     private static func checkSettingsRemoval(_ scenario: SettingsRemovalScenario) throws {
@@ -69,6 +71,13 @@ enum OracleContractTests {
             count += 1
         }
         try check("retained controls and pixels", rendered, controls, passes: true)
+        if scenario == .panelSwipes {
+            for label in ["Change media with horizontal gestures", "Gesture sensitivity", "Normalize gesture direction"] {
+                try check("media configuration is not panel copy: \(label)", rendered + [
+                    Observation(text: label, frame: CGRect(x: 0.4, y: 0.1, width: 0.5, height: 0.03))
+                ], controls, passes: true)
+            }
+        }
         try check("empty pixels cannot prove removal", [], controls, passes: false)
         try check("missing accessibility cannot prove removal", rendered, [:], passes: false)
         for (index, label) in labels.enumerated() {
@@ -97,11 +106,11 @@ enum OracleContractTests {
         var old = controls
         old[absence] = false
         try check("old app control rejected even if OCR misses it", rendered, old, passes: false)
-        for text in [scenario.removedLabel] + scenario.forbiddenText {
+        for text in scenario.removedLabels + scenario.forbiddenText {
             let remnant = Observation(text: text, frame: CGRect(x: 0.4, y: 0.1, width: 0.5, height: 0.03))
             try check("old app pixels: \(text)", rendered + [remnant], controls, passes: false)
         }
-        let removedWords = scenario.removedLabel.split(separator: " ", maxSplits: 1).map(String.init)
+        let removedWords = scenario.removedLabels[0].split(separator: " ", maxSplits: 1).map(String.init)
         let splitRemoved = [
             Observation(text: removedWords[0], frame: CGRect(x: 0.4, y: 0.1, width: 0.1, height: 0.03)),
             Observation(text: removedWords[1], frame: CGRect(x: 0.51, y: 0.1, width: 0.35, height: 0.03))
@@ -120,7 +129,7 @@ enum OracleContractTests {
         }
         count += 1
         try check("clipped remnant still rejects absence", rendered + [
-            Observation(text: scenario.removedLabel, frame: CGRect(x: 0.4, y: 0.99, width: 0.3, height: 0.03))
+            Observation(text: scenario.removedLabels[0], frame: CGRect(x: 0.4, y: 0.99, width: 0.3, height: 0.03))
         ], controls, passes: false)
         for frames in [[:], [labels[0]: rendered[0].frame],
                        labelFrames.mapValues { $0.offsetBy(dx: 0, dy: -0.1) },
@@ -153,10 +162,10 @@ enum OracleContractTests {
             }
             count += 1
         }
-        print("\(scenario.pane) output oracle: \(count) cases passed.")
+        print("\(scenario.rawValue) output oracle: \(count) cases passed.")
     }
 
-    private static func checkGeneralNativeLabelGeometry() throws {
+    private static func checkGeneralNativeLabelGeometry(_ scenario: SettingsRemovalScenario) throws {
         typealias Observation = AboutOutputOracle.Observation
         let content = CGRect(x: 208.0 / 700, y: 0, width: 492.0 / 700, height: 548.0 / 600)
         let cases: [(String, CGRect, CGRect)] = [
@@ -174,11 +183,11 @@ enum OracleContractTests {
             func check(_ name: String, _ text: String, _ box: CGRect, expected: Bool,
                        present: Bool = true, frames: [String: CGRect]? = nil, width: Int = 700) throws {
                 let output = SettingsRemovalOutputOracle.evaluate(
-                    [Observation(text: text, frame: box)], scenario: .general, contentFrame: content,
-                    controls: [label: present, "hapticControlAbsent": false],
+                    [Observation(text: text, frame: box)], scenario: scenario, contentFrame: content,
+                    controls: [label: present, scenario.absenceKey: false],
                     labelFrames: frames ?? [label: frame], pixelWidth: width
                 )
-                guard output[label] == expected, output["hapticControlAbsent"] == false, output.count == 14 else {
+                guard output[label] == expected, output[scenario.absenceKey] == false, output.count == 14 else {
                     throw NSError(domain: "GeneralNativeLabelGeometry", code: 1,
                                   userInfo: [NSLocalizedDescriptionKey: "\(label) \(name): \(output)"])
                 }
@@ -212,7 +221,7 @@ enum OracleContractTests {
             guard output[label] == false else { throw NSError(domain: "UnchangedLabelAlignment", code: 1) }
             count += 1
         }
-        print("General measured native label geometry: \(count) cases passed.")
+        print("\(scenario.rawValue) measured native label geometry: \(count) cases passed.")
     }
 
     private static func checkAppearance() throws {

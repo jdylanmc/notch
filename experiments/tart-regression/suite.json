@@ -81,6 +81,15 @@
       "expectedVerdict": "PASS",
       "expectedReason": "rendered_output_verified",
       "notes": "scenarios/general-haptics-removed.md"
+    },
+    {
+      "id": "general-panel-swipes-removed",
+      "kind": "regression",
+      "scenario": "general-panel-swipes-removed",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledGeneralWithoutPanelSwipes",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/general-panel-swipes-removed.md"
     }
   ]
 }

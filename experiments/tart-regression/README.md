@@ -1,7 +1,7 @@
 # Source-only installed-app probe
 
 This is the initial **registered installed-app regression suite**, built from the
-XCTest/Vision Tart experiment. It currently covers four application journeys and
+XCTest/Vision Tart experiment. It currently covers five application journeys and
 five explicit oracle/restoration controls, not the whole app. See the
 [VM reconstruction recipe](../../docs/agents/vm-regression.md) first.
 
@@ -71,6 +71,12 @@ The General haptic-removal comparison requires its own identified OLD
 haptic-bearing artifact, not an inferred base build or another removal's proof.
 Run only its new scenario on OLD, then all nine registered cases on NEW across
 the existing fixtures; see the [General scenario](scenarios/general-haptics-removed.md).
+That is the historical haptic-removal registry. The scoped
+[panel-swipe removal](scenarios/general-panel-swipes-removed.md) adds a tenth case:
+run its new scenario on an identified OLD panel-swipe candidate, then all **ten**
+on NEW. The prior General scenario now requires **Enable media gestures**
+instead of the deliberately removed **Enable gestures** panel master; its
+other retained labels, haptic absence and measured OCR policy are unchanged.
 
 ## Exercise the installed app in the guest
 
@@ -142,6 +148,7 @@ panes are an explicit unsupported fixture, not silently replaced.
 | `native-abort-after-about` | BLOCKED / 20; XCTest 65 | A real XCTest failure after About selection still restores the fixture |
 | `notifications-ai-replies-removed` | PASS / 0 on new candidate | Retained notification labels render; suggestion control is absent in Accessibility and pixels |
 | `general-haptics-removed` | PASS / 0 on new candidate | Thirteen retained General labels render; haptic option is absent in Accessibility and pixels |
+| `general-panel-swipes-removed` | PASS / 0 on new candidate | Thirteen retained labels including the media gesture master render; panel gesture controls/instructions are absent in Accessibility and both endpoint pixels |
 
 Do not convert the two negative controls into passing application tests.
 `runs/<name>/` holds invocation/framework/result receipts, log and `.xcresult`;
@@ -149,7 +156,7 @@ Do not convert the two negative controls into passing application tests.
 skips, unexpected outcomes or unverified restoration are non-success.
 Export attachments with `xcrun xcresulttool export attachments`, verify the named
 public image hashes against the receipt, and inspect the pixels locally.
-Notifications uses `notificationsCaptureVersion: 1`; General haptic removal uses
+Notifications uses `notificationsCaptureVersion: 1`; both General removals use
 `generalCaptureVersion: 1`. Each requires exactly two named
 top/bottom captures rather than `screenshotSHA256`; the suite's `captures` report
 field binds both native attachment names/hashes/dimensions. Other cases retain
@@ -163,7 +170,8 @@ Retained automatic system attachments are disabled.
 - It covers About version/build,
   [Appearance idle-face removal](scenarios/appearance-idle-face-removed.md) and
   [Notifications AI-reply removal](scenarios/notifications-ai-replies-removed.md) and
-  [General haptic removal](scenarios/general-haptics-removed.md), not
+  [General haptic removal](scenarios/general-haptics-removed.md) and
+  [General panel-swipe removal](scenarios/general-panel-swipes-removed.md), not
   all retained features. New features need their own independent scenarios.
 - Appearance uses typed static-text value lookup, row-scoped sidebar navigation,
   and structural form mapping. Its single screenshot requires positive full-form
@@ -171,7 +179,7 @@ Retained automatic system attachments are disabled.
   for General/Media and the removed section. Missing retained controls are
   output failures after pane setup, never setup guards. OCR shares About's
   same-row fragment geometry; this does not authorize offscreen absence claims.
-- Notifications and General share a bounded capture helper with two fixed
+- Notifications and General share a bounded capture helper with three fixed
   scenario descriptors, not an arbitrary UI service. They use row-scoped
   navigation, typed static-text value lookup and
   structural form mapping at the existing 1440x900 display. Two actual endpoint
@@ -189,9 +197,10 @@ Retained automatic system attachments are disabled.
   Vision-box allowance is label-specific; native frames, exact text, vertical
   alignment and other labels' policies remain unchanged. See the
   [diagnosis and failure-boundary evidence](scenarios/general-haptics-removed.md#measured-native-label-remediation).
-  The thirteen retained General labels are preservation requirements for this
-  haptic removal only; planned compact-mode/panel-swipe PRs revise their own
-  behavior, contracts and native evidence.
+  The prior General master-label expectation deliberately follows the scoped
+  panel-swipe removal; compact mode and the other retained labels remain.
+  Conditional media configuration and live horizontal gestures have source
+  contracts, not native interaction proof from this Settings-only scenario.
 - Readiness and cleanup are checked, but this remains prototype code, not a
   hardened multi-user execution service or an authorization boundary.
 - User-controlled OS consent, guest idle lock, hardware and application readiness

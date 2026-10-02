@@ -29,11 +29,16 @@ label geometry plus aligned OCR in at least one capture:
 - Preferred display; Automatically switch displays.
 - Notch height on notch displays; Notch height on non-notch displays.
 - Open notch on hover; Remember last tab; Notch animation.
-- Compact mode; Enable gestures.
+- Compact mode; Enable media gestures.
 
-These thirteen labels are unchanged in **this haptic removal**, not permanent
-product requirements. Planned compact-mode and panel-swipe PRs deliberately
-revise their own behavior and must update their own contracts and evidence.
+The original haptic-removal revision required **Enable gestures**. The scoped
+[panel-swipe removal](general-panel-swipes-removed.md) now replaces only that
+retained label with **Enable media gestures**, preserving its stored master
+value for media. This implements the owner's separate removal decision, not an
+exception to a failing haptic assertion. The other twelve labels and all haptic,
+capture and restoration requirements remain. Compact mode is still retained
+pending its own scoped change. The historical evidence below describes the
+original label set and does not establish proof for the new panel-swipe candidate.
 
 Disabled labels still exist and render: presence never requires `isHittable`.
 Conditional controls (hover delay, custom heights, animation speed, expanded
