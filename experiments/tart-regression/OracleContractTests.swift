@@ -64,7 +64,7 @@ enum OracleContractTests {
         func check(_ name: String, _ observations: [Observation], _ accessible: [String: Bool], passes: Bool) throws {
             let result = SettingsRemovalOutputOracle.evaluate(
                 observations, scenario: scenario, contentFrame: content, controls: accessible,
-                labelFrames: labelFrames, pixelWidth: 700
+                labelFrames: labelFrames, pixelWidth: 700, windowWidthPoints: 700
             )
             guard result.count == labels.count + 1 && result.values.allSatisfy({ $0 }) == passes else {
                 throw NSError(domain: "\(scenario.pane)OracleContractTests", code: 1,
@@ -90,7 +90,7 @@ enum OracleContractTests {
                     ] : [])
                     let result = SettingsRemovalOutputOracle.evaluate(
                         pixels, scenario: scenario, contentFrame: content, controls: accessible,
-                        labelFrames: labelFrames, pixelWidth: 700
+                        labelFrames: labelFrames, pixelWidth: 700, windowWidthPoints: 700
                     )
                     guard accessible[absence] == !sourceTrue,
                           result[absence] == (!sourceTrue && !visible),
@@ -116,6 +116,16 @@ enum OracleContractTests {
         for (index, label) in labels.enumerated() {
             let others = rendered.filter { $0.text != label }
             try check("missing retained pixels: \(label)", others, controls, passes: false)
+            let missingOutput = SettingsRemovalOutputOracle.evaluate(
+                others, scenario: scenario, contentFrame: content, controls: controls,
+                labelFrames: labelFrames, pixelWidth: 700, windowWidthPoints: 700
+            )
+            guard missingOutput[label] == false, missingOutput[absence] == true,
+                  labels.filter({ $0 != label }).allSatisfy({ missingOutput[$0] == true }) else {
+                throw NSError(domain: "SingleMissingLabel", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "\(label): \(missingOutput)"])
+            }
+            count += 1
             var missing = controls
             missing[label] = false
             try check("missing retained control: \(label)", rendered, missing, passes: false)
@@ -155,7 +165,7 @@ enum OracleContractTests {
         try check("sidebar is not detail output", sidebarOnly, controls, passes: false)
         let emptyOutput = SettingsRemovalOutputOracle.evaluate(
             sidebarOnly, scenario: scenario, contentFrame: content, controls: controls,
-            labelFrames: labelFrames, pixelWidth: 700
+            labelFrames: labelFrames, pixelWidth: 700, windowWidthPoints: 700
         )
         guard emptyOutput[absence] == false else {
             throw NSError(domain: "\(scenario.pane)EmptyViewport", code: 1)
@@ -169,7 +179,7 @@ enum OracleContractTests {
                        labelFrames.mapValues { $0.offsetBy(dx: 0, dy: 1) }] {
             let output = SettingsRemovalOutputOracle.evaluate(
                 rendered, scenario: scenario, contentFrame: content, controls: controls,
-                labelFrames: frames, pixelWidth: 700
+                labelFrames: frames, pixelWidth: 700, windowWidthPoints: 700
             )
             guard output.values.contains(false) else {
                 throw NSError(domain: "\(scenario.pane)LabelGeometry", code: 1)
@@ -209,16 +219,26 @@ enum OracleContractTests {
             ("Remember last tab",
              CGRect(x: 0.34, y: 0.5716666666666667, width: 114.0 / 700, height: 16.0 / 600),
              CGRect(x: 0.33428571214285724, y: 0.56999999983333338,
-                    width: 0.17142857142857143, height: 0.026666666666666616))
+                    width: 0.17142857142857143, height: 0.026666666666666616)),
+            ("Notch animation",
+             CGRect(x: 0.34, y: 0.27166666666666667, width: 100.0 / 700, height: 16.0 / 600),
+             CGRect(x: 0.3342857123928572, y: 0.2666666665416667,
+                    width: 0.1514285714285714, height: 0.029999999999999916)),
+            ("Notch height on non-notch displays",
+             CGRect(x: 0.34, y: 0.6141666666666666, width: 217.0 / 700, height: 16.0 / 600),
+             CGRect(x: 0.3342857103214287, y: 0.609999999875,
+                    width: 0.3171428571428571, height: 0.030000000000000027))
         ]
         var count = 0
         for (label, frame, pixels) in cases {
             func check(_ name: String, _ text: String, _ box: CGRect, expected: Bool,
-                       present: Bool = true, frames: [String: CGRect]? = nil, width: Int = 700) throws {
+                       present: Bool = true, frames: [String: CGRect]? = nil, width: Int = 700,
+                       windowWidthPoints: CGFloat = 700) throws {
                 let output = SettingsRemovalOutputOracle.evaluate(
                     [Observation(text: text, frame: box)], scenario: scenario, contentFrame: content,
                     controls: [label: present, scenario.absenceKey: false],
-                    labelFrames: frames ?? [label: frame], pixelWidth: width
+                    labelFrames: frames ?? [label: frame], pixelWidth: width,
+                    windowWidthPoints: windowWidthPoints
                 )
                 guard output[label] == expected, output[scenario.absenceKey] == false, output.count == 13 else {
                     throw NSError(domain: "GeneralNativeLabelGeometry", code: 1,
@@ -226,35 +246,93 @@ enum OracleContractTests {
                 }
                 count += 1
             }
-            try check("actual guest OCR and AXValue", label, pixels, expected: true)
-            try check("missing native label", label, pixels, expected: false, present: false)
-            try check("missing native frame", label, pixels, expected: false, frames: [:])
-            try check("missing pixels", "", pixels, expected: false)
-            try check("near text", label + "x", pixels, expected: false)
-            try check("wrong row", label, pixels.offsetBy(dx: 0, dy: -0.05), expected: false)
-            try check("wrong right-hand label", label, pixels.offsetBy(dx: 0.3, dy: 0), expected: false)
-            try check("five pixels left is outside measured allowance", label,
-                      CGRect(x: frame.minX - 5.0 / 700, y: pixels.minY,
-                             width: pixels.width, height: pixels.height), expected: false)
-            try check("no pixel dimensions", label, pixels, expected: false, width: 0)
-            try check("same fraction is eight pixels at double resolution", label, pixels, expected: false, width: 1400)
-            try check("clipped label frame", label, pixels, expected: false,
-                      frames: [label: frame.offsetBy(dx: 0, dy: 1)])
+            try check("recorded 1x guest OCR and AXValue", label, pixels, expected: true)
+            for scale in [1, 2, 3, 4] {
+                let width = 700 * scale
+                try check("synthetic \(scale)x four-point overhang", label, pixels, expected: true, width: width)
+                try check("missing native label at \(scale)x", label, pixels,
+                          expected: false, present: false, width: width)
+                try check("missing native frame at \(scale)x", label, pixels,
+                          expected: false, frames: [:], width: width)
+                try check("missing pixels at \(scale)x", "", pixels, expected: false, width: width)
+                try check("near text at \(scale)x", label + "x", pixels, expected: false, width: width)
+                try check("wrong row at \(scale)x", label, pixels.offsetBy(dx: 0, dy: -0.05),
+                          expected: false, width: width)
+                try check("wrong right-hand label at \(scale)x", label,
+                          CGRect(x: frame.maxX + 0.006, y: pixels.minY,
+                                 width: pixels.width, height: pixels.height), expected: false, width: width)
+                for (extraPixels, expected) in [(0.0, true), (0.49, true), (0.51, false)] {
+                    let leadingPoints = 4 + extraPixels / Double(scale)
+                    try check("four-point pixel-snap boundary +\(extraPixels)px at \(scale)x", label,
+                              CGRect(x: frame.minX - leadingPoints / 700, y: pixels.minY,
+                                     width: pixels.width, height: pixels.height), expected: expected, width: width)
+                }
+                try check("five points is outside allowance at \(scale)x", label,
+                          CGRect(x: frame.minX - 5.0 / 700, y: pixels.minY,
+                                 width: pixels.width, height: pixels.height), expected: false, width: width)
+                try check("clipped label frame at \(scale)x", label, pixels, expected: false,
+                          frames: [label: frame.offsetBy(dx: 0, dy: 1)], width: width)
+                try check("clipped OCR box at \(scale)x", label,
+                          CGRect(x: content.minX - 0.001, y: pixels.minY,
+                                 width: pixels.width, height: pixels.height), expected: false, width: width)
+                try check("vertical allowance just inside at \(scale)x", label,
+                          CGRect(x: pixels.minX, y: frame.maxY + 0.0049 - pixels.height / 2,
+                                 width: pixels.width, height: pixels.height), expected: true, width: width)
+                try check("vertical allowance just outside at \(scale)x", label,
+                          CGRect(x: pixels.minX, y: frame.maxY + 0.0051 - pixels.height / 2,
+                                 width: pixels.width, height: pixels.height), expected: false, width: width)
+            }
+            for width in [-1, 0, 699, 2801] {
+                try check("invalid capture pixel width \(width)", label, pixels, expected: false, width: width)
+            }
+            for points: CGFloat in [0, -1, .nan, .infinity, -.infinity] {
+                try check("invalid window point width \(points)", label, pixels,
+                          expected: false, windowWidthPoints: points)
+            }
         }
-        for (scenario, label) in [
-            (SettingsRemovalScenario.general, "Show menu bar icon"),
-            (.notifications, "From all apps")
-        ] {
-            let frame = cases[0].1
+        let frame = cases[0].1
+        for label in scenario.retainedLabels {
+            for points: CGFloat in [700, 900, 1024] {
+                for scale: CGFloat in [1, 1.25, 1.5, 2, 3, 4] {
+                    let width = Int(points * scale)
+                    for phase: CGFloat in [0, 0.25, 0.5, 0.75] {
+                        let native = CGRect(x: 0.4 + phase / points, y: 0.5,
+                                            width: 120 / points, height: 0.03)
+                        for leading: CGFloat in [4, 5] {
+                            let box = native.offsetBy(dx: -leading / points, dy: 0)
+                            for text in [label, label + "x", "x" + label] {
+                                let output = SettingsRemovalOutputOracle.evaluate(
+                                    [Observation(text: text, frame: box)], scenario: scenario,
+                                    contentFrame: content, controls: [label: true, scenario.absenceKey: true],
+                                    labelFrames: [label: native], pixelWidth: width, windowWidthPoints: points
+                                )
+                                guard output[label] == (leading == 4 && text == label) else {
+                                    throw NSError(domain: "CommonGeneralLeadingBound", code: 1, userInfo: [
+                                        NSLocalizedDescriptionKey:
+                                            "\(label), \(points)pt, \(scale)x, phase \(phase), leading \(leading)pt, \(text): \(output)"
+                                    ])
+                                }
+                                count += 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for leading in [3.0, 4.0] {
             let output = SettingsRemovalOutputOracle.evaluate(
-                [Observation(text: label, frame: cases[0].2)], scenario: scenario,
-                contentFrame: content, controls: [label: true, scenario.absenceKey: true],
-                labelFrames: [label: frame], pixelWidth: 700
+                [Observation(text: "From all apps",
+                             frame: frame.offsetBy(dx: -leading / 700, dy: 0))],
+                scenario: .notifications, contentFrame: content,
+                controls: ["From all apps": true, "suggestionControlAbsent": true],
+                labelFrames: ["From all apps": frame], pixelWidth: 700, windowWidthPoints: 700
             )
-            guard output[label] == false else { throw NSError(domain: "UnchangedLabelAlignment", code: 1) }
+            guard output["From all apps"] == (leading == 3) else {
+                throw NSError(domain: "UnchangedNotificationsAlignment", code: 1)
+            }
             count += 1
         }
-        print("\(scenario.rawValue) measured native label geometry: \(count) cases passed.")
+        print("\(scenario.rawValue) recorded 1x and synthetic DPI geometry: \(count) cases passed.")
     }
 
     private static func checkAppearance() throws {

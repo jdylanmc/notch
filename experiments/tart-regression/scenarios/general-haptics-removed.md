@@ -77,14 +77,23 @@ left edge, four pixels before the native label frame: its existing normalized
 0.005 alignment allowance is only 3.5 pixels in the actual 700x600 capture.
 Vertical midpoints aligned. Local bound screenshots show both exact labels.
 
-The fixed General descriptor permits **four leading OCR pixels for only these
+That remediation's General descriptor permitted **four leading OCR pixels for only these
 two labels**, using actual capture width and nearest integer pixel edges to
 remove Vision's subpixel serialization noise. Typed unique static-text lookup,
 unaltered native label frames, full viewport containment, vertical alignment
 and exact same-row text remain required. Five-pixel displacement, wrong rows,
 missing labels/frames/pixels and near text still fail. No global OCR allowance,
 checkbox fallback, scroll/frame float tolerance or missing-output BLOCKED gate
-was added; Notifications and the other General labels keep their prior policy.
+was added; Notifications and the other General labels kept their prior policy.
+The later [compact remediation 2/5](general-compact-mode-removed.md#fresh-remediation-25-offline-general-alignment-2026-10-02)
+supersedes only that two-label whitelist after measuring the same overhang on
+two more labels. Its point-unit follow-up bounds all twelve current General labels
+to four native points, pixel-snapped using the actual capture/window-width ratio.
+The recorded evidence here is 1x: four pixels equal four points. Synthetic
+higher-scale checks are not new native evidence; this does not revise these
+historical results or grant signoff.
+**All historical failed receipts are immutable**, including the original
+independent haptic report and author diagnosis/development failures.
 
 Current fixture measurements: 492x548-point form, 353-point endpoint translation,
 195-point overlap (**131 points above the 64-point minimum**). The owner-set

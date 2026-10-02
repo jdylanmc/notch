@@ -66,10 +66,6 @@ enum SettingsRemovalScenario: String {
         case .compactMode: return ["compact mode", "shows a smaller opened notch", "no tabs, calendar or mirror"]
         }
     }
-    var leadingOCRPaddingPixels: [String: Int] {
-        // Guest Vision boxes begin four pixels before these verified static-text AXValue frames.
-        pane == "General" ? ["Launch at login": 4, "Remember last tab": 4] : [:]
-    }
 }
 
 struct SettingsRemovalOutputOracle {
@@ -79,7 +75,8 @@ struct SettingsRemovalOutputOracle {
         contentFrame: CGRect,
         controls: [String: Bool],
         labelFrames: [String: CGRect],
-        pixelWidth: Int
+        pixelWidth: Int,
+        windowWidthPoints: CGFloat
     ) -> [String: Bool] {
         let content = observations.filter {
             !$0.frame.isEmpty && contentFrame.contains($0.frame)
@@ -93,15 +90,20 @@ struct SettingsRemovalOutputOracle {
             let aligned = content.filter {
                 let anchor = CGPoint(x: $0.frame.minX, y: $0.frame.midY)
                 let alignment = frame.insetBy(dx: -0.005, dy: -0.005)
-                if alignment.contains(anchor) { return true }
-                guard pixelWidth > 0, let padding = scenario.leadingOCRPaddingPixels[label],
-                      anchor.x < frame.minX, anchor.y >= alignment.minY, anchor.y <= alignment.maxY else {
-                    return false
+                if scenario.pane == "General", anchor.x < frame.minX {
+                    guard pixelWidth > 0, windowWidthPoints.isFinite, windowWidthPoints > 0,
+                          anchor.y >= alignment.minY, anchor.y <= alignment.maxY else {
+                        return false
+                    }
+                    let pixelsPerPoint = CGFloat(pixelWidth) / windowWidthPoints
+                    guard (1...4).contains(pixelsPerPoint) else { return false }
+                    // The recorded 1x overhang is four native points. Snap both distances in pixels,
+                    // not absolute edges, so fractional scale/edge phase cannot change the allowance.
+                    let leadingPixels = ((frame.minX - anchor.x) * CGFloat(pixelWidth)).rounded()
+                    let maximumLeadingPixels = (4 * pixelsPerPoint).rounded()
+                    return leadingPixels >= 0 && leadingPixels <= maximumLeadingPixels
                 }
-                // Vision's normalized coordinates have subpixel serialization noise; compare pixel edges.
-                let leadingPixels = (frame.minX * CGFloat(pixelWidth)).rounded()
-                    - (anchor.x * CGFloat(pixelWidth)).rounded()
-                return leadingPixels >= 0 && leadingPixels <= CGFloat(padding)
+                return alignment.contains(anchor)
             }
             return (label, aligned.contains {
                 let row = AboutOutputOracle.rowText(anchor: $0, observations: content)

@@ -2,9 +2,10 @@
 
 Ledger: **CMP-REMOVE / CMP-CONTRACT / CMP-NATIVE**. Initial author-only work in
 `chore/remove-compact-mode`, local-stack base
-`30c85008d7ef817344ccc51a742b21da7ef4bf93`. That snapshot is historical;
-the fresh remediation below remains uncommitted against merged parent
-`229721a820f98d16f87aa226c334ebd0190b8ba3`.
+`30c85008d7ef817344ccc51a742b21da7ef4bf93`. That snapshot and remediation 1/5
+against merged parent `229721a820f98d16f87aa226c334ebd0190b8ba3` are historical.
+Current remediation 2/5 is uncommitted against
+`cbd856a3513aa24aac96c06cbc0813fe9d14f4de`, limited to harness/contracts/docs.
 The owner selected the full panel instead of the smaller music-only mode.
 No gesture, lock-screen, native on-screen display, notification reply, permission,
 identity, data-reset or signing changes are authorized.
@@ -58,8 +59,10 @@ Use unchanged `generalCaptureVersion: 1`, exact run/test/scenario/candidate
 hash/PID/native-window/pane binding, stable repeated endpoint geometry, no
 clipped top/bottom, uniform translation and at least 64-point overlap.
 Presence combines with OR; absence with AND. The measured four-leading-pixel
-allowance remains exclusive to Launch at login and Remember last tab, with
-unchanged native frames, vertical alignment and exact text. Wrong/missing
+allowance now applies uniformly to all twelve General labels, with
+unchanged native frames, vertical alignment and exact label-token/same-row text.
+It compares rounded pixel edges, not an expanding normalized tolerance or a
+label whitelist; see remediation 2/5 below. Wrong/missing
 output after valid setup is **FAIL / rendered_output_mismatch**; incomplete
 identity, coverage or restoration is **BLOCKED**, never absence proof.
 
@@ -231,3 +234,182 @@ Only the two source/test files and two scenario documents changed. No VM,
 host UI, separate signing, remote, commit, agent, Keychain or `local.env`
 operations occurred. No application XCTest, helper, lint, full CI or native
 Settings/panel gates ran; those remain parent-owned.
+
+## Fresh remediation 2/5: offline General alignment (2026-10-02)
+
+**CMP-NATIVE / CMP-CONTRACT only.** App source/build identity remains
+`cbd856a3513aa24aac96c06cbc0813fe9d14f4de`, tree
+`ea9c7194fe2d42c06ddef91bc62bca0b49a46b4c`, executable SHA-256
+`97f172349c106d6425b36bd4a783b35ac77cf6beac55b3add63a8537ac75583e`.
+The changed oracle is uncommitted test source, not a rebuilt app candidate.
+The initial remediation-2/5 oracle's SHA-256, before the point-unit follow-up, was
+`f8e218f263cac73981a781ddd6b57983887e830303f426629385c29043f16f8a`;
+its historical test-source manifest is in `source-identity.json` below.
+
+### Immutable independent failure
+
+The primary checkout's
+`.local/vm-regression/evidence/compact-new-independent-cbd856a/report.json`
+has SHA-256
+`91ca8bf95bed747af04faf4c5d79302896086f964c144c6e75c83f27324d8038`.
+Its complete eleven-case registry across closed/General/About ran **33 cases**:
+raw **9 PASS / 15 FAIL / 9 BLOCKED**, interpreted **24 PASS / 9 FAIL**.
+All nine General cases have eleven retained labels true, only **Notch animation**
+false, and their respective absence assertion true. The three compact cases
+all have `compactModeControlAbsent=true`. No case was skipped or retried.
+
+**All prior failed receipts are immutable**, including this report, its raw
+receipts, images and framework counts, the prior OLD/NEW comparison evidence,
+the haptic diagnosis and remediation-1 failed builds. Do not overwrite, relabel
+or substitute an offline output for any of them. The original native suite
+remains **FAIL**, overall report **BLOCKED**.
+
+### Measured cause, before editing the oracle
+
+Read all nine original General receipts and eighteen original, hash-bound
+700x600 PNGs (four distinct PNG hashes). The capture index bindings exactly
+match each receipt, including candidate/run/test/window/PID/pane/frame identity.
+Offline Vision used the native request settings: accurate, `en-US`, language
+correction disabled, revision 3; host macOS 26.7 (25G229). Its existing-oracle
+output reproduced **all eighteen per-capture dictionaries exactly**, not just
+the combined failure. All four distinct original images were also viewed.
+The host Vision result is replay evidence, not a guest rerun.
+
+| Bottom label, all nine cases | Native normalized frame `(x, y, width, height)` | Vision normalized box `(x, y, width, height)` | Exact Vision row |
+| --- | --- | --- | --- |
+| Notch animation | `(0.34, 0.27166666666666667, 0.14285714285714285, 0.02666666666666667)` | `(0.3342857123928572, 0.2666666665416667, 0.1514285714285714, 0.029999999999999916)` | `Notch animation` |
+| Notch height on non-notch displays | `(0.34, 0.6141666666666666, 0.31, 0.02666666666666667)` | `(0.3342857103214287, 0.609999999875, 0.3171428571428571, 0.030000000000000027)` | `Notch height on non-notch displays Match menu bar height` |
+
+The recorded window is **700x600 native points and 700x600 pixels: 1x**, not
+2x runtime evidence. Both OCR anchors start at **x=234 pixels** versus native
+**x=238 points (238 pixels at 1x)**; raw
+displacements are 4.000001325 and 4.000002775 pixels, respectively. Both vertical
+midpoints align and both boxes and native frames fit fully inside the viewport.
+The animation label is one correctly recognized observation/row, not a
+misrecognized word or split-row failure. The sizing label is also recognized
+exactly; its row contains the legitimate right-column value. This establishes
+**leading OCR-box overhang relative to native label geometry**, not missing
+product text or a claim about the glyphs' exact ink bounds.
+
+The ordinary normalized `0.005` left allowance covered only **3.5 pixels** at
+700 pixels wide. Neither label was in the earlier Launch at login/Remember last
+tab four-pixel whitelist. The sizing label's identical bottom failure had been
+masked by its passing top endpoint; animation exists only at the bottom.
+This additional measured label rules out a Notch-animation-specific workaround.
+
+### Changed bounds and adversarial contracts
+
+`SettingsRemovalOutputOracle.swift` removes the two-string map. The initial
+remediation used a universal four-pixel limit, which incorrectly rejected the
+same four-point overhang at higher capture scales. The point-unit follow-up
+corrects that bound for every General retained label whose OCR anchor starts
+left of its native frame: **four native points, snapped to capture pixels**.
+The standalone harness's single production call passes `windowFrame.width`
+alongside `image.width`. The oracle derives `pixelsPerPoint = pixelWidth /
+windowWidthPoints`, requiring finite positive dimensions and the existing
+capture contract's 1...4 ratio. It compares the rounded displacement in pixels
+to rounded `4 * pixelsPerPoint`; rounding distances rather than absolute edges
+avoids dependence on fractional native-edge phase. No hardcoded window width,
+per-label whitelist or new receipt field/attestation is used. Existing immutable
+capture receipts already bind window frame and image dimensions.
+
+That test runs before the ordinary normalized alignment fallback, so neither
+a larger window nor a denser image silently changes the native-point allowance.
+At 1x/2x/3x/4x, four points correspond to 4/8/12/16 pixels. Tests accept another
+0.49 pixel and reject another 0.51 pixel at those integer scales; exact four
+points pass and exact five points fail, including fractional-scale fixtures.
+This is bounded pixel quantization of a four-point calibration, not a larger
+arbitrary float tolerance or a claim that higher-scale native OCR was measured.
+
+Native frames/unique static-text presence, full viewport containment, vertical
+`0.005` tolerance, ordinary right-edge alignment, exact label-token matching and
+same-row fragment assembly remain unchanged. A space-delimited right-column
+value can still follow a label; a suffixed character cannot impersonate it.
+Notifications, About, Appearance, forbidden-copy matching, two-endpoint
+OR-presence/AND-absence and capture/restoration schema are unchanged.
+
+Contracts include the exact 1x animation and sizing measurements above, the two
+earlier measured labels, synthetic 4/5-point and pixel-rounding boundaries,
+wrong rows/right-hand positions, vertical just-inside/outside bounds, clipped
+pixels/native frames and missing text/control/frame/dimensions at 1x/2x/3x/4x.
+All twelve General labels additionally cover 700/900/1024-point windows at
+1x/1.25x/1.5x/2x/3x/4x with fractional native-edge positions and exact/prefixed/
+suffixed text. Existing split-row, old-control and footer-only controls remain.
+Each single missing retained label leaves other labels/absence true but fails
+output; Python verifies all **144** General scenario/label/integer-scale
+omissions stay **FAIL / rendered_output_mismatch**, not BLOCKED or PASS.
+Falsely claiming the missing label passed remains BLOCKED. Synthetic receipt
+fixtures also check existing window/pixel bindings at supported and rejected
+scales, without changing the capture schema. All eleven registrations, five
+controls and twelve General names are unchanged.
+
+### Actual offline results and remaining gates
+
+The initial remediation-2/5 outputs, **before the point-unit follow-up**, are task-owned under
+`.build/cmp-fresh-remediation2-5/`; original evidence is read-only. Swift/Xcode
+used `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, with home,
+temporary files and module caches beneath that output directory.
+
+| Command / evidence | Actual result |
+| --- | --- |
+| `python3 -B -m unittest discover -v -s scripts/tests -p 'test_regression*.py'` | **74 tests passed**, no failures/errors/skips; includes all 36 single-label omission subcases. |
+| `bash experiments/tart-regression/test-oracle.sh "$PWD/.build/cmp-fresh-remediation2-5/oracle-final"` | **1,302 cases passed**: About 11, Appearance 52, Notifications 37, haptics 104, panel swipes 116, compact removal 112, plus 290 geometry cases for each General descriptor. |
+| `xcodebuild -quiet build-for-testing -project experiments/tart-regression/GuestRegressionProbe/GuestRegressionProbe.xcodeproj -scheme GuestRegressionProbe -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath "$PWD/.build/cmp-fresh-remediation2-5/DerivedData" -resultBundlePath "$PWD/.build/cmp-fresh-remediation2-5/build.xcresult" -disableAutomaticPackageResolution -skipPackageUpdates CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO` | **Exit 0**, standalone unsigned harness compiled. No XCTest execution, app build, signing or launch. |
+| Before/after offline Vision + oracle on the same eighteen original PNGs | **9/9 combined General outputs now contain all twelve retained labels plus absence true**. Exactly eighteen endpoint booleans change: animation in nine bottoms and non-notch sizing in nine bottoms. All recognized observations and every other result remain identical. This is not a new 33-case native PASS. |
+| Read-only preservation | All **33** original receipts and **36** PNG hashes match; **29** replay input hashes unchanged. All **245** tracked product/resource/project paths match HEAD. Current host app's **141** inventory entries match the retained host/guest before/after inventories, including bytes, modes and symlinks; all **13** architecture signature records match. No fresh signing-tool invocation or metadata exception. |
+
+The first expanded oracle run caught a test-fixture error: a fixed `+0.3`
+horizontal displacement still lay inside the wider sizing-label native frame.
+The negative fixture now starts beyond that frame's actual right edge; the
+oracle's right bound was not loosened. Its failed log is retained as
+`oracle.log`; the passing run is `oracle-final.log`. Other retained outputs:
+`Replay.swift`, `replay-{before,after}{,.json,.log}`, `python{,-final}.log`,
+`build.log`, `build.xcresult`, `preservation.json` and `source-identity.json`.
+This source-only change touches the oracle, Swift/Python contracts, this
+scenario, the historical haptic clarification and the experiment README.
+
+**Fresh independent NEW verification with the changed harness is still pending.**
+This author-only replay neither verifies full-panel output nor completes any
+other missing native coverage or OLD qualification. The separate NEW root
+`com.apple.macl` addition (**72 zero bytes**) and root ctime change remain
+**BLOCKED, unwaived and untouched**, with cause not established. Prior integrity
+blocks remain unchanged. No VM, host UI, remote, agent, credential, Keychain,
+product/signing change or commit occurred. No merge clearance is claimed.
+
+### Point-unit follow-up validation (2026-10-02)
+
+The preceding four-point rule corrects the initial uncommitted remediation's
+pixel/point inconsistency; it is not a feature change or a native PASS.
+This follow-up used only the assigned worktree. All prior uncommitted work is
+preserved, with the initial patch and tracked-file hashes retained under
+`.build/cmp-oracle-point-units/`. The only additional harness change is the
+single `windowWidthPoints: windowFrame.width` argument at the existing oracle
+call. Capture receipts/schema, registrations, restoration and app source stay
+unchanged; no opaque attestation is added.
+
+Commands ran from this worktree. Swift/Xcode used
+`DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, with home,
+temporary files and module caches under the task-owned output directory.
+
+| Command / check | Fresh result |
+| --- | --- |
+| `python3 -B -m unittest discover -v -s scripts/tests -p 'test_regression*.py'` | **75 passed**, no failures/errors/skips. Includes 144 missing-label cases at 1x/2x/3x/4x and 96 synthetic scenario/window/scale combinations, with unsupported scales still BLOCKED. |
+| `bash experiments/tart-regression/test-oracle.sh "$PWD/.build/cmp-oracle-point-units/oracle"` | **16,830 oracle contract cases passed**: About 11, Appearance 52, Notifications 37, haptics 104, panel swipes 116, compact removal 112, plus 5,466 recorded-1x/synthetic-DPI geometry cases per General descriptor. Four-point offsets pass and five-point offsets fail across all twelve labels, three window widths, six scales and four native-edge phases. |
+| `xcodebuild -quiet build-for-testing -project experiments/tart-regression/GuestRegressionProbe/GuestRegressionProbe.xcodeproj -scheme GuestRegressionProbe -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath "$PWD/.build/cmp-oracle-point-units/DerivedData" -resultBundlePath "$PWD/.build/cmp-oracle-point-units/build.xcresult" -disableAutomaticPackageResolution -skipPackageUpdates CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO` | **Exit 0**, standalone harness compiled unsigned. No XCTest execution, app build, signing or launch. |
+| Tracked-file comparison / `git diff --check` | Only the seven scoped oracle/harness/test/doc files differ from the follow-up's starting snapshot. All **574** other tracked files are unchanged, including **243** app/test/resource/project files, other pane oracle implementations, capture contract and eleven-case registry. |
+
+The initial Python run correctly rejected 36 malformed wider-window fixtures:
+their label frames retained the old window's normalized x/width. Only those
+synthetic coordinates were renormalized to preserve the same native-point
+geometry; the viewport gate was not weakened. The initial `python.log` remains,
+alongside passing `python-final.log`, `oracle.log`, `build.log`,
+`build.xcresult`, `prior-work.patch`, `tracked-before.json`, `preservation.json`
+and `source-final.patch`.
+
+**Evidence remains the recorded 1x measurements, not a fresh native replay.**
+Synthetic 2x/3x/4x and fractional-scale inputs prove oracle unit consistency
+only. Original failed receipts remain immutable and native verification remains
+pending. The separate NEW root `com.apple.macl` addition and ctime change remain
+**BLOCKED, unwaived and untouched**. No VM, signing, app/source operation outside
+this worktree, remote, commit or agent was used. All current changes remain
+uncommitted; no actual native PASS or merge clearance is claimed.

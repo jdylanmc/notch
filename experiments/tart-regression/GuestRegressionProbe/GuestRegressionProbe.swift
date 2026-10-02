@@ -381,7 +381,8 @@ final class GuestRegressionProbe: XCTestCase {
             try require(!observations.isEmpty, "ocr_unavailable")
             let observed = SettingsRemovalOutputOracle.evaluate(
                 observations, scenario: scenario, contentFrame: normalized(formFrame),
-                controls: controls, labelFrames: labelFrames, pixelWidth: image.width
+                controls: controls, labelFrames: labelFrames, pixelWidth: image.width,
+                windowWidthPoints: windowFrame.width
             )
             let name = "guest-public-\(prefix)-\(runID)-\(role)"
             let hash = SHA256.hash(data: capture.pngRepresentation).map { String(format: "%02x", $0) }.joined()

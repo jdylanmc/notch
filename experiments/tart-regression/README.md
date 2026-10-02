@@ -207,10 +207,19 @@ Retained automatic system attachments are disabled.
   unchanged; General additionally records and verifies a pre-existing General
   form's scroll position through teardown, including failed assertions.
   General's Launch at login and Remember last tab were empirically confirmed as
-  static-text AXValue, not checkbox titles. Their measured four-pixel leading
-  Vision-box allowance is label-specific; native frames, exact text, vertical
-  alignment and other labels' policies remain unchanged. See the
-  [diagnosis and failure-boundary evidence](scenarios/general-haptics-removed.md#measured-native-label-remediation).
+  static-text AXValue, not checkbox titles. Retained compact-candidate images
+  also measure the same four-native-point leading Vision-box overhang for Notch
+  animation and Notch height on non-notch displays: four pixels in the recorded
+  700x600-point, 700x600-pixel (1x) window. All twelve General labels share that
+  four-point calibration. The oracle uses actual `pixelWidth / windowFrame.width`
+  to round the displacement and four-point limit to pixels, not a universal
+  four-pixel cap or a per-label whitelist. Synthetic 1x/2x/3x/4x and fractional-scale
+  tests establish unit consistency, not additional native/Retina runtime evidence.
+  Five-point offsets fail at every tested scale. Native frames, exact label-token/same-row text,
+  vertical/right-edge alignment, viewport containment and Notifications policy
+  remain unchanged. See the [offline diagnosis and boundary evidence](scenarios/general-compact-mode-removed.md#fresh-remediation-25-offline-general-alignment-2026-10-02).
+  Historical failed receipts remain immutable. Offline replay is not a new
+  native result, an independent verification pass or integrity-block clearance.
   The prior General master-label expectation deliberately follows the scoped
   panel-swipe removal. Compact mode's separate owner-selected deletion removes
   only that positive expectation; the other twelve labels remain.

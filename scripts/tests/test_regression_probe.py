@@ -153,7 +153,7 @@ class RegressionSuiteContractTests(unittest.TestCase):
         return {"totalTestCount": 1, "passedTests": int(passed), "failedTests": int(not passed),
                 "skippedTests": 0, "expectedFailures": 0}
 
-    def notifications_receipt(self):
+    def notifications_receipt(self, scale=1):
         case = next(c for c in SUITE.load_registry(ROOT / "experiments/tart-regression/suite.json")
                     if c["id"] == "notifications-ai-replies-removed")
         observations = dict.fromkeys(["Show notifications in the notch", "From all apps", "suggestionControlAbsent"], True)
@@ -182,7 +182,7 @@ class RegressionSuiteContractTests(unittest.TestCase):
                 "observedPublicText": dict(observations) if index == 0 else {
                     "Show notifications in the notch": False, "From all apps": False, "suggestionControlAbsent": True,
                 },
-                "pixelWidth": 700, "pixelHeight": 600,
+                "pixelWidth": int(700 * scale), "pixelHeight": int(600 * scale),
             })
         return case, receipt
 
@@ -201,8 +201,8 @@ class RegressionSuiteContractTests(unittest.TestCase):
         ])
         self.assertEqual(len(cases), 11)
 
-    def general_receipt(self, scenario="general-haptics-removed"):
-        _, receipt = self.notifications_receipt()
+    def general_receipt(self, scenario="general-haptics-removed", scale=1):
+        _, receipt = self.notifications_receipt(scale)
         case = next(c for c in SUITE.load_registry(ROOT / "experiments/tart-regression/suite.json")
                     if c["id"] == scenario)
         descriptor = SUITE.SCENARIOS[case["scenario"]]
@@ -411,20 +411,44 @@ class RegressionSuiteContractTests(unittest.TestCase):
             self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64)[0], "FAIL")
 
     def test_general_missing_measured_labels_remains_output_failure_not_block(self):
-        case, receipt = self.general_receipt()
-        for label in ["Launch at login", "Remember last tab"]:
-            failed = copy.deepcopy(receipt)
-            failed.update(verdict="FAIL", reason="rendered_output_mismatch", suiteExit=10, xcodeExit=65)
-            failed["observedPublicText"][label] = False
-            for capture in failed["captures"]:
-                capture["labelFrames"].pop(label, None)
-                capture["observedPublicText"][label] = False
-            self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64),
-                             ("FAIL", "rendered_output_mismatch"))
-            self.assertEqual(PROBE.settings_captures(failed), failed["captures"])
-            lying = copy.deepcopy(failed)
-            lying["observedPublicText"][label] = True
-            self.assertEqual(SUITE.evaluate(case, lying, self.framework(False), 10, "a" * 64)[0], "BLOCKED")
+        for scenario in ["general-haptics-removed", "general-panel-swipes-removed", "general-compact-mode-removed"]:
+            for scale in [1, 2, 3, 4]:
+                case, receipt = self.general_receipt(scenario, scale)
+                for label in SUITE.SCENARIOS[scenario]["labels"]:
+                    with self.subTest(scenario=scenario, scale=scale, missing=label):
+                        failed = copy.deepcopy(receipt)
+                        failed.update(verdict="FAIL", reason="rendered_output_mismatch", suiteExit=10, xcodeExit=65)
+                        failed["observedPublicText"][label] = False
+                        for capture in failed["captures"]:
+                            capture["labelFrames"].pop(label, None)
+                            capture["observedPublicText"][label] = False
+                        self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64),
+                                         ("FAIL", "rendered_output_mismatch"))
+                        self.assertEqual(PROBE.settings_captures(failed), failed["captures"])
+                        lying = copy.deepcopy(failed)
+                        lying["observedPublicText"][label] = True
+                        self.assertEqual(SUITE.evaluate(case, lying, self.framework(False), 10, "a" * 64)[0], "BLOCKED")
+
+    def test_capture_scale_uses_existing_frame_and_dimensions_without_new_receipt_fields(self):
+        """Synthetic geometry contracts, not additional native capture evidence."""
+        for scenario in ["notifications-ai-replies-removed", "general-haptics-removed",
+                         "general-panel-swipes-removed", "general-compact-mode-removed"]:
+            for points in [700, 900, 1024]:
+                for scale in [0.75, 1, 1.25, 1.5, 2, 3, 4, 4.25]:
+                    case, receipt = (self.notifications_receipt(scale) if scenario.startswith("notifications")
+                                     else self.general_receipt(scenario, scale))
+                    for capture in receipt["captures"]:
+                        normalization = capture["windowFrame"]["width"] / points
+                        for frame in capture["labelFrames"].values():
+                            frame["x"] *= normalization
+                            frame["width"] *= normalization
+                        capture["windowFrame"]["width"] = points
+                        capture["pixelWidth"] = int(points * scale)
+                    with self.subTest(scenario=scenario, points=points, scale=scale):
+                        expected = "PASS" if 1 <= scale <= 4 else "BLOCKED"
+                        self.assertEqual(SUITE.evaluate(case, receipt, self.framework(), 0, "a" * 64)[0], expected)
+                        if expected == "PASS":
+                            self.assertEqual(PROBE.settings_captures(receipt), receipt["captures"])
 
     def test_notifications_requires_complete_consistent_output_and_viewport_proof(self):
         case, receipt = self.notifications_receipt()
@@ -1297,18 +1321,36 @@ class HapticRemovalSourceContractTests(unittest.TestCase):
         self.assertIn("path = SettingsRemovalOutputOracle.swift;", project)
         self.assertIn("dependencies = ();", project)
 
-    def test_measured_general_labels_keep_static_text_query_and_scoped_pixel_allowance(self):
+    def test_measured_general_labels_keep_static_text_query_and_dpi_invariant_point_allowance(self):
         root = ROOT / "experiments/tart-regression/GuestRegressionProbe"
         oracle = (root / "SettingsRemovalOutputOracle.swift").read_text()
-        self.assertIn('pane == "General" ? ["Launch at login": 4, "Remember last tab": 4] : [:]', oracle)
-        self.assertIn("leadingPixels <= CGFloat(padding)", oracle)
+        self.assertIn('if scenario.pane == "General", anchor.x < frame.minX', oracle)
+        self.assertIn("windowWidthPoints: CGFloat", oracle)
+        self.assertIn("windowWidthPoints.isFinite, windowWidthPoints > 0", oracle)
+        self.assertIn("let pixelsPerPoint = CGFloat(pixelWidth) / windowWidthPoints", oracle)
+        self.assertIn("guard (1...4).contains(pixelsPerPoint)", oracle)
+        self.assertIn("((frame.minX - anchor.x) * CGFloat(pixelWidth)).rounded()", oracle)
+        self.assertIn("let maximumLeadingPixels = (4 * pixelsPerPoint).rounded()", oracle)
+        self.assertIn("leadingPixels >= 0 && leadingPixels <= maximumLeadingPixels", oracle)
+        self.assertNotIn("700", oracle)
+        self.assertNotIn("leadingOCRPaddingPixels", oracle)
+        self.assertLess(oracle.index('if scenario.pane == "General"'),
+                        oracle.index("return alignment.contains(anchor)"))
+        self.assertIn("anchor.y >= alignment.minY, anchor.y <= alignment.maxY", oracle)
+        self.assertIn('row == label || row.hasPrefix(label + " ")', oracle)
         native = (root / "GuestRegressionProbe.swift").read_text()
         output = native.split("var controls: [String: Bool]", 1)[1].split("let capture =", 1)[0]
         self.assertIn("form.staticTexts.matching(identifier: label)", output)
         self.assertIn("matches.count == 1", output)
         self.assertNotIn("checkBoxes", output)
         self.assertNotIn("descendants(matching: .any)", output)
-        self.assertIn("pixelWidth: image.width", native)
+        self.assertEqual(native.count("SettingsRemovalOutputOracle.evaluate("), 1)
+        call = native.split("SettingsRemovalOutputOracle.evaluate(", 1)[1].split("\n            )", 1)[0]
+        self.assertIn("pixelWidth: image.width", call)
+        self.assertIn("windowWidthPoints: windowFrame.width", call)
+        self.assertIn("let windowFrame = settings.frame", native)
+        self.assertIn('"windowFrame": rect(windowFrame)', native)
+        self.assertIn('"pixelWidth": image.width, "pixelHeight": image.height', native)
 
 
 class AIReplyRemovalSourceContractTests(unittest.TestCase):
