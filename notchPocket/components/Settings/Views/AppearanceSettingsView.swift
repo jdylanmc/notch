@@ -67,15 +67,6 @@ struct AppearanceSettingsView: View {
             } header: {
                 Text("Media")
             }
-            Section {
-                Defaults.Toggle(key: .showNotHumanFace) {
-                    Text("Show cool face animation while inactive")
-                }
-            } header: {
-                HStack {
-                    Text("Additional features")
-                }
-            }
         }
         .accentColor(.effectiveAccent)
         .navigationTitle("Appearance")

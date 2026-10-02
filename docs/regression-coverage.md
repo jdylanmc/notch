@@ -117,13 +117,15 @@ regression preservation, not a new player support commitment.
 Pane inventory comes from [SettingsTab](../notchPocket/components/Settings/SettingsView.swift).
 Only **General** and **About** have current helper navigation. Enumerating a
 control does not mean it has automation or can safely be changed in live data.
-All other pane navigation/restoration is an engineering gap, not a demand for
-routine human clicks. Preference writes need a whole-app fixture profile first.
+The separate guest-only Appearance regression below is authored but still needs
+independent old/new proof; it does not extend the helper. Other pane
+navigation/restoration remains an engineering gap, not a demand for routine
+human clicks. Preference writes need a whole-app fixture profile first.
 
 | Pane / source | Important controls and journeys | Existing evidence / remaining work |
 | --- | --- | --- |
 | [General](../notchPocket/components/Settings/Views/GeneralSettingsView.swift) | Menu icon, launch at login, language/restart, display selection/height, hover, gestures, animation, compact/remembered tabs. | Candidate-specific selection/capture/close evidence above; no preference-toggle coverage. Isolate persistent settings and launch-at-login effects. |
-| [Appearance](../notchPocket/components/Settings/Views/AppearanceSettingsView.swift) | Tab visibility, settings icon, waveform, tinting/lighting, slider color and idle face. | Tab policy only; fixture setting/pixel and audio-availability assertions missing. |
+| [Appearance](../notchPocket/components/Settings/Views/AppearanceSettingsView.swift) | Tab visibility, settings icon, waveform, tinting/lighting and slider color; idle face removed (#50). | [Registered removal scenario](../experiments/tart-regression/scenarios/appearance-idle-face-removed.md): seven retained-label output assertions, face/section absence, structural pane/full-form/header-class proof. Source/oracle contracts and author diagnosis are not signoff: the first independent old-app run blocked before output; fresh independent old/new executable-hash and source-provenance proof remains pending. Preference-toggle/audio behavior is not covered. |
 | [Media](../notchPocket/components/Settings/Views/MediaSettingsView.swift) | Source, live activity, sneak peek, idle timing, lyrics and fallback retry. | Availability-model tests; no pane/controller/provider end-to-end suite. |
 | [Notifications](../notchPocket/components/Settings/Views/NotificationSettingsView.swift) | Enable watching, all-apps/allow-list selection, smart replies and availability. | No settings journey test; real enable can start live capture and must not run in a personal profile. |
 | [Calendar](../notchPocket/components/Settings/Views/CalendarSettingsView.swift) | Visibility, completed/all-day filters, full titles, next event, week start, meeting tap, calendar/reminder lists and denied access. | Meeting-link parsing only; inject service/permission results and prevent real reminder mutations. |

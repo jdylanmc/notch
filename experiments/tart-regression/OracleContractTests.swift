@@ -39,5 +39,76 @@ enum OracleContractTests {
         try check("no version row", [box("Release name", 0.3, 0.8), box("Notch Pocket", 0.75, 0.8),
                                     box("1.2.3", 0.85, 0.2)], version: false, build: false)
         print("About output oracle: \(count) cases passed.")
+        try checkAppearance()
+    }
+
+    private static func checkAppearance() throws {
+        typealias Observation = AboutOutputOracle.Observation
+        let labels = AppearanceOutputOracle.retainedLabels
+        let content = CGRect(x: 0.3, y: 0, width: 0.7, height: 1)
+        let rendered = labels.enumerated().map { index, label in
+            Observation(text: label, frame: CGRect(x: 0.4, y: 0.9 - Double(index) * 0.1, width: 0.5, height: 0.03))
+        }
+        var controls = Dictionary(uniqueKeysWithValues: labels.map { ($0, true) })
+        controls["faceControlAbsent"] = true
+        controls["additionalFeaturesAbsent"] = true
+        var count = 0
+        func check(_ name: String, _ observations: [Observation], _ accessible: [String: Bool], passes: Bool) throws {
+            let result = AppearanceOutputOracle.evaluate(observations, contentFrame: content, controls: accessible)
+            guard result.count == labels.count + 2 && result.values.allSatisfy({ $0 }) == passes else {
+                throw NSError(domain: "AppearanceOracleContractTests", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "\(name): \(result)"])
+            }
+            count += 1
+        }
+        try check("retained controls and pixels", rendered, controls, passes: true)
+        try check("empty pixels cannot prove absence", [], controls, passes: false)
+        try check("missing accessibility cannot prove absence", rendered, [:], passes: false)
+        for label in labels {
+            try check("missing pixel: \(label)", rendered.filter { $0.text != label }, controls, passes: false)
+            var missing = controls
+            missing[label] = false
+            try check("missing control: \(label)", rendered, missing, passes: false)
+        }
+        for removed in ["faceControlAbsent", "additionalFeaturesAbsent"] {
+            var old = controls
+            old[removed] = false
+            try check("old app exposes \(removed) even if OCR misses it", rendered, old, passes: false)
+        }
+        for removed in [AppearanceOutputOracle.faceLabel, "Additional features"] {
+            let extra = Observation(text: removed, frame: CGRect(x: 0.4, y: 0.1, width: 0.5, height: 0.03))
+            try check("old app pixels: \(removed)", rendered + [extra], controls, passes: false)
+        }
+        let sidebarOnly = rendered.map {
+            Observation(text: $0.text, frame: CGRect(x: 0, y: $0.frame.minY, width: 0.2, height: 0.03))
+        }
+        try check("sidebar text is not detail output", sidebarOnly, controls, passes: false)
+        for (index, label) in labels.enumerated() {
+            let original = rendered[index]
+            let words = label.split(separator: " ", maxSplits: 1).map(String.init)
+            let left = Observation(text: words[0],
+                                   frame: CGRect(x: 0.4, y: original.frame.minY, width: 0.1, height: 0.03))
+            let right = Observation(text: words[1],
+                                    frame: CGRect(x: 0.51, y: original.frame.minY, width: 0.3, height: 0.03))
+            let others = rendered.filter { $0.text != label }
+            try check("exact split OCR row: \(label)", others + [left, right], controls, passes: true)
+            let differentRow = Observation(text: words[1],
+                                           frame: CGRect(x: 0.51, y: 0.02, width: 0.3, height: 0.03))
+            try check("fragments on different rows: \(label)", others + [left, differentRow], controls, passes: false)
+            let suffix = Observation(text: label + "x", frame: original.frame)
+            try check("near-match is not exact label: \(label)", others + [suffix], controls, passes: false)
+            let offscreen = Observation(text: label, frame: CGRect(x: 0.4, y: 1.1, width: 0.5, height: 0.03))
+            try check("offscreen text is not visible output: \(label)", others + [offscreen], controls, passes: false)
+        }
+        let splitSection = [
+            Observation(text: "Additional", frame: CGRect(x: 0.4, y: 0.1, width: 0.15, height: 0.03)),
+            Observation(text: "features", frame: CGRect(x: 0.56, y: 0.1, width: 0.15, height: 0.03))
+        ]
+        try check("split removed header is still detected", rendered + splitSection, controls, passes: false)
+        var missingControls = controls
+        missingControls["Colored spectrogram"] = false
+        missingControls["Slider color"] = false
+        try check("former prerequisite controls are output failures", rendered, missingControls, passes: false)
+        print("Appearance output oracle: \(count) cases passed.")
     }
 }

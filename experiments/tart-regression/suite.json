@@ -54,6 +54,15 @@
       "expectedVerdict": "BLOCKED",
       "expectedReason": "native_interaction_aborted",
       "notes": "scenarios/about-version.md"
+    },
+    {
+      "id": "appearance-idle-face-removed",
+      "kind": "regression",
+      "scenario": "appearance-idle-face-removed",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAppearanceWithoutIdleFace",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/appearance-idle-face-removed.md"
     }
   ]
 }

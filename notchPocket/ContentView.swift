@@ -39,8 +39,6 @@ struct ContentView: View {
 
     @Namespace var albumArtNamespace
 
-    @Default(.showNotHumanFace) var showNotHumanFace
-
     // Use standardized animations from StandardAnimations enum
     private let animationSpring = StandardAnimations.interactive
 
@@ -182,11 +180,6 @@ struct ContentView: View {
                     chinWidth += 2 * inlineMusicPeekLabelWidth
                 }
             }
-        } else if !coordinator.expandingView.show && vm.notchState == .closed
-            && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace]
-            && !vm.hideOnClosed
-        {
-            chinWidth += (2 * max(0, displayClosedNotchHeight - 12) + 20)
         }
 
         return chinWidth
@@ -487,8 +480,6 @@ struct ContentView: View {
                                       .frame(alignment: .center)
                               }
                           }
-                      } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
-                          NotchPocketFaceAnimation()
                        } else if showsHeader {
                            // No tab bar over a notification: it's a glance,
                            // not a place to switch between home and shelf —
@@ -640,20 +631,6 @@ struct ContentView: View {
                 .announcement: announcement,
                 .priority: NSAccessibilityPriorityLevel.high.rawValue,
             ]
-        )
-    }
-
-    @ViewBuilder
-    func NotchPocketFaceAnimation() -> some View {
-        HStack {
-            Rectangle()
-                .fill(.black)
-                .frame(width: vm.closedNotchSize.width + 20)
-            let faceScale = min(1.0, displayClosedNotchHeight / 30.0)
-            AnimatedFace(height: 24.0 * faceScale, width: 30.0 * faceScale)
-        }.frame(
-            height: displayClosedNotchHeight,
-            alignment: .center
         )
     }
 

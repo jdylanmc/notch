@@ -1,7 +1,7 @@
 # Source-only installed-app probe
 
 This is the initial **registered installed-app regression suite**, built from the
-XCTest/Vision Tart experiment. It currently covers one application journey and
+XCTest/Vision Tart experiment. It currently covers two application journeys and
 five explicit oracle/restoration controls, not the whole app. See the
 [VM reconstruction recipe](../../docs/agents/vm-regression.md) first.
 
@@ -55,6 +55,11 @@ PY
 
 Candidate selection, provenance and a before/after code-signature check remain
 the operator's responsibility. A valid signature is not a notarization claim.
+For the Appearance old/new comparison, the independent report must record both
+executable hashes and source/build provenance separately; both apps can be
+0.1.0 (272). The available old artifact is the PR97 preview from `4fff039`, not a
+build of the removal branch's base. See the scenario's exact pins and report
+requirements; the minimal launcher manifest alone is insufficient provenance.
 
 ## Exercise the installed app in the guest
 
@@ -135,9 +140,17 @@ Retained automatic system attachments are disabled.
 
 ## Limits
 
-- The example expects an English About UI and the repository's versioned panel
+- The examples expect an English Settings UI and the repository's versioned panel
   and Settings markers, with one guest display and a visible Settings gear.
-- It covers only this journey. New features need their own independent scenarios.
+- It covers About version/build and
+  [Appearance idle-face removal](scenarios/appearance-idle-face-removed.md), not
+  all retained features. New features need their own independent scenarios.
+- Appearance uses typed static-text value lookup, row-scoped sidebar navigation,
+  and structural form mapping. Its single screenshot requires positive full-form
+  fit at both scroll endpoints, plus the same AXLabel/static-text header class
+  for General/Media and the removed section. Missing retained controls are
+  output failures after pane setup, never setup guards. OCR shares About's
+  same-row fragment geometry; this does not authorize offscreen absence claims.
 - Readiness and cleanup are checked, but this remains prototype code, not a
   hardened multi-user execution service or an authorization boundary.
 - User-controlled OS consent, guest idle lock, hardware and application readiness

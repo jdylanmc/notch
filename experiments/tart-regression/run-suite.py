@@ -88,6 +88,23 @@ def evaluate(case, receipt, framework, command_exit, candidate_hash):
         or not re.fullmatch(r"[a-f0-9]{64}", receipt["screenshotSHA256"])
     ):
         return "BLOCKED", "capture_identity_missing"
+    if case["id"] == "appearance-idle-face-removed" and raw in {"PASS", "FAIL"}:
+        expected = {
+            "Always show tabs", "Show settings icon in notch", "Colored spectrogram",
+            "Real-time audio waveform", "Player tinting", "Enable blur effect behind album art",
+            "Slider color", "faceControlAbsent", "additionalFeaturesAbsent",
+        }
+        observed = receipt.get("observedPublicText")
+        discovery = receipt.get("discovery")
+        if (not isinstance(observed, dict) or set(observed) != expected
+                or any(type(value) is not bool for value in observed.values())
+                or (raw == "PASS") != all(observed.values())
+                or not isinstance(discovery, dict)
+                or any(discovery.get(field) is not True for field in [
+                    "appearancePaneSelected", "appearanceFormMapped", "appearanceFullFormVisible",
+                    "appearanceSectionHeaderClassVerified",
+                ])):
+            return "BLOCKED", "appearance_assertions_unverified"
     if case["kind"] == "regression":
         if raw == "PASS" and receipt.get("reason") != case["expectedReason"]:
             return "BLOCKED", "success_assertion_not_reached"

@@ -149,10 +149,63 @@ class RegressionSuiteContractTests(unittest.TestCase):
         return {"totalTestCount": 1, "passedTests": int(passed), "failedTests": int(not passed),
                 "skippedTests": 0, "expectedFailures": 0}
 
-    def test_real_registry_has_valid_notes_and_one_functional_journey(self):
+    def test_real_registry_preserves_about_journey_and_controls_and_adds_face_removal(self):
         cases = SUITE.load_registry(ROOT / "experiments/tart-regression/suite.json")
-        self.assertEqual([c["id"] for c in cases if c["kind"] == "regression"], ["about-version"])
-        self.assertEqual(len(cases), 6)
+        self.assertEqual([c["id"] for c in cases if c["kind"] == "regression"],
+                         ["about-version", "appearance-idle-face-removed"])
+        self.assertEqual([(c["id"], c["scenario"], c["expectedVerdict"], c["expectedReason"])
+                          for c in cases if c["kind"] == "control"], [
+            ("about-wrong-output", "visual-fail", "FAIL", "rendered_output_mismatch"),
+            ("about-stale-evidence", "stale-evidence", "BLOCKED", "capture_identity_mismatch"),
+            ("about-missing-reveal", "visual-no-reveal", "FAIL", "rendered_output_mismatch"),
+            ("abort-after-settings-open", "native-abort-after-open", "BLOCKED", "native_interaction_aborted"),
+            ("abort-after-about-selection", "native-abort-after-about", "BLOCKED", "native_interaction_aborted"),
+        ])
+        self.assertEqual(len(cases), 7)
+
+    def test_appearance_requires_complete_consistent_observable_assertions(self):
+        case = next(c for c in SUITE.load_registry(ROOT / "experiments/tart-regression/suite.json")
+                    if c["id"] == "appearance-idle-face-removed")
+        observations = dict.fromkeys([
+            "Always show tabs", "Show settings icon in notch", "Colored spectrogram",
+            "Real-time audio waveform", "Player tinting", "Enable blur effect behind album art",
+            "Slider color", "faceControlAbsent", "additionalFeaturesAbsent",
+        ], True)
+        discovery = dict.fromkeys([
+            "appearancePaneSelected", "appearanceFormMapped", "appearanceFullFormVisible",
+            "appearanceSectionHeaderClassVerified",
+        ], True)
+        receipt = dict(self.receipt(scenario=case["scenario"]), testIdentifier=case["test"],
+                       observedPublicText=observations, discovery=discovery)
+        self.assertEqual(SUITE.evaluate(case, receipt, self.framework(), 0, "a" * 64)[0], "PASS")
+        for field in observations:
+            with self.subTest(missing=field):
+                incomplete = {key: value for key, value in observations.items() if key != field}
+                self.assertEqual(SUITE.evaluate(case, dict(receipt, observedPublicText=incomplete),
+                                                self.framework(), 0, "a" * 64)[0], "BLOCKED")
+            with self.subTest(wrong=field):
+                failed = dict(receipt, verdict="FAIL", reason="rendered_output_mismatch",
+                              suiteExit=10, xcodeExit=65, observedPublicText=dict(observations, **{field: False}))
+                self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64)[0], "FAIL")
+                self.assertEqual(SUITE.evaluate(case, dict(receipt, observedPublicText=failed["observedPublicText"]),
+                                                self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        for field in discovery:
+            for value in [False, None, 1]:
+                with self.subTest(guard=field, value=value):
+                    self.assertEqual(SUITE.evaluate(case, dict(receipt, discovery=dict(discovery, **{field: value})),
+                                                    self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        missing_controls = dict(observations, **{"Colored spectrogram": False, "Slider color": False})
+        failed = dict(receipt, verdict="FAIL", reason="rendered_output_mismatch", suiteExit=10, xcodeExit=65,
+                      observedPublicText=missing_controls)
+        self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64),
+                         ("FAIL", "rendered_output_mismatch"))
+        for change in [{"observedPublicText": None}, {"observedPublicText": {}},
+                       {"observedPublicText": dict(observations, faceControlAbsent=1)},
+                       {"observedPublicText": dict(observations, unexpected=True)},
+                       {"discovery": None}, {"discovery": {}}, {"discovery": {"appearancePaneSelected": False}}]:
+            with self.subTest(change=change):
+                self.assertEqual(SUITE.evaluate(case, dict(receipt, **change),
+                                                self.framework(), 0, "a" * 64)[0], "BLOCKED")
 
     def test_default_full_suite_includes_registered_controls(self):
         cases = SUITE.load_registry(self.registry)
@@ -379,6 +432,72 @@ class GUIJobCleanupTests(unittest.TestCase):
         self.assertFalse(result["jobUnloaded"])
         self.assertEqual(result["bootoutError"], "TimeoutExpired")
         self.assertEqual(result["lookupError"], "TimeoutExpired")
+
+
+class IdleFaceRemovalSourceContractTests(unittest.TestCase):
+    """Source boundary contracts, not compiled-app or native behavior proof."""
+
+    def test_no_default_observer_or_render_path_can_read_the_legacy_true_setting(self):
+        sources = list((ROOT / "notchPocket").rglob("*.swift"))
+        self.assertTrue(sources)
+        for source in sources:
+            with self.subTest(path=str(source.relative_to(ROOT))):
+                self.assertNotRegex(source.read_text(),
+                                    r"showNotHumanFace|NotchPocketFaceAnimation|AnimatedFace|MinimalFaceFeatures_Previews")
+
+    def test_face_only_implementation_and_project_membership_are_removed(self):
+        self.assertFalse((ROOT / "notchPocket/components/AnimatedFace.swift").exists())
+        project = (ROOT / "notchPocket.xcodeproj/project.pbxproj").read_text()
+        self.assertNotIn("AnimatedFace", project)
+        appearance = (ROOT / "notchPocket/components/Settings/Views/AppearanceSettingsView.swift").read_text()
+        self.assertNotIn("Show cool face animation while inactive", appearance)
+        self.assertNotIn("Additional features", appearance)
+        lint = (ROOT / ".swiftlint.yml").read_text()
+        self.assertNotIn("NotchPocketFaceAnimation", lint)
+
+    def test_appearance_navigation_does_not_guard_on_controls_under_test(self):
+        native = (ROOT / "experiments/tart-regression/GuestRegressionProbe/GuestRegressionProbe.swift").read_text()
+        appearance = native.split("private func inspectAppearance(", 1)[1].split(
+            "private func runInstalledSettingsOutput(", 1)[0]
+        for label in ["Colored spectrogram", "Slider color"]:
+            self.assertNotIn('"' + label + '"', appearance)
+        for fragment in [
+            "let control = row.staticTexts[targetPane]",
+            "let appearance = row.staticTexts[\"Appearance\"]",
+            "form.staticTexts.matching(identifier: $0)",
+            'header("General").count == 1 && header("Media").count == 1',
+            'header("Additional features").count == 0',
+            "snapshot.frame.contains($0.frame)", "headFrames == tailFrames",
+        ]:
+            self.assertIn(fragment, native)
+        self.assertNotIn("appearance_content_unavailable", appearance)
+        self.assertNotIn("appearance_tail_unavailable", appearance)
+
+    def test_old_preview_provenance_is_not_inferred_from_version_or_branch_base(self):
+        scenario = (ROOT / "experiments/tart-regression/scenarios/appearance-idle-face-removed.md").read_text()
+        self.assertIn("4fff039f5a62249c7ac84466c5cb0c124b2c9a06", scenario)
+        self.assertIn("32331e682ed6fb6bba460019c1a949dee39e32ce92decafda48312ef0ce3aaaf", scenario)
+        self.assertIn("Both candidates", scenario)
+        self.assertIn("source provenance", scenario)
+        self.assertNotIn("identified pre-removal app from base", scenario)
+
+    def test_retained_appearance_and_full_panel_paths_remain(self):
+        appearance = (ROOT / "notchPocket/components/Settings/Views/AppearanceSettingsView.swift").read_text()
+        for fragment in [
+            'Toggle("Always show tabs", isOn: $coordinator.alwaysShowTabs)',
+            ".settingsIconInNotch", ".coloredSpectrogram", ".realtimeAudioWaveform",
+            ".playerColorTinting", ".lightingEffect", 'Picker("Slider color", selection: $sliderColor)',
+        ]:
+            self.assertIn(fragment, appearance)
+        content = (ROOT / "notchPocket/ContentView.swift").read_text()
+        for fragment in ["MusicLiveActivity()", "NotchPocketHeader()", "NotchHomeView(",
+                         "ShelfView(", "DashboardView(", "NotificationExpandedView(",
+                         "case .music:", "case .shelf:", "case .home:", "case .dashboard:"]:
+            self.assertIn(fragment, content)
+        constants = (ROOT / "notchPocket/models/Constants.swift").read_text()
+        for key in ["notchPocketShelf", "useCustomAccentColor", "customAccentColorData",
+                    "enableShadow", "animationSpeedMultiplier", "enableHorizontalMediaGestures"]:
+            self.assertIn("static let " + key + " =", constants)
 
 
 class RegressionSkillContractTests(unittest.TestCase):

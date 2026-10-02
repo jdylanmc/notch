@@ -70,7 +70,6 @@ identifier_name:
     - vm
     - s
     - NotchLayout
-    - NotchPocketFaceAnimation
     - MusicLiveActivity
     - HelpText
     - NotchBehaviour

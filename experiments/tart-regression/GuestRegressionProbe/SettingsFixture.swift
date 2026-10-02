@@ -67,8 +67,8 @@ final class SettingsFixture: XCTestCase {
             }
         } else {
             let pane = fixture == "general" ? "General" : "About"
-            let control = settings.staticTexts[pane]
             let row = settings.descendants(matching: .outlineRow).containing(.staticText, identifier: pane).firstMatch
+            let control = row.staticTexts[pane]
             if !row.exists || !row.isSelected {
                 let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: control)
                 XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed)
