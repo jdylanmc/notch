@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import plistlib
+import re
 import subprocess
 import struct
 import tempfile
@@ -185,11 +186,11 @@ class RegressionSuiteContractTests(unittest.TestCase):
             })
         return case, receipt
 
-    def test_real_registry_preserves_journeys_and_controls_and_adds_ai_removal(self):
+    def test_real_registry_preserves_journeys_and_controls_and_adds_panel_swipe_removal(self):
         cases = SUITE.load_registry(ROOT / "experiments/tart-regression/suite.json")
         self.assertEqual([c["id"] for c in cases if c["kind"] == "regression"],
                          ["about-version", "appearance-idle-face-removed", "notifications-ai-replies-removed",
-                          "general-haptics-removed"])
+                          "general-haptics-removed", "general-panel-swipes-removed"])
         self.assertEqual([(c["id"], c["scenario"], c["expectedVerdict"], c["expectedReason"])
                           for c in cases if c["kind"] == "control"], [
             ("about-wrong-output", "visual-fail", "FAIL", "rendered_output_mismatch"),
@@ -198,12 +199,12 @@ class RegressionSuiteContractTests(unittest.TestCase):
             ("abort-after-settings-open", "native-abort-after-open", "BLOCKED", "native_interaction_aborted"),
             ("abort-after-about-selection", "native-abort-after-about", "BLOCKED", "native_interaction_aborted"),
         ])
-        self.assertEqual(len(cases), 9)
+        self.assertEqual(len(cases), 10)
 
-    def general_receipt(self):
+    def general_receipt(self, scenario="general-haptics-removed"):
         _, receipt = self.notifications_receipt()
         case = next(c for c in SUITE.load_registry(ROOT / "experiments/tart-regression/suite.json")
-                    if c["id"] == "general-haptics-removed")
+                    if c["id"] == scenario)
         descriptor = SUITE.SCENARIOS[case["scenario"]]
         labels = sorted(descriptor["labels"])
         receipt.pop("notificationsCaptureVersion")
@@ -212,7 +213,7 @@ class RegressionSuiteContractTests(unittest.TestCase):
         receipt["discovery"] = {key.replace("notifications", "general"): value
                                 for key, value in receipt["discovery"].items()}
         receipt["discovery"].update(generalNavigationObserved=True, generalScrollRestored=True)
-        receipt["observedPublicText"] = dict.fromkeys(labels + ["hapticControlAbsent"], True)
+        receipt["observedPublicText"] = dict.fromkeys(labels + [descriptor["absence"]], True)
         for index, capture in enumerate(receipt["captures"]):
             capture.update(name=capture["name"].replace("notifications", "general"),
                            scenario=case["scenario"], testIdentifier=case["test"], pane="General")
@@ -222,8 +223,55 @@ class RegressionSuiteContractTests(unittest.TestCase):
                 for n, label in enumerate(visible)
             }
             capture["observedPublicText"] = {label: label in visible for label in labels}
-            capture["observedPublicText"]["hapticControlAbsent"] = True
+            capture["observedPublicText"][descriptor["absence"]] = True
         return case, receipt
+
+    def test_panel_swipes_requires_media_output_and_absence_at_both_endpoints(self):
+        case, receipt = self.general_receipt("general-panel-swipes-removed")
+        self.assertEqual(SUITE.evaluate(case, receipt, self.framework(), 0, "a" * 64),
+                         ("PASS", "rendered_output_verified"))
+        self.assertEqual(PROBE.settings_captures(receipt), receipt["captures"])
+        self.assertIn("Enable media gestures", receipt["observedPublicText"])
+        self.assertNotIn("Enable gestures", receipt["observedPublicText"])
+        for label in receipt["observedPublicText"]:
+            for endpoint in range(2):
+                failed = copy.deepcopy(receipt)
+                failed.update(verdict="FAIL", reason="rendered_output_mismatch", suiteExit=10, xcodeExit=65)
+                failed["observedPublicText"][label] = False
+                if label == "panelGestureControlsAbsent":
+                    failed["captures"][endpoint]["observedPublicText"][label] = False
+                else:
+                    for capture in failed["captures"]:
+                        capture["observedPublicText"][label] = False
+                with self.subTest(label=label, endpoint=endpoint):
+                    self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64),
+                                     ("FAIL", "rendered_output_mismatch"))
+                    inconsistent = dict(failed, verdict="PASS", suiteExit=0, xcodeExit=0)
+                    self.assertEqual(SUITE.evaluate(case, inconsistent, self.framework(), 0, "a" * 64)[0],
+                                     "BLOCKED")
+
+    def test_panel_swipes_rejects_borrowed_general_evidence_and_missing_restoration(self):
+        case, receipt = self.general_receipt("general-panel-swipes-removed")
+        _, haptics = self.general_receipt()
+        for change in [
+            {"captures": haptics["captures"]}, {"testIdentifier": haptics["testIdentifier"]},
+            {"observedPublicText": haptics["observedPublicText"]}, {"generalCaptureVersion": 2},
+            {"captures": receipt["captures"][:1]}, {"screenshotSHA256": "b" * 64},
+            {"cleanup": "blocked"}, {"originalPane": "Other"},
+        ]:
+            with self.subTest(change=change):
+                self.assertEqual(SUITE.evaluate(case, dict(receipt, **change), self.framework(), 0, "a" * 64)[0],
+                                 "BLOCKED")
+        for guard in receipt["discovery"]:
+            altered = copy.deepcopy(receipt)
+            altered["discovery"].pop(guard)
+            with self.subTest(guard=guard):
+                self.assertEqual(SUITE.evaluate(case, altered, self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        for pane in ["closed", "About"]:
+            altered = copy.deepcopy(receipt)
+            altered["originalPane"] = pane
+            altered["discovery"].pop("generalScrollRestored")
+            self.assertEqual(SUITE.evaluate(case, altered, self.framework(), 0, "a" * 64)[0], "PASS")
 
     def test_general_requires_retained_output_absence_navigation_and_restoration(self):
         case, receipt = self.general_receipt()
@@ -759,6 +807,159 @@ class GUIJobCleanupTests(unittest.TestCase):
         self.assertEqual(result["lookupError"], "TimeoutExpired")
 
 
+class PanelSwipeRemovalSourceContractTests(unittest.TestCase):
+    """Source boundaries and preference wiring, not installed-app gesture proof."""
+
+    def test_vertical_panel_handlers_state_and_defaults_have_no_product_consumers(self):
+        sources = list((ROOT / "notchPocket").rglob("*.swift"))
+        self.assertTrue(sources)
+        for source in sources:
+            with self.subTest(path=str(source.relative_to(ROOT))):
+                self.assertNotRegex(source.read_text(),
+                                    r"closeGestureEnabled|handleDownGesture|handleUpGesture|isHoveringCalendar"
+                                    r"|\bgestureProgress\b|panGesture\(direction: \.(up|down)\)")
+        pan = (ROOT / "notchPocket/extensions/PanGesture.swift").read_text()
+        directions = pan.split("enum PanDirection {", 1)[1].split("extension View", 1)[0]
+        self.assertIn("case left, right", directions)
+        self.assertNotRegex(directions, r"\b(up|down|isHorizontal|deltaY|height)\b")
+
+    def test_persisted_media_keys_defaults_and_two_flag_gate_are_unchanged(self):
+        constants = (ROOT / "notchPocket/models/Constants.swift").read_text()
+        for declaration in [
+            'enableMediaGestures = Key<Bool>("enableGestures", default: false)',
+            'enableHorizontalMediaGestures = Key<Bool>("enableHorizontalMediaGestures", default: false)',
+            'gestureSensitivity = Key<CGFloat>("gestureSensitivity", default: 200.0)',
+            'normalizeGestureDirection = Key<Bool>("normalizeGestureDirection", default: true)',
+        ]:
+            self.assertIn("static let " + declaration, constants)
+        content = (ROOT / "notchPocket/ContentView.swift").read_text()
+        self.assertEqual(content.count("Defaults[.enableMediaGestures]"), 1)
+        self.assertIn(
+            ".conditionalModifier(Defaults[.enableHorizontalMediaGestures] && Defaults[.enableMediaGestures]"
+            " && !shouldDisplayNowPlayingFallbackNotice)", content)
+        settings = (ROOT / "notchPocket/components/Settings/Views/GeneralSettingsView.swift").read_text()
+        for fragment in [
+            "@Default(.enableMediaGestures) var enableMediaGestures",
+            "Defaults.Toggle(key: .enableMediaGestures)", 'Text("Enable media gestures")',
+            "if enableMediaGestures {", "Defaults.Toggle(key: .enableHorizontalMediaGestures)",
+            'Text("Change media with horizontal gestures")',
+            "Slider(value: $gestureSensitivity, in: 100...300, step: 100)", 'Text("Gesture sensitivity")',
+        ]:
+            self.assertIn(fragment, settings)
+        for source in (ROOT / "notchPocket").rglob("*.swift"):
+            self.assertIsNone(re.search(
+                r"(?m)(?:Defaults\[\.(?:enableMediaGestures|enableHorizontalMediaGestures)\]"
+                r"|^\s*(?:self\.)?enableMediaGestures)\s*=(?!=)", source.read_text()),
+                f"Unexpected automatic media preference write: {source.relative_to(ROOT)}")
+        advanced = (ROOT / "notchPocket/components/Settings/Views/AdvancedSettingsView.swift").read_text()
+        self.assertIn("Defaults.Toggle(key: .normalizeGestureDirection)", advanced)
+
+    def test_hover_disabled_does_not_enable_media_or_block_click_and_keyboard(self):
+        settings = (ROOT / "notchPocket/components/Settings/Views/GeneralSettingsView.swift").read_text()
+        self.assertNotIn(".onChange(of: openNotchOnHover)", settings)
+        self.assertNotIn(".disabled(!openNotchOnHover)", settings)
+        content = (ROOT / "notchPocket/ContentView.swift").read_text()
+        click = content.split(".onTapGesture {", 1)[1].split(".conditionalModifier(", 1)[0]
+        self.assertIn("if vm.notchState == .closed && !shouldDisplayNowPlayingFallbackNotice", click)
+        self.assertIn("doOpen()", click)
+        app = (ROOT / "notchPocket/NotchPocketApp.swift").read_text()
+        shortcut = app.split("KeyboardShortcuts.onKeyDown(for: .toggleNotchOpen)", 1)[1].split(
+            "// Sync notch height", 1)[0]
+        self.assertIn("didOpen = viewModel.open()", shortcut)
+        self.assertIn("viewModel.close()", shortcut)
+        self.assertIn("viewModel?.close()", shortcut)
+        self.assertIn("if Defaults[.showOnAllDisplays]", shortcut)
+        model = (ROOT / "notchPocket/models/NotchPocketViewModel.swift").read_text()
+        opening = model.split("func open() -> Bool {", 1)[1].split("func close()", 1)[0]
+        self.assertIn("guard !coordinator.firstLaunch, notchState != .open else { return false }", opening)
+        self.assertIn("self.notchState = .open", opening)
+        for route in [click, shortcut, opening]:
+            self.assertNotRegex(route, r"openNotchOnHover|enableMediaGestures|enableHorizontalMediaGestures")
+        hover = content.split("private func handleHover(", 1)[1].split("// MARK: - Media", 1)[0]
+        for fragment in ["Defaults[.openNotchOnHover]", "Defaults[.minimumHoverDuration]", "self.doOpen()",
+                         "self.vm.close()", "Task.isCancelled", "!SharingStateManager.shared.preventNotchClose"]:
+            self.assertIn(fragment, hover)
+
+    def test_horizontal_media_recognition_feedback_and_static_controls_remain(self):
+        content = (ROOT / "notchPocket/ContentView.swift").read_text()
+        media = content.split("// MARK: - Media Gesture Handling", 1)[1].split("struct FullScreenDropDelegate", 1)[0]
+        for fragment in [
+            "musicManager.nextTrack()", "musicManager.previousTrack()",
+            "guard isHorizontalMediaGestureContext", "guard phase != .ended",
+            "guard !horizontalMediaGestureTriggered else { return }",
+            "guard translation > Defaults[.gestureSensitivity] else { return }",
+            "horizontalMediaGestureTriggered = false", "horizontalMediaGestureFeedback = feedback",
+            "mediaGestureProgress = 2", "mediaGestureProgress = .zero",
+            "guard !vm.hideOnClosed", "coordinator.musicLiveActivityEnabled",
+            "coordinator.currentView == .home && !musicManager.isPlayerIdle && isHoveringMusicArea",
+        ]:
+            self.assertIn(fragment, media)
+        self.assertNotRegex(media, r"\b(doOpen|open|close)\(\)")
+        self.assertEqual(re.findall(r"\.panGesture\(direction: \.(\w+)\)", content), ["left", "right"])
+        pan = (ROOT / "notchPocket/extensions/PanGesture.swift").read_text()
+        for fragment in [
+            "translation.width * sign", "deltaX * sign", "self == .right ? 1 : -1",
+            "DragGesture(minimumDistance: 0)", "NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel])",
+            "event.window === view?.window", "NSEvent.removeMonitor(lm)",
+            "let axisDominanceFactor: CGFloat = 1.5", "absDX >= axisDominanceFactor * absDY",
+            "Defaults[.normalizeGestureDirection] ? (event.isDirectionInvertedFromDevice ? 1 : -1) : 1",
+            "event.hasPreciseScrollingDeltas ? 1 : 8", "accumulated += delta",
+            "Task.sleep(for: .milliseconds(300))", "event.phase == .ended || event.momentumPhase == .ended",
+        ]:
+            self.assertIn(fragment, pan)
+        home = (ROOT / "notchPocket/components/Notch/NotchHomeView.swift").read_text()
+        for fragment in ["MusicPlayerView(", "CalendarView()", "horizontalMediaGestureFeedback",
+                         "isHoveringMusicArea: $isHoveringMusicArea"]:
+            self.assertIn(fragment, home)
+        for fragment in ["ShelfStateViewModel.shared.load(providers)", "ShelfView(", "CompactHomeView("]:
+            self.assertIn(fragment, content)
+
+    def test_media_pulse_cleanup_is_unconditional_after_delay(self):
+        content = (ROOT / "notchPocket/ContentView.swift").read_text()
+        feedback = content.split("private func triggerHorizontalMediaFeedback(", 1)[1].split(
+            "private var isHorizontalMediaGestureContext:", 1)[0]
+        start, cleanup = feedback.split("Task { @MainActor in", 1)
+        self.assertIn("withAnimation(.interactiveSpring(response: 0.18, dampingFraction: 0.62))", start)
+        self.assertRegex(start, r"horizontalMediaGestureFeedback = feedback\s+"
+                         r"if vm\.notchState == \.closed \{\s+mediaGestureProgress = 2\s+\}")
+        # Source contract only: opening before the timer must not gate either reset.
+        self.assertRegex(cleanup, r"^\s*try\? await Task\.sleep\(for: \.milliseconds\(140\)\)\s+"
+                         r"withAnimation\(animationSpring\) \{\s+"
+                         r"horizontalMediaGestureFeedback = \.zero\s+"
+                         r"mediaGestureProgress = \.zero\s+\}\s+\}\s+\}\s*$")
+
+    def test_catalog_removes_only_panel_copy_and_retains_media_configuration(self):
+        def unique(pairs):
+            self.assertEqual(len(dict(pairs)), len(pairs), "Duplicate localization key")
+            return dict(pairs)
+        catalog = json.loads((ROOT / "notchPocket/Localizable.xcstrings").read_text(), object_pairs_hook=unique)
+        strings = catalog["strings"]
+        self.assertNotIn("Close gesture", strings)
+        self.assertNotIn("Enable gestures", strings)
+        self.assertFalse(any(key.startswith("Two-finger swipe up on notch") for key in strings))
+        for key in ["Enable media gestures", "Change media with horizontal gestures", "Gesture sensitivity",
+                    "Normalize gesture direction", "Gesture control", "Open notch on hover", "Compact mode"]:
+            self.assertIn(key, strings)
+        self.assertEqual(set(strings["Enable media gestures"]["localizations"]),
+                         {"cs", "de", "en", "en-GB", "es", "fr", "he", "hu", "it", "ja", "ko",
+                          "nl", "pl", "pt-BR", "ru", "tr", "uk", "zh-Hans", "zh-Hant-HK"})
+
+    def test_new_native_case_keeps_removed_output_out_of_setup_guards(self):
+        root = ROOT / "experiments/tart-regression/GuestRegressionProbe"
+        native = (root / "GuestRegressionProbe.swift").read_text()
+        self.assertIn("func testInstalledGeneralWithoutPanelSwipes()", native)
+        self.assertIn('modes: ["general-panel-swipes-removed"]', native)
+        self.assertIn('if scenario.pane == "General"', native)
+        output = native.split("var controls: [String: Bool]", 1)[1].split("let capture =", 1)[0]
+        self.assertIn("scenario.removedLabelsAbsent { form.staticTexts[$0].exists }", output)
+        self.assertNotIn("require(", output)
+        self.assertNotIn("isHittable", output)
+        oracle = (root / "SettingsRemovalOutputOracle.swift").read_text()
+        self.assertIn("removedLabels.allSatisfy { !isPresent($0) }", oracle)
+        for label in ["Enable gestures", "Close gesture", "Enable media gestures", "panelGestureControlsAbsent"]:
+            self.assertIn('"' + label + '"', oracle)
+
+
 class HapticRemovalSourceContractTests(unittest.TestCase):
     """Source wiring contracts, not physical trackpad or live interaction proof."""
 
@@ -774,7 +975,7 @@ class HapticRemovalSourceContractTests(unittest.TestCase):
         self.assertNotRegex((ROOT / "notchPocket.xcodeproj/project.pbxproj").read_text(), r"(?i)haptic")
         catalog = json.loads((ROOT / "notchPocket/Localizable.xcstrings").read_text())
         self.assertNotIn("Enable haptic feedback", catalog["strings"])
-        for key in ["Open notch on hover", "Notch animation", "Enable gestures", "Compact mode"]:
+        for key in ["Open notch on hover", "Notch animation", "Enable media gestures", "Compact mode"]:
             self.assertIn(key, catalog["strings"])
 
     def test_panel_hover_click_keyboard_media_and_shelf_handlers_remain(self):
@@ -785,11 +986,8 @@ class HapticRemovalSourceContractTests(unittest.TestCase):
             'SettingsWindowController.shared.showWindow()', '.keyboardShortcut(KeyEquivalent(","), modifiers: .command)',
             "notificationManager.holdActive()", "self.notificationManager.resumeDismiss()",
             "Defaults[.minimumHoverDuration]", "Defaults[.openNotchOnHover]", "Task.isCancelled",
-            "handleDownGesture(translation: translation, phase: phase)",
-            "handleUpGesture(translation: translation, phase: phase)",
             "handleNextTrackGesture(translation: translation, phase: phase)",
             "handlePreviousTrackGesture(translation: translation, phase: phase)",
-            "guard vm.notchState == .open && !vm.isHoveringCalendar",
             "if !SharingStateManager.shared.preventNotchClose", "vm.close()", "didOpen = vm.open()",
             "guard !horizontalMediaGestureTriggered else { return }",
             "guard translation > Defaults[.gestureSensitivity] else { return }",
@@ -840,15 +1038,16 @@ class HapticRemovalSourceContractTests(unittest.TestCase):
             self.assertIn(fragment, view)
 
     def test_general_controls_and_unrelated_options_are_not_removed(self):
+        # SWIPE owner intent retires panel swipes, not the retained media master or compact mode.
         settings = (ROOT / "notchPocket/components/Settings/Views/GeneralSettingsView.swift").read_text()
         for label in SUITE.SCENARIOS["general-haptics-removed"]["labels"]:
             self.assertIn('"' + label + '"', settings)
-        for fragment in ["if openNotchOnHover", 'Text("Hover delay")', "if enableGestures",
-                         ".enableHorizontalMediaGestures", ".closeGestureEnabled", "$gestureSensitivity",
+        for fragment in ["if openNotchOnHover", 'Text("Hover delay")', "if enableMediaGestures",
+                         ".enableHorizontalMediaGestures", "$gestureSensitivity",
                          "$animationSpeedMultiplier", "appLanguage.applyAppleLanguagesOverride()"]:
             self.assertIn(fragment, settings)
         constants = (ROOT / "notchPocket/models/Constants.swift").read_text()
-        for key in ["enableGestures", "enableHorizontalMediaGestures", "closeGestureEnabled", "compactMode",
+        for key in ["enableMediaGestures", "enableHorizontalMediaGestures", "compactMode",
                     "showOnLockScreen", "notchPocketShelf", "openNotchOnHover", "enableOpeningAnimation"]:
             self.assertIn("static let " + key + " = ", constants)
 
@@ -883,7 +1082,7 @@ class HapticRemovalSourceContractTests(unittest.TestCase):
     def test_measured_general_labels_keep_static_text_query_and_scoped_pixel_allowance(self):
         root = ROOT / "experiments/tart-regression/GuestRegressionProbe"
         oracle = (root / "SettingsRemovalOutputOracle.swift").read_text()
-        self.assertIn('self == .general ? ["Launch at login": 4, "Remember last tab": 4] : [:]', oracle)
+        self.assertIn('pane == "General" ? ["Launch at login": 4, "Remember last tab": 4] : [:]', oracle)
         self.assertIn("leadingPixels <= CGFloat(padding)", oracle)
         native = (root / "GuestRegressionProbe.swift").read_text()
         output = native.split("var controls: [String: Bool]", 1)[1].split("let capture =", 1)[0]
@@ -998,7 +1197,8 @@ class AIReplyRemovalSourceContractTests(unittest.TestCase):
             "private func inspectAppearance(", 1)[0]
         for fragment in [
             '.containing(.staticText, identifier: scenario.pane)', 'row.staticTexts[scenario.pane]',
-            "form.staticTexts.matching(identifier: label)", "form.staticTexts[scenario.removedLabel]",
+            "form.staticTexts.matching(identifier: label)",
+            "scenario.removedLabelsAbsent { form.staticTexts[$0].exists }",
             "formFrame.contains(matches.firstMatch.frame)", "first.map(\\.frame) == confirmed.map(\\.frame)",
             "overlap >= 64", r"\(prefix)_scroll_coverage_incomplete",
             "frames.allSatisfy { $0.minY >= formFrame.minY }",

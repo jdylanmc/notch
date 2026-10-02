@@ -15,7 +15,7 @@ struct InlineOSD: View {
     @Binding var icon: String
     @Binding var accent: Color?
     @Binding var hoverAnimation: Bool
-    @Binding var gestureProgress: CGFloat
+    @Binding var mediaGestureProgress: CGFloat
     var body: some View {
         HStack {
             HStack(spacing: 5) {
@@ -28,7 +28,7 @@ struct InlineOSD: View {
                     .allowsTightening(true)
                     .contentTransition(.numericText())
             }
-            .frame(width: 100 - (hoverAnimation ? 0 : 12) + gestureProgress / 2, height: vm.notchSize.height - (hoverAnimation ? 0 : 12), alignment: .leading)
+            .frame(width: 100 - (hoverAnimation ? 0 : 12) + mediaGestureProgress / 2, height: vm.notchSize.height - (hoverAnimation ? 0 : 12), alignment: .leading)
             
             Rectangle()
                 .fill(.black)
@@ -74,7 +74,7 @@ struct InlineOSD: View {
                 }
             }
             .padding(.trailing, 4)
-            .frame(width: 100 - (hoverAnimation ? 0 : 12) + gestureProgress / 2, height: vm.closedNotchSize.height - (hoverAnimation ? 0 : 12), alignment: .center)
+            .frame(width: 100 - (hoverAnimation ? 0 : 12) + mediaGestureProgress / 2, height: vm.closedNotchSize.height - (hoverAnimation ? 0 : 12), alignment: .center)
         }
         .frame(height: vm.closedNotchSize.height + (hoverAnimation ? 8 : 0), alignment: .center)
     }
@@ -96,7 +96,7 @@ struct InlineOSD: View {
 }
 
 #Preview {
-    InlineOSD(type: .constant(.brightness), value: .constant(0.4), icon: .constant(""), accent: .constant(nil), hoverAnimation: .constant(false), gestureProgress: .constant(0))
+    InlineOSD(type: .constant(.brightness), value: .constant(0.4), icon: .constant(""), accent: .constant(nil), hoverAnimation: .constant(false), mediaGestureProgress: .constant(0))
         .padding(.horizontal, 8)
         .background(Color.black)
         .padding()
