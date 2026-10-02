@@ -31,6 +31,8 @@ final class GuestRegressionProbe: XCTestCase {
         var openedSettings = false
         var pointerReturn: XCUICoordinate?
         var discovery: [String: Any] = [:]
+        var appearanceContentFrame: CGRect?
+        var appearanceControls: [String: Bool] = [:]
     }
 
     private let candidate = URL(fileURLWithPath: "/Applications/notch-pocket.app")
@@ -135,7 +137,7 @@ final class GuestRegressionProbe: XCTestCase {
     }
 
     @MainActor
-    private func finish(_ state: RunState, runID: String, mode: String) {
+    private func finish(_ state: RunState, runID: String, mode: String, testName: String) {
         let primaryVerdict = state.verdict
         let primaryReason = state.reason
         let nativeFailures = testRun?.failureCount ?? 0
@@ -156,7 +158,7 @@ final class GuestRegressionProbe: XCTestCase {
         }
         var receipt: [String: Any] = [
             "runID": runID, "scenario": mode, "verdict": state.verdict, "reason": state.reason,
-            "testIdentifier": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+            "testIdentifier": "GuestRegressionProbe/GuestRegressionProbe/\(testName)",
             "cleanup": state.cleanup, "expectedCandidateSHA256": expectedHash,
             "candidateVerified": state.candidateVerified, "observedPublicText": state.observed,
             "openedSettings": state.openedSettings, "discovery": state.discovery,
@@ -178,6 +180,58 @@ final class GuestRegressionProbe: XCTestCase {
 
     @MainActor
     func testInstalledAboutOutput() {
+        runInstalledSettingsOutput(testName: "testInstalledAboutOutput", modes: [
+            "visual-pass", "visual-fail", "stale-evidence", "visual-no-reveal",
+            "native-abort-after-open", "native-abort-after-about"
+        ])
+    }
+
+    @MainActor
+    func testInstalledAppearanceWithoutIdleFace() {
+        runInstalledSettingsOutput(testName: "testInstalledAppearanceWithoutIdleFace",
+                                   modes: ["appearance-idle-face-removed"])
+    }
+
+    @MainActor
+    private func inspectAppearance(_ settings: XCUIElement, state: RunState) throws {
+        func control(_ label: String) -> XCUIElement {
+            settings.descendants(matching: .any).matching(
+                NSPredicate(format: "label == %@ OR identifier == %@", label, label)
+            ).firstMatch
+        }
+        let appearance = settings.staticTexts["Appearance"]
+        try require(waitHittable(appearance), "appearance_control_unavailable")
+        appearance.click()
+        let row = settings.descendants(matching: .outlineRow).containing(.staticText, identifier: "Appearance").firstMatch
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: row)
+        try require(XCTWaiter.wait(for: [selected], timeout: 5) == .completed, "appearance_selection_not_observed")
+        try require(settings.frame.width >= 700 && settings.frame.height >= 600, "appearance_window_too_small")
+        let anchor = control("Colored spectrogram")
+        try require(waitHittable(anchor), "appearance_content_unavailable")
+        let forms = settings.scrollViews.containing(.any, identifier: "Colored spectrogram")
+        try require(forms.count == 1, "appearance_form_ambiguous")
+        let form = forms.firstMatch
+        // Visit the tail, where the old face section lived, without changing any preference.
+        form.scroll(byDeltaX: 0, deltaY: -10_000)
+        try require(waitHittable(control("Slider color")), "appearance_tail_unavailable")
+        let frame = form.frame
+        let windowFrame = settings.frame
+        state.appearanceContentFrame = CGRect(
+            x: (frame.minX - windowFrame.minX) / windowFrame.width,
+            y: (windowFrame.maxY - frame.maxY) / windowFrame.height,
+            width: frame.width / windowFrame.width, height: frame.height / windowFrame.height
+        )
+        state.appearanceControls = Dictionary(uniqueKeysWithValues: AppearanceOutputOracle.retainedLabels.map {
+            ($0, control($0).exists && control($0).isHittable)
+        })
+        state.appearanceControls["faceControlAbsent"] =
+            !control(AppearanceOutputOracle.faceLabel).exists
+        state.appearanceControls["additionalFeaturesAbsent"] = !control("Additional features").exists
+        state.discovery["appearancePaneSelected"] = row.isSelected
+    }
+
+    @MainActor
+    private func runInstalledSettingsOutput(testName: String, modes: [String]) {
         continueAfterFailure = false
         let state = RunState()
         let environment = ProcessInfo.processInfo.environment
@@ -189,7 +243,7 @@ final class GuestRegressionProbe: XCTestCase {
         state.buildLabel = buildLabel
 
         // Teardown is LIFO: emit even if native XCTest unwinding aborts restoration.
-        addTeardownBlock { @MainActor in self.finish(state, runID: runID, mode: mode) }
+        addTeardownBlock { @MainActor in self.finish(state, runID: runID, mode: mode, testName: testName) }
         addTeardownBlock { @MainActor in self.restore(state) }
 
         do {
@@ -205,8 +259,7 @@ final class GuestRegressionProbe: XCTestCase {
                         && !expectedVersion.isEmpty && !expectedBuild.isEmpty, "candidate_expectations_missing")
             try require(Set(["Release name", "Notch Pocket", "Version", expectedVersion, buildLabel]).count == 5,
                         "candidate_expectations_ambiguous")
-            try require(["visual-pass", "visual-fail", "stale-evidence", "visual-no-reveal",
-                         "native-abort-after-open", "native-abort-after-about"].contains(mode), "scenario_invalid")
+            try require(modes.contains(mode), "scenario_invalid")
             try require(try candidateHash() == expectedHash, "candidate_hash_mismatch")
             let bundle = Bundle(url: candidate)
             try require(bundle?.bundleIdentifier == "com.jdylanmc.notchpocket"
@@ -276,25 +329,29 @@ final class GuestRegressionProbe: XCTestCase {
                 try require(XCTWaiter.wait(for: [selected], timeout: 5) == .completed, "general_selection_not_observed")
             }
             try require(generalRow.exists && generalRow.isSelected, "prepared_general_pane_required")
-            let about = settings.staticTexts["About"]
-            try require(waitHittable(about), "about_control_unavailable")
-            about.click()
-            let version = settings.staticTexts["Version"]
-            try require(waitHittable(version), "version_control_unavailable")
-            if mode == "native-abort-after-about" {
-                state.reason = "native_interaction_aborted"
-                XCTFail("Controlled native XCTest failure after About selected")
-                return
-            }
-            let revealed = settings.staticTexts[buildLabel]
-            if mode != "visual-no-reveal" { version.click() }
-            let buildObserved = mode != "visual-no-reveal" && revealed.waitForExistence(timeout: 3)
-            state.discovery["buildRevealObserved"] = buildObserved
-            if mode == "visual-fail" {
-                try require(buildObserved, "negative_control_prerequisite_missing")
-                version.click()
-                let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: revealed)
-                _ = XCTWaiter.wait(for: [hidden], timeout: 3)
+            if mode == "appearance-idle-face-removed" {
+                try inspectAppearance(settings, state: state)
+            } else {
+                let about = settings.staticTexts["About"]
+                try require(waitHittable(about), "about_control_unavailable")
+                about.click()
+                let version = settings.staticTexts["Version"]
+                try require(waitHittable(version), "version_control_unavailable")
+                if mode == "native-abort-after-about" {
+                    state.reason = "native_interaction_aborted"
+                    XCTFail("Controlled native XCTest failure after About selected")
+                    return
+                }
+                let revealed = settings.staticTexts[buildLabel]
+                if mode != "visual-no-reveal" { version.click() }
+                let buildObserved = mode != "visual-no-reveal" && revealed.waitForExistence(timeout: 3)
+                state.discovery["buildRevealObserved"] = buildObserved
+                if mode == "visual-fail" {
+                    try require(buildObserved, "negative_control_prerequisite_missing")
+                    version.click()
+                    let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: revealed)
+                    _ = XCTWaiter.wait(for: [hidden], timeout: 3)
+                }
             }
 
             try require(currentCandidatePID() == state.originalPID, "candidate_process_changed")
@@ -315,9 +372,19 @@ final class GuestRegressionProbe: XCTestCase {
                 return AboutOutputOracle.Observation(text: text, frame: observation.boundingBox)
             }
             try require(!observations.isEmpty, "ocr_unavailable")
-            state.observed = AboutOutputOracle.evaluate(observations, version: expectedVersion, build: expectedBuild)
+            if mode == "appearance-idle-face-removed" {
+                guard let contentFrame = state.appearanceContentFrame else {
+                    throw Blocked.reason("appearance_content_frame_unavailable")
+                }
+                state.observed = AppearanceOutputOracle.evaluate(
+                    observations, contentFrame: contentFrame, controls: state.appearanceControls
+                )
+            } else {
+                state.observed = AboutOutputOracle.evaluate(observations, version: expectedVersion, build: expectedBuild)
+            }
             let attachment = XCTAttachment(screenshot: capture)
-            attachment.name = "guest-public-about-\(runID)"
+            let pane = mode == "appearance-idle-face-removed" ? "appearance" : "about"
+            attachment.name = "guest-public-\(pane)-\(runID)"
             attachment.lifetime = .keepAlways
             add(attachment)
             state.verdict = state.observed.values.allSatisfy { $0 } ? "PASS" : "FAIL"

@@ -1,7 +1,7 @@
 # Source-only installed-app probe
 
 This is the initial **registered installed-app regression suite**, built from the
-XCTest/Vision Tart experiment. It currently covers one application journey and
+XCTest/Vision Tart experiment. It currently covers two application journeys and
 five explicit oracle/restoration controls, not the whole app. See the
 [VM reconstruction recipe](../../docs/agents/vm-regression.md) first.
 
@@ -135,9 +135,11 @@ Retained automatic system attachments are disabled.
 
 ## Limits
 
-- The example expects an English About UI and the repository's versioned panel
+- The examples expect an English Settings UI and the repository's versioned panel
   and Settings markers, with one guest display and a visible Settings gear.
-- It covers only this journey. New features need their own independent scenarios.
+- It covers About version/build and
+  [Appearance idle-face removal](scenarios/appearance-idle-face-removed.md), not
+  all retained features. New features need their own independent scenarios.
 - Readiness and cleanup are checked, but this remains prototype code, not a
   hardened multi-user execution service or an authorization boundary.
 - User-controlled OS consent, guest idle lock, hardware and application readiness

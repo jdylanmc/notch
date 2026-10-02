@@ -24,6 +24,13 @@ and the file shelf. **Spotify is the only committed player support.** Other
 inherited integrations remain in the source; their presence is not a broader
 support commitment or a roadmap for new features.
 
+**Idle appearance:** the decorative face and its Appearance setting are removed
+([#50](https://github.com/jdylanmc/notch/issues/50)). A previously stored
+`showNotHumanFace=true` is ignored, not migrated or deleted. Media, Shelf, the
+full panel and retained appearance customization are unchanged. Historical
+translations for the removed control remain in the owned string catalog;
+they do not enable a runtime feature.
+
 <p align="center">
   <img src="notchPocket/Assets.xcassets/logo2.imageset/NotchPocket%20icon.png" alt="Notch Pocket utility pocket icon" width="150" />
 </p>

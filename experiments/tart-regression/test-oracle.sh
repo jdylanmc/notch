@@ -11,5 +11,6 @@ mkdir -p "$1"
     exit 2
 }
 xcrun swiftc "$source_root/GuestRegressionProbe/AboutOutputOracle.swift" \
+    "$source_root/GuestRegressionProbe/AppearanceOutputOracle.swift" \
     "$source_root/OracleContractTests.swift" -o "$1/oracle-contract-tests"
 "$1/oracle-contract-tests"
