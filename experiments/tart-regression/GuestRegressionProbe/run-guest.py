@@ -10,7 +10,7 @@ import sys
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from capture_contract import notifications_captures, SCENARIO as NOTIFICATIONS_SCENARIO
+from capture_contract import settings_captures, SCENARIOS, VERSION_KEYS
 
 
 def blocked(reason, **details):
@@ -155,13 +155,13 @@ def main():
         if (not receipt.get("candidateVerified")
                 or receipt.get("cleanup") not in ["restored_general", "restored_closed_settings", "restored_original_state"]):
             return blocked("required_evidence_or_cleanup_missing", runID=run_id)
-        if args.scenario == NOTIFICATIONS_SCENARIO:
+        if args.scenario in SCENARIOS:
             try:
-                notifications_captures(receipt)
+                settings_captures(receipt)
             except (ValueError, TypeError, KeyError):
-                return blocked("notifications_assertions_unverified", runID=run_id)
+                return blocked(SCENARIOS[args.scenario]["pane"].lower() + "_assertions_unverified", runID=run_id)
         else:
-            if "captures" in receipt or "notificationsCaptureVersion" in receipt:
+            if "captures" in receipt or VERSION_KEYS.intersection(receipt):
                 return blocked("unexpected_capture_schema", runID=run_id)
             if not receipt.get("screenshotSHA256"):
                 return blocked("required_evidence_or_cleanup_missing", runID=run_id)

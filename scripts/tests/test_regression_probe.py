@@ -188,7 +188,8 @@ class RegressionSuiteContractTests(unittest.TestCase):
     def test_real_registry_preserves_journeys_and_controls_and_adds_ai_removal(self):
         cases = SUITE.load_registry(ROOT / "experiments/tart-regression/suite.json")
         self.assertEqual([c["id"] for c in cases if c["kind"] == "regression"],
-                         ["about-version", "appearance-idle-face-removed", "notifications-ai-replies-removed"])
+                         ["about-version", "appearance-idle-face-removed", "notifications-ai-replies-removed",
+                          "general-haptics-removed"])
         self.assertEqual([(c["id"], c["scenario"], c["expectedVerdict"], c["expectedReason"])
                           for c in cases if c["kind"] == "control"], [
             ("about-wrong-output", "visual-fail", "FAIL", "rendered_output_mismatch"),
@@ -197,7 +198,120 @@ class RegressionSuiteContractTests(unittest.TestCase):
             ("abort-after-settings-open", "native-abort-after-open", "BLOCKED", "native_interaction_aborted"),
             ("abort-after-about-selection", "native-abort-after-about", "BLOCKED", "native_interaction_aborted"),
         ])
-        self.assertEqual(len(cases), 8)
+        self.assertEqual(len(cases), 9)
+
+    def general_receipt(self):
+        _, receipt = self.notifications_receipt()
+        case = next(c for c in SUITE.load_registry(ROOT / "experiments/tart-regression/suite.json")
+                    if c["id"] == "general-haptics-removed")
+        descriptor = SUITE.SCENARIOS[case["scenario"]]
+        labels = sorted(descriptor["labels"])
+        receipt.pop("notificationsCaptureVersion")
+        receipt.update(scenario=case["scenario"], testIdentifier=case["test"],
+                       generalCaptureVersion=1, originalPane="General")
+        receipt["discovery"] = {key.replace("notifications", "general"): value
+                                for key, value in receipt["discovery"].items()}
+        receipt["discovery"].update(generalNavigationObserved=True, generalScrollRestored=True)
+        receipt["observedPublicText"] = dict.fromkeys(labels + ["hapticControlAbsent"], True)
+        for index, capture in enumerate(receipt["captures"]):
+            capture.update(name=capture["name"].replace("notifications", "general"),
+                           scenario=case["scenario"], testIdentifier=case["test"], pane="General")
+            visible = labels[:7] if index == 0 else labels[7:]
+            capture["labelFrames"] = {
+                label: {"x": 0.34, "y": 0.8 - n * 0.08, "width": 0.6, "height": 0.03}
+                for n, label in enumerate(visible)
+            }
+            capture["observedPublicText"] = {label: label in visible for label in labels}
+            capture["observedPublicText"]["hapticControlAbsent"] = True
+        return case, receipt
+
+    def test_general_requires_retained_output_absence_navigation_and_restoration(self):
+        case, receipt = self.general_receipt()
+        self.assertEqual(SUITE.evaluate(case, receipt, self.framework(), 0, "a" * 64),
+                         ("PASS", "rendered_output_verified"))
+        self.assertEqual(PROBE.settings_captures(receipt), receipt["captures"])
+        for key in receipt["observedPublicText"]:
+            failed = copy.deepcopy(receipt)
+            failed.update(verdict="FAIL", reason="rendered_output_mismatch", suiteExit=10, xcodeExit=65)
+            failed["observedPublicText"][key] = False
+            for capture in failed["captures"]:
+                capture["observedPublicText"][key] = False
+            with self.subTest(missing_or_removed=key):
+                self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64),
+                                 ("FAIL", "rendered_output_mismatch"))
+                inconsistent = dict(failed, verdict="PASS", suiteExit=0, xcodeExit=0)
+                self.assertEqual(SUITE.evaluate(case, inconsistent, self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        for field in receipt["discovery"]:
+            altered = copy.deepcopy(receipt)
+            altered["discovery"].pop(field)
+            with self.subTest(missing_guard=field):
+                self.assertEqual(SUITE.evaluate(case, altered, self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        for pane in ["closed", "About"]:
+            altered = copy.deepcopy(receipt)
+            altered["originalPane"] = pane
+            altered["discovery"].pop("generalScrollRestored")
+            self.assertEqual(SUITE.evaluate(case, altered, self.framework(), 0, "a" * 64)[0], "PASS")
+        blocked = dict(receipt, verdict="BLOCKED", reason="general_scroll_coverage_incomplete", suiteExit=20, xcodeExit=65)
+        self.assertEqual(SUITE.evaluate(case, blocked, self.framework(False), 20, "a" * 64),
+                         ("BLOCKED", "general_scroll_coverage_incomplete"))
+
+    def test_general_rejects_stale_cross_scenario_or_incomplete_endpoint_evidence(self):
+        case, receipt = self.general_receipt()
+        for change in [
+            {"generalCaptureVersion": True}, {"generalCaptureVersion": 2}, {"notificationsCaptureVersion": 1},
+            {"screenshotSHA256": "b" * 64}, {"captures": []}, {"captures": receipt["captures"][:1]},
+            {"captures": receipt["captures"] * 2}, {"captures": list(reversed(receipt["captures"]))},
+            {"originalPane": "Other"}, {"testIdentifier": self.case["test"]},
+            {"captures": self.notifications_receipt()[1]["captures"]}, {"cleanup": "blocked"},
+        ]:
+            with self.subTest(change=change):
+                self.assertEqual(SUITE.evaluate(case, dict(receipt, **change), self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        for index in range(2):
+            for field in receipt["captures"][index]:
+                altered = copy.deepcopy(receipt)
+                altered["captures"][index].pop(field)
+                with self.subTest(endpoint=index, missing=field):
+                    self.assertEqual(SUITE.evaluate(case, altered, self.framework(), 0, "a" * 64)[0], "BLOCKED")
+            for change in [
+                {"candidateSHA256": "d" * 64}, {"candidatePID": 999}, {"windowID": 999},
+                {"runID": "20000000-0000-4000-8000-000000000001"}, {"pane": "Notifications"},
+                {"name": "wrong"}, {"pixelWidth": 701}, {"labelFrames": {}},
+                {"contentTypes": [True]}, {"endpointFrames": []}, {"sha256": "wrong"},
+            ]:
+                altered = copy.deepcopy(receipt)
+                altered["captures"][index].update(change)
+                with self.subTest(endpoint=index, change=change):
+                    self.assertEqual(SUITE.evaluate(case, altered, self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        for delta in [-1, 0, 484, 485, 500]:
+            altered = copy.deepcopy(receipt)
+            tail = altered["captures"][1]
+            tail["contentFrames"][0]["y"] = 147 - delta
+            tail["endpointFrames"] = copy.deepcopy(tail["contentFrames"])
+            altered["discovery"].update(generalScrollOffsetPoints=delta, generalOverlapPoints=548-delta)
+            self.assertEqual(SUITE.evaluate(case, altered, self.framework(), 0, "a" * 64)[0],
+                             "PASS" if delta == 484 else "BLOCKED")
+        for index in range(2):
+            failed = copy.deepcopy(receipt)
+            failed.update(verdict="FAIL", reason="rendered_output_mismatch", suiteExit=10, xcodeExit=65)
+            failed["captures"][index]["observedPublicText"]["hapticControlAbsent"] = False
+            failed["observedPublicText"]["hapticControlAbsent"] = False
+            self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64)[0], "FAIL")
+
+    def test_general_missing_measured_labels_remains_output_failure_not_block(self):
+        case, receipt = self.general_receipt()
+        for label in ["Launch at login", "Remember last tab"]:
+            failed = copy.deepcopy(receipt)
+            failed.update(verdict="FAIL", reason="rendered_output_mismatch", suiteExit=10, xcodeExit=65)
+            failed["observedPublicText"][label] = False
+            for capture in failed["captures"]:
+                capture["labelFrames"].pop(label, None)
+                capture["observedPublicText"][label] = False
+            self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64),
+                             ("FAIL", "rendered_output_mismatch"))
+            self.assertEqual(PROBE.settings_captures(failed), failed["captures"])
+            lying = copy.deepcopy(failed)
+            lying["observedPublicText"][label] = True
+            self.assertEqual(SUITE.evaluate(case, lying, self.framework(False), 10, "a" * 64)[0], "BLOCKED")
 
     def test_notifications_requires_complete_consistent_output_and_viewport_proof(self):
         case, receipt = self.notifications_receipt()
@@ -302,6 +416,13 @@ class RegressionSuiteContractTests(unittest.TestCase):
 
     def test_notifications_export_requires_each_named_hashed_capture_and_no_extras(self):
         _, receipt = self.notifications_receipt()
+        self.check_settings_export(receipt)
+
+    def test_general_export_requires_each_named_hashed_capture_and_no_extras(self):
+        _, receipt = self.general_receipt()
+        self.check_settings_export(receipt)
+
+    def check_settings_export(self, receipt):
         destination = self.root / "captures"
         destination.mkdir()
         attachments = []
@@ -313,7 +434,7 @@ class RegressionSuiteContractTests(unittest.TestCase):
             capture["sha256"] = hashlib.sha256(data).hexdigest()
             attachments.append({"exportedFileName": filename,
                                 "suggestedHumanReadableName": capture["name"] + "_0_fixture.png"})
-        manifest = [{"testIdentifier": "GuestRegressionProbe/testInstalledNotificationsWithoutAIReplies()",
+        manifest = [{"testIdentifier": "GuestRegressionProbe/" + SUITE.SCENARIOS[receipt["scenario"]]["test"] + "()",
                      "attachments": attachments}]
         manifest_path = destination / "manifest.json"
         manifest_path.write_text(json.dumps(manifest))
@@ -353,7 +474,7 @@ class RegressionSuiteContractTests(unittest.TestCase):
                 SUITE.export_capture(self.root / "run", destination, receipt)
 
     def test_legacy_capture_contract_rejects_multi_capture_substitution(self):
-        for extra in [{"captures": []}, {"notificationsCaptureVersion": 1}]:
+        for extra in [{"captures": []}, {"notificationsCaptureVersion": 1}, {"generalCaptureVersion": 1}]:
             receipt = dict(self.receipt(), **extra)
             self.assertEqual(SUITE.evaluate(self.case, receipt, self.framework(), 0, "a" * 64)[0], "BLOCKED")
         destination = self.root / "legacy"
@@ -638,6 +759,141 @@ class GUIJobCleanupTests(unittest.TestCase):
         self.assertEqual(result["lookupError"], "TimeoutExpired")
 
 
+class HapticRemovalSourceContractTests(unittest.TestCase):
+    """Source wiring contracts, not physical trackpad or live interaction proof."""
+
+    def test_product_has_no_haptic_actuator_setting_or_consumer(self):
+        sources = [source for folder in ["notchPocket", "notchPocketXPCHelper", "Shared"]
+                   for source in (ROOT / folder).rglob("*")
+                   if source.suffix in {".swift", ".m", ".mm", ".h", ".c", ".cpp"}]
+        self.assertTrue(sources)
+        for source in sources:
+            with self.subTest(path=str(source.relative_to(ROOT))):
+                self.assertNotRegex(source.read_text(),
+                                    r"(?i)haptic|sensoryFeedback|FeedbackGenerator|kSystemSoundID_Vibrate")
+        self.assertNotRegex((ROOT / "notchPocket.xcodeproj/project.pbxproj").read_text(), r"(?i)haptic")
+        catalog = json.loads((ROOT / "notchPocket/Localizable.xcstrings").read_text())
+        self.assertNotIn("Enable haptic feedback", catalog["strings"])
+        for key in ["Open notch on hover", "Notch animation", "Enable gestures", "Compact mode"]:
+            self.assertIn(key, catalog["strings"])
+
+    def test_panel_hover_click_keyboard_media_and_shelf_handlers_remain(self):
+        content = (ROOT / "notchPocket/ContentView.swift").read_text()
+        for fragment in [
+            ".onHover { hovering in\n                        handleHover(hovering)",
+            ".onTapGesture {", "if vm.notchState == .closed && !shouldDisplayNowPlayingFallbackNotice",
+            'SettingsWindowController.shared.showWindow()', '.keyboardShortcut(KeyEquivalent(","), modifiers: .command)',
+            "notificationManager.holdActive()", "self.notificationManager.resumeDismiss()",
+            "Defaults[.minimumHoverDuration]", "Defaults[.openNotchOnHover]", "Task.isCancelled",
+            "handleDownGesture(translation: translation, phase: phase)",
+            "handleUpGesture(translation: translation, phase: phase)",
+            "handleNextTrackGesture(translation: translation, phase: phase)",
+            "handlePreviousTrackGesture(translation: translation, phase: phase)",
+            "guard vm.notchState == .open && !vm.isHoveringCalendar",
+            "if !SharingStateManager.shared.preventNotchClose", "vm.close()", "didOpen = vm.open()",
+            "guard !horizontalMediaGestureTriggered else { return }",
+            "guard translation > Defaults[.gestureSensitivity] else { return }",
+            "horizontalMediaGestureTriggered = true\n        triggerHorizontalMediaFeedback(feedback)\n        action()",
+            "musicManager.nextTrack()", "musicManager.previousTrack()",
+            "horizontalMediaGestureFeedback = feedback", "horizontalMediaGestureFeedback = .zero",
+            "dropInteraction.dropEvent = true\n            ShelfStateViewModel.shared.load(providers)",
+            "if doOpen() {\n                        coordinator.currentView = .shelf",
+            "ShelfView(", "CompactHomeView(", "NotchHomeView(", "DashboardView(",
+        ]:
+            self.assertIn(fragment, content)
+
+    def test_calendar_selection_scroll_monitors_and_activity_cycling_remain(self):
+        calendar = (ROOT / "notchPocket/components/Calendar/NotchPocketCalendar.swift").read_text()
+        for fragment in [
+            "selectedDate = date\n                            byClick = true",
+            "scrollPosition = index", ".scrollPosition(id: $scrollPosition, anchor: .center)",
+            "navigateDateByScrollWheel(deltaY: event.deltaY)", "navigateByScrollWheel(deltaY: event.deltaY)",
+            "handleScrollChange(newValue: newValue, config: config)", "guard isHovering else { return event }",
+            "scrollPosition = newIndex", "selectedDate = newDate", "stepSelection(by: direction)",
+            "displayedWeekStart = newStart\n            selectedDate = newSelection",
+            "pageWeek(by: direction)", "selectDate(date)", "Button(action: onClick)",
+            "await calendarManager.updateCurrentDate(selectedDate)",
+        ]:
+            self.assertIn(fragment, calendar)
+        self.assertEqual(calendar.count("NSEvent.addLocalMonitorForEvents(matching: .scrollWheel)"), 2)
+        self.assertEqual(calendar.count("NSEvent.removeMonitor(monitor)"), 2)
+        stack = (ROOT / "notchPocket/components/Notch/LiveActivityStack.swift").read_text()
+        for fragment in [
+            "DragGesture(minimumDistance: 14)", "abs(value.translation.width) > 24",
+            "move(by: value.translation.width < 0 ? 1 : -1)",
+            "guard items.indices.contains(next) else { return }",
+            "withAnimation(.smooth(duration: 0.3)) { index = next }",
+        ]:
+            self.assertIn(fragment, stack)
+
+    def test_notification_send_copy_and_visible_confirmation_remain(self):
+        view = (ROOT / "notchPocket/components/Notch/NotificationLiveActivity.swift").read_text()
+        for fragment in [
+            "Button(action: send)", ".onSubmit(send)", ".disabled(!canSend)", "guard canSend else { return }",
+            "let outcome = await manager.reply(to: notification, text: text)", "didSend = outcome == .sent",
+            ".animation(.smooth(duration: 0.25), value: didSend)", 'Image(systemName: "checkmark")',
+            "Button(action: copy)", "NSPasteboard.general.clearContents()",
+            "NSPasteboard.general.setString(code, forType: .string)",
+            "didCopy = true", "didCopy = false", 'Text(didCopy ? "Copied" : "Copy")',
+            ".animation(.smooth(duration: 0.25), value: didCopy)",
+        ]:
+            self.assertIn(fragment, view)
+
+    def test_general_controls_and_unrelated_options_are_not_removed(self):
+        settings = (ROOT / "notchPocket/components/Settings/Views/GeneralSettingsView.swift").read_text()
+        for label in SUITE.SCENARIOS["general-haptics-removed"]["labels"]:
+            self.assertIn('"' + label + '"', settings)
+        for fragment in ["if openNotchOnHover", 'Text("Hover delay")', "if enableGestures",
+                         ".enableHorizontalMediaGestures", ".closeGestureEnabled", "$gestureSensitivity",
+                         "$animationSpeedMultiplier", "appLanguage.applyAppleLanguagesOverride()"]:
+            self.assertIn(fragment, settings)
+        constants = (ROOT / "notchPocket/models/Constants.swift").read_text()
+        for key in ["enableGestures", "enableHorizontalMediaGestures", "closeGestureEnabled", "compactMode",
+                    "showOnLockScreen", "notchPocketShelf", "openNotchOnHover", "enableOpeningAnimation"]:
+            self.assertIn("static let " + key + " = ", constants)
+
+    def test_general_native_case_uses_fixed_descriptors_and_verified_scroll_restoration(self):
+        root = ROOT / "experiments/tart-regression/GuestRegressionProbe"
+        oracle = (root / "SettingsRemovalOutputOracle.swift").read_text()
+        for label in SUITE.SCENARIOS["general-haptics-removed"]["labels"]:
+            self.assertIn('"' + label + '"', oracle)
+        native = (root / "GuestRegressionProbe.swift").read_text()
+        for fragment in [
+            "func testInstalledGeneralWithoutHaptics()", 'modes: ["general-haptics-removed"]',
+            'state.discovery["generalNavigationObserved"] = true',
+            'let originalForm = try settingsForm(settings, scenario: .general)',
+            'state.originalGeneralScroll = frames',
+            'state.discovery["generalScrollRestored"] = restored == original',
+            "guard restored == original else", "state.cleanup = \"blocked\"",
+            "SettingsRemovalOutputOracle.combine(outputs, scenario: scenario)",
+        ]:
+            self.assertIn(fragment, native)
+        self.assertEqual(native.count("VNImageRequestHandler"), 2)
+        self.assertNotIn("import notchPocket", native)
+        inspect = native.split("private func inspectScrollableSettings(", 1)[1].split(
+            "private func inspectAppearance(", 1)[0]
+        self.assertLess(inspect.index("state.originalGeneralScroll = frames"), inspect.index("about.click()"))
+        self.assertLess(inspect.index("pane.click()"), inspect.index("let form = try settingsForm("))
+        restore = native.split("private func restore(", 1)[1].split("private func finish(", 1)[0]
+        self.assertIn("let form = try settingsForm(settings, scenario: .general)", restore)
+        project = (root / "GuestRegressionProbe.xcodeproj/project.pbxproj").read_text()
+        self.assertIn("path = SettingsRemovalOutputOracle.swift;", project)
+        self.assertIn("dependencies = ();", project)
+
+    def test_measured_general_labels_keep_static_text_query_and_scoped_pixel_allowance(self):
+        root = ROOT / "experiments/tart-regression/GuestRegressionProbe"
+        oracle = (root / "SettingsRemovalOutputOracle.swift").read_text()
+        self.assertIn('self == .general ? ["Launch at login": 4, "Remember last tab": 4] : [:]', oracle)
+        self.assertIn("leadingPixels <= CGFloat(padding)", oracle)
+        native = (root / "GuestRegressionProbe.swift").read_text()
+        output = native.split("var controls: [String: Bool]", 1)[1].split("let capture =", 1)[0]
+        self.assertIn("form.staticTexts.matching(identifier: label)", output)
+        self.assertIn("matches.count == 1", output)
+        self.assertNotIn("checkBoxes", output)
+        self.assertNotIn("descendants(matching: .any)", output)
+        self.assertIn("pixelWidth: image.width", native)
+
+
 class AIReplyRemovalSourceContractTests(unittest.TestCase):
     """Removal/preservation source contracts, not live banner or send evidence."""
 
@@ -738,19 +994,20 @@ class AIReplyRemovalSourceContractTests(unittest.TestCase):
 
     def test_native_queries_use_typed_values_and_never_gate_on_expected_output(self):
         native = (ROOT / "experiments/tart-regression/GuestRegressionProbe/GuestRegressionProbe.swift").read_text()
-        notifications = native.split("private func inspectNotifications(", 1)[1].split(
+        notifications = native.split("private func inspectScrollableSettings(", 1)[1].split(
             "private func inspectAppearance(", 1)[0]
         for fragment in [
-            '.containing(.staticText, identifier: "Notifications")', 'row.staticTexts["Notifications"]',
-            "form.staticTexts.matching(identifier: label)", "form.staticTexts[NotificationsOutputOracle.suggestionLabel]",
+            '.containing(.staticText, identifier: scenario.pane)', 'row.staticTexts[scenario.pane]',
+            "form.staticTexts.matching(identifier: label)", "form.staticTexts[scenario.removedLabel]",
             "formFrame.contains(matches.firstMatch.frame)", "first.map(\\.frame) == confirmed.map(\\.frame)",
-            "overlap >= 64", "notifications_scroll_coverage_incomplete",
+            "overlap >= 64", r"\(prefix)_scroll_coverage_incomplete",
             "frames.allSatisfy { $0.minY >= formFrame.minY }",
             "frames.allSatisfy { $0.maxY <= formFrame.maxY }",
-            "CGWindowListCopyWindowInfo", "notifications_capture_content_changed",
-            "sidebars.count == 1 && forms.count == 1",
+            "CGWindowListCopyWindowInfo", r"\(prefix)_capture_content_changed",
+            "let form = try settingsForm(settings, scenario: scenario)",
         ]:
             self.assertIn(fragment, notifications)
+        self.assertIn("sidebars.count == 1 && forms.count == 1", native)
         output = notifications.split("var controls: [String: Bool]", 1)[1].split("let capture =", 1)[0]
         self.assertNotIn("require(", output)
         self.assertNotIn("isHittable", output)

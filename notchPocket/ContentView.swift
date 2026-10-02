@@ -35,8 +35,6 @@ struct ContentView: View {
     @State private var horizontalMediaGestureFeedback: CGFloat = .zero
     @State private var isHoveringMusicArea = false
 
-    @State private var haptics: Bool = false
-
     @Namespace var albumArtNamespace
 
     // Use standardized animations from StandardAnimations enum
@@ -348,7 +346,6 @@ struct ContentView: View {
                             }
                         }
                     }
-                    .sensoryFeedback(.alignment, trigger: haptics)
                     .contextMenu {
                         Button("Settings") {
                             DispatchQueue.main.async {
@@ -813,10 +810,6 @@ struct ContentView: View {
                 notificationManager.holdActive()
             }
 
-            if vm.notchState == .closed && Defaults[.enableHaptics] {
-                haptics.toggle()
-            }
-            
             guard vm.notchState == .closed,
                   !shouldDisplayNowPlayingFallbackNotice,
                   !coordinator.shouldShowSneakPeek(on: vm.screenUUID),
@@ -871,9 +864,6 @@ struct ContentView: View {
         }
 
         if translation > Defaults[.gestureSensitivity] {
-            if Defaults[.enableHaptics] {
-                haptics.toggle()
-            }
             withAnimation(animationSpring) {
                 gestureProgress = .zero
             }
@@ -901,10 +891,6 @@ struct ContentView: View {
             if !SharingStateManager.shared.preventNotchClose { 
                 gestureProgress = .zero
                 vm.close()
-            }
-
-            if Defaults[.enableHaptics] {
-                haptics.toggle()
             }
         }
     }
@@ -941,10 +927,6 @@ struct ContentView: View {
         horizontalMediaGestureTriggered = true
         triggerHorizontalMediaFeedback(feedback)
         action()
-
-        if Defaults[.enableHaptics] {
-            haptics.toggle()
-        }
     }
 
     private func resetHorizontalMediaGesture() {

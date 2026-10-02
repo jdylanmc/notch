@@ -1,7 +1,7 @@
 # Source-only installed-app probe
 
 This is the initial **registered installed-app regression suite**, built from the
-XCTest/Vision Tart experiment. It currently covers three application journeys and
+XCTest/Vision Tart experiment. It currently covers four application journeys and
 five explicit oracle/restoration controls, not the whole app. See the
 [VM reconstruction recipe](../../docs/agents/vm-regression.md) first.
 
@@ -67,6 +67,10 @@ Do not substitute the host installation/PR97 preview or copy host evidence.
 Run only its Notifications wrong-behavior scenario on OLD; run the full eight
 cases across the existing fixtures on NEW only. See its
 [scenario note](scenarios/notifications-ai-replies-removed.md).
+The General haptic-removal comparison requires its own identified OLD
+haptic-bearing artifact, not an inferred base build or another removal's proof.
+Run only its new scenario on OLD, then all nine registered cases on NEW across
+the existing fixtures; see the [General scenario](scenarios/general-haptics-removed.md).
 
 ## Exercise the installed app in the guest
 
@@ -137,6 +141,7 @@ panes are an explicit unsupported fixture, not silently replaced.
 | `native-abort-after-open` | BLOCKED / 20; XCTest 65 | A real XCTest failure after opening Settings still runs teardown and reports restoration |
 | `native-abort-after-about` | BLOCKED / 20; XCTest 65 | A real XCTest failure after About selection still restores the fixture |
 | `notifications-ai-replies-removed` | PASS / 0 on new candidate | Retained notification labels render; suggestion control is absent in Accessibility and pixels |
+| `general-haptics-removed` | PASS / 0 on new candidate | Thirteen retained General labels render; haptic option is absent in Accessibility and pixels |
 
 Do not convert the two negative controls into passing application tests.
 `runs/<name>/` holds invocation/framework/result receipts, log and `.xcresult`;
@@ -144,7 +149,8 @@ Do not convert the two negative controls into passing application tests.
 skips, unexpected outcomes or unverified restoration are non-success.
 Export attachments with `xcrun xcresulttool export attachments`, verify the named
 public image hashes against the receipt, and inspect the pixels locally.
-Notifications alone uses `notificationsCaptureVersion: 1` and exactly two named
+Notifications uses `notificationsCaptureVersion: 1`; General haptic removal uses
+`generalCaptureVersion: 1`. Each requires exactly two named
 top/bottom captures rather than `screenshotSHA256`; the suite's `captures` report
 field binds both native attachment names/hashes/dimensions. Other cases retain
 their single `capture` contract.
@@ -156,7 +162,8 @@ Retained automatic system attachments are disabled.
   and Settings markers, with one guest display and a visible Settings gear.
 - It covers About version/build,
   [Appearance idle-face removal](scenarios/appearance-idle-face-removed.md) and
-  [Notifications AI-reply removal](scenarios/notifications-ai-replies-removed.md), not
+  [Notifications AI-reply removal](scenarios/notifications-ai-replies-removed.md) and
+  [General haptic removal](scenarios/general-haptics-removed.md), not
   all retained features. New features need their own independent scenarios.
 - Appearance uses typed static-text value lookup, row-scoped sidebar navigation,
   and structural form mapping. Its single screenshot requires positive full-form
@@ -164,7 +171,9 @@ Retained automatic system attachments are disabled.
   for General/Media and the removed section. Missing retained controls are
   output failures after pane setup, never setup guards. OCR shares About's
   same-row fragment geometry; this does not authorize offscreen absence claims.
-- Notifications uses row-scoped navigation, typed static-text value lookup and
+- Notifications and General share a bounded capture helper with two fixed
+  scenario descriptors, not an arbitrary UI service. They use row-scoped
+  navigation, typed static-text value lookup and
   structural form mapping at the existing 1440x900 display. Two actual endpoint
   captures cover the scrollable form: stable repeated endpoint geometry, no
   clipped content before the top/after the bottom, uniform translation and at
@@ -172,7 +181,17 @@ Retained automatic system attachments are disabled.
   Disabled retained labels need presence, visible geometry and aligned OCR, not
   `isHittable`. No preferences or window/display dimensions change. Both captures
   carry exact run/candidate/PID/native-window/pane identity; retained labels
-  combine with OR, suggestion absence with AND. Restoration is unchanged.
+  combine with OR, removed-control absence with AND. Existing restoration is
+  unchanged; General additionally records and verifies a pre-existing General
+  form's scroll position through teardown, including failed assertions.
+  General's Launch at login and Remember last tab were empirically confirmed as
+  static-text AXValue, not checkbox titles. Their measured four-pixel leading
+  Vision-box allowance is label-specific; native frames, exact text, vertical
+  alignment and other labels' policies remain unchanged. See the
+  [diagnosis and failure-boundary evidence](scenarios/general-haptics-removed.md#measured-native-label-remediation).
+  The thirteen retained General labels are preservation requirements for this
+  haptic removal only; planned compact-mode/panel-swipe PRs revise their own
+  behavior, contracts and native evidence.
 - Readiness and cleanup are checked, but this remains prototype code, not a
   hardened multi-user execution service or an authorization boundary.
 - User-controlled OS consent, guest idle lock, hardware and application readiness

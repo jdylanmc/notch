@@ -72,6 +72,15 @@
       "expectedVerdict": "PASS",
       "expectedReason": "rendered_output_verified",
       "notes": "scenarios/notifications-ai-replies-removed.md"
+    },
+    {
+      "id": "general-haptics-removed",
+      "kind": "regression",
+      "scenario": "general-haptics-removed",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledGeneralWithoutHaptics",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/general-haptics-removed.md"
     }
   ]
 }

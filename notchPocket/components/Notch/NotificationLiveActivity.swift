@@ -474,7 +474,6 @@ struct NotificationExpandedView: View {
         .animation(.smooth(duration: 0.25), value: isSending)
         .animation(.smooth(duration: 0.25), value: didSend)
         .animation(.smooth(duration: 0.25), value: didHandOff)
-        .sensoryFeedback(.success, trigger: didSend)
     }
 
     private var fillStyle: Color {
@@ -695,7 +694,6 @@ private struct CodeCopyButton: View {
         }
         .buttonStyle(ScaleDownButtonStyle())
         .animation(.smooth(duration: 0.25), value: didCopy)
-        .sensoryFeedback(.success, trigger: didCopy)
     }
 
     private func copy() {
