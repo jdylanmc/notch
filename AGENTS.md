@@ -246,8 +246,17 @@ No path reuse, overwriting, input-app mutation, installation or app launch:
 python3 -B scripts/distribution.py \
   --identity 'Developer ID Application: YOUR CERTIFICATE NAME (YOURTEAMID)' \
   --team 'YOURTEAMID' \
+  --certificate-sha1 'PUBLIC_CERTIFICATE_SHA1_40_HEX_CHARACTERS' \
   --build-dir "$PWD/.build/np9-signing-001"
 ```
+
+The public leaf fingerprint is optional: omit `--certificate-sha1` for the
+existing full-name selection. Use exactly 40 hexadecimal characters (either
+case, no separators) to disambiguate same-name certificates, without Keychain
+enumeration or access changes. Name and team remain mandatory. The fingerprint
+selects Xcode/resource/outer-app signing and constrains every final bundle/Mach-O
+verification on all architectures; chain, name/team and all other signature
+checks remain required. No fallback to the common name on failure.
 
 The parent creates the `.build/` parent if needed and substitutes the approved
 selector/team; placeholders are not configured values. The command discovers

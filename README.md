@@ -217,8 +217,21 @@ mkdir -p .build
 python3 -B scripts/distribution.py \
   --identity 'Developer ID Application: YOUR CERTIFICATE NAME (YOURTEAMID)' \
   --team 'YOURTEAMID' \
+  --certificate-sha1 'PUBLIC_CERTIFICATE_SHA1_40_HEX_CHARACTERS' \
   --build-dir "$PWD/.build/np9-signing-001"
 ```
+
+`--certificate-sha1` is **optional**: omit that line to retain full-name
+selection. When multiple certificates share the same common name, supply the
+approved **public leaf certificate's SHA-1 fingerprint**, exactly 40 hexadecimal
+characters, without spaces, colons or a `0x` prefix (either case is accepted).
+The full `--identity` and `--team` remain mandatory and are independently checked.
+The fingerprint selects the certificate for Xcode, the approved built resource
+and the outer app seal; every final bundle/Mach-O verification also requires
+that exact leaf on all architectures. It is not a private key or a replacement for the
+Developer ID chain, name/team, timestamp, runtime or entitlement checks.
+The command does not discover certificates or change Keychain access; an
+unavailable selector or mismatched signer fails without falling back to the name.
 
 Choose a **new** build directory beneath this checkout's `.build/`; its parent
 must already exist, be user-owned and not group/world-writable. Paths must be
@@ -275,6 +288,8 @@ Only a zero exit with `ok: true, status: "signed"` identifies the successful
 candidate. Its JSON includes the exact `app`, build directory, identities,
 version, developer directory and per-code/per-architecture signing evidence,
 with `notarization: "NOT YET NOTARIZED"` and `gatekeeper_assessed: false`.
+When supplied and successfully verified, `certificate_sha1` records the public
+fingerprint in uppercase; the field is absent for full-name-only selection.
 Native diagnostic logs and the supplied certificate name are not echoed.
 See the [failure/evidence contract](CONTRIBUTING.md#local-distribution-signing-outcome-and-evidence).
 

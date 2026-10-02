@@ -139,7 +139,7 @@ hosted run or distribution succeeded.
 | [Native helper](.github/workflows/notch_control.yml) | Unfiltered `pocket` push/PR on `macos-26`, read-only contents, non-persisted checkout credentials, 20-minute timeout. Canonical build, all 69 package tests, and exactly ten Swift lint inputs. No app launch, screenshots, privacy grants, signing secrets, or publication. |
 | [CI contracts](.github/workflows/ci_contract_tests.yml), [tests/package](.github/scripts/ci-contract/) | Unfiltered `pocket` push/PR, read-only contents, non-persisted credentials, five-minute timeout. Node's built-in test runner and one exact-pinned YAML parser inspect actual workflow structure, reject malformed/duplicate YAML, and test deliberately mutated configurations. Workflow `run` blocks are data, never executed by these structural tests. Also runs the existing 22 PR-policy tests and the named portable local-packaging, distribution-signing, notarization-preparation and hosted-release unittest steps; no native signing, packaging or uploads on Ubuntu. |
 | [Local packaging](scripts/package.py), [portable tests](scripts/tests/test_package.py) | Explicit already-built Release app and new DMG paths; Python 3.9+ standard library, existing hash-pinned DMG builder unchanged. Native identity/signature checks, private copy, read-only image verification, exact-input content comparison, owned-device detach, no-clobber promotion. No implicit build/sign/install/launch, secrets, `local.env`, release credentials, or publication. See [usage and missing-dependency recovery](README.md#local-dmg-preparation). |
-| [Local distribution signing](scripts/distribution.py), [portable tests](scripts/tests/test_distribution.py) | Separately approved NP-9-local-signing-v1: explicit existing Developer ID Application name/team and a fresh private build directory. Xcode Release signing overrides, planned signing of the resource-only MediaRemoteAdapterTestClient plus outer app seal, and all-Mach-O/all-architecture signature evidence. Existing local defaults and packager unchanged. **NOT YET NOTARIZED**; no Keychain management, installation, app launch or publication. See [usage](README.md#local-developer-id-candidate-9-bounded-slice). |
+| [Local distribution signing](scripts/distribution.py), [portable tests](scripts/tests/test_distribution.py) | Separately approved NP-9-local-signing-v1: explicit existing Developer ID Application name/team, optional public certificate SHA-1 selector and a fresh private build directory. Xcode Release signing overrides, planned signing of the resource-only MediaRemoteAdapterTestClient plus outer app seal, and all-Mach-O/all-architecture signature evidence. Existing local defaults and packager unchanged. **NOT YET NOTARIZED**; no Keychain management, installation, app launch or publication. See [usage](README.md#local-developer-id-candidate-9-bounded-slice). |
 | [Notarization preparation](scripts/notarize.py), [portable tests](scripts/tests/test_notarize.py) | Explicit signed app, signer/team, existing notarytool profile and fresh output directory. Copies without changing the source, notarizes/staples the app, reuses exact-input packaging, then signs/notarizes/staples and verifies the final DMG. Native execution uploads to Apple; portable CI does not. No GitHub/Homebrew publication or installation. See [release gates and recovery](docs/releases.md). |
 | [Notch Pocket notarized release](.github/workflows/pocket-native-release.yml), [portable boundaries](scripts/tests/test_pocket_release.py) | Product tag `notch-pocket-v*` or explicit existing-tag dispatch from `pocket`; strict version/ancestry gate and all nine successful exact-commit product jobs from the latest `pocket` push runs. Separate hosted macOS 26 / full Xcode 26.6 signing job uses isolated temporary credentials; Ubuntu publication checks transferred and remote asset bytes before publishing a draft as latest. Final DMG plus public manifest only. Scoped Homebrew token opens a draft cask PR, never merges or writes `main`. Empty configuration fails with named missing secrets. See [setup, permissions and recovery](docs/releases.md#hosted-actions-workflow). |
 | [PR target check](.github/workflows/base_ref_check.yml), [guidance](.github/workflows/base_ref_check_comment.yml) | Existing `pull_request_target` events and check identities remain unchanged: `Fork PR target check` and `Sync PR target guidance comment`. Only `pocket` is an allowed base. Guidance uses its existing comment permissions; product-CI changes do not broaden them. |
@@ -293,7 +293,7 @@ Neither an owned partial output nor a competing output is deleted.
 
 ### Local distribution signing outcome and evidence
 
-`scripts/distribution.py --identity FULL_DEVELOPER_ID_NAME --team TEAM_ID --build-dir ABSOLUTE_NEW_BUILD`
+`scripts/distribution.py --identity FULL_DEVELOPER_ID_NAME --team TEAM_ID --build-dir ABSOLUTE_NEW_BUILD [--certificate-sha1 PUBLIC_CERTIFICATE_SHA1_40_HEX_CHARACTERS]`
 is the **NP-9-local-signing-v1** entrypoint. Follow the
 [exact signed-app → existing packager workflow](README.md#local-developer-id-candidate-9-bounded-slice).
 It never loads `local.env`, changes project/local-test signing defaults, touches
@@ -301,6 +301,17 @@ an input app, imports/exports certificates, calls Keychain management tools, or
 submits anything to Apple. Existing app/helper IDs, version 0.1.0 and declared
 entitlements are checked, not overridden. The helper's existing sandbox `false`
 entitlement is retained rather than replaced with app entitlements.
+
+The optional `--certificate-sha1` disambiguates certificates sharing the same
+common name without enumerating identities. It accepts exactly 40 hexadecimal
+characters (case-insensitive, no separators/prefix); an empty or malformed value
+fails before tool discovery or build-directory creation. Missing option values
+are argument errors. The full name and team remain required, even with a
+fingerprint. The normalized uppercase fingerprint replaces only the native
+signing selector, in both Xcode and the resource/outer-app `codesign --sign`
+commands. Omitting it preserves full-name selection and the existing result
+shape. An unavailable certificate is a native build/signing failure, not
+permission to retry by name or change credentials.
 
 The explicit plain command-line `CODE_SIGN_IDENTITY=...` and
 `DEVELOPMENT_TEAM=...` overrides take precedence over project settings, including
@@ -340,7 +351,11 @@ loosen the contract.
 
 Final verification requires the Apple Developer ID Application certificate
 chain and supplied team using an inline `codesign -R` requirement; both app
-and helper also require their exact identifiers. Every physical Mach-O file,
+and helper also require their exact identifiers. If a fingerprint was supplied,
+the requirement additionally includes `certificate leaf = H"<40_HEX_SHA1>"`.
+It checks Xcode-signed code before resource signing, then every bundle and
+physical Mach-O file during final verification, with `--all-architectures`.
+A different leaf fails even if its common name and team match. Every physical Mach-O file,
 including nested resources and framework versions, is verified for all
 architectures and inspected per architecture for the requested certificate
 name, team, hardened-runtime flag, secure `Timestamp` (not merely `Signed Time`)
@@ -351,9 +366,9 @@ remain sealed resources, not a claim about interpreter runtime policy.
 
 | Exit | Outcome |
 | --- | --- |
-| 0 | `ok: true`, `status: "signed"`; exact `app`, `build_dir`, `configuration`, `version`, developer directory, team, app/helper identifiers and `code` evidence for each architecture |
+| 0 | `ok: true`, `status: "signed"`; exact `app`, `build_dir`, `configuration`, `version`, developer directory, team, app/helper identifiers and `code` evidence for each architecture; uppercase public `certificate_sha1` only when supplied and verified |
 | 2 | `invalid_arguments`; no supplied argument contents echoed |
-| 3 | `invalid_input`; invalid identity/team, unsafe paths or entitlement declarations |
+| 3 | `invalid_input`; invalid identity/team/certificate SHA-1, unsafe paths or entitlement declarations |
 | 4 | `missing_tool`, `unsupported_platform`; full Xcode 26+/macOS 15.6+ required |
 | 5 | `signature_failed`; no fallback, with original `tool_exit` when a native signing/verification command failed |
 | 6 | `build_failed`; original Xcode `tool_exit`, or explicit `timed_out` |
