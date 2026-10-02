@@ -5819,7 +5819,6 @@
         }
       }
     },
-    "Compact mode" : {},
     "Continue" : {
       "localizations" : {
         "cs" : {
@@ -23007,7 +23006,6 @@
         }
       }
     },
-    "Shows a smaller opened notch with just the music player — no tabs, calendar or mirror." : {},
     "Slider color" : {
       "localizations" : {
         "cs" : {

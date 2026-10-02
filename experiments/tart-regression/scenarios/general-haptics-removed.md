@@ -22,23 +22,25 @@ window-only screenshots bind run, scenario, test, candidate hash/PID, native
 window ID, pane, geometry, attachment name, dimensions and PNG digest.
 
 Assertions require **Enable haptic feedback absent** in both the Accessibility
-form and screenshot text. Thirteen unconditional retained controls need visible
+form and screenshot text. Twelve unconditional retained controls need visible
 label geometry plus aligned OCR in at least one capture:
 
 - Show menu bar icon; Launch at login; Language; Show on all displays.
 - Preferred display; Automatically switch displays.
 - Notch height on notch displays; Notch height on non-notch displays.
 - Open notch on hover; Remember last tab; Notch animation.
-- Compact mode; Enable media gestures.
+- Enable media gestures.
 
 The original haptic-removal revision required **Enable gestures**. The scoped
 [panel-swipe removal](general-panel-swipes-removed.md) now replaces only that
 retained label with **Enable media gestures**, preserving its stored master
 value for media. This implements the owner's separate removal decision, not an
-exception to a failing haptic assertion. The other twelve labels and all haptic,
-capture and restoration requirements remain. Compact mode is still retained
-pending its own scoped change. The historical evidence below describes the
-original label set and does not establish proof for the new panel-swipe candidate.
+exception to a failing haptic assertion. The subsequent scoped
+[compact-mode removal](general-compact-mode-removed.md) removes only **Compact
+mode** from this retained set because the owner selected its deletion. All
+other twelve labels and all haptic, capture and restoration requirements remain.
+The historical evidence below describes the original thirteen-label set and
+does not establish proof for either new removal candidate.
 
 Disabled labels still exist and render: presence never requires `isHittable`.
 Conditional controls (hover delay, custom heights, animation speed, expanded

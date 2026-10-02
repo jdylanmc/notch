@@ -90,6 +90,15 @@
       "expectedVerdict": "PASS",
       "expectedReason": "rendered_output_verified",
       "notes": "scenarios/general-panel-swipes-removed.md"
+    },
+    {
+      "id": "general-compact-mode-removed",
+      "kind": "regression",
+      "scenario": "general-compact-mode-removed",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledGeneralWithoutCompactMode",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/general-compact-mode-removed.md"
     }
   ]
 }

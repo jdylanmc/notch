@@ -43,8 +43,10 @@ enum OracleContractTests {
         try checkSettingsRemoval(.notifications)
         try checkSettingsRemoval(.general)
         try checkSettingsRemoval(.panelSwipes)
+        try checkSettingsRemoval(.compactMode)
         try checkGeneralNativeLabelGeometry(.general)
         try checkGeneralNativeLabelGeometry(.panelSwipes)
+        try checkGeneralNativeLabelGeometry(.compactMode)
     }
 
     private static func checkSettingsRemoval(_ scenario: SettingsRemovalScenario) throws {
@@ -74,6 +76,14 @@ enum OracleContractTests {
         if scenario == .panelSwipes {
             for label in ["Change media with horizontal gestures", "Gesture sensitivity", "Normalize gesture direction"] {
                 try check("media configuration is not panel copy: \(label)", rendered + [
+                    Observation(text: label, frame: CGRect(x: 0.4, y: 0.1, width: 0.5, height: 0.03))
+                ], controls, passes: true)
+            }
+        }
+        if scenario == .compactMode {
+            for label in ["Notch sizing", "Match real notch height", "Custom height",
+                          "Change media with horizontal gestures", "Gesture sensitivity"] {
+                try check("retained sizing and media copy: \(label)", rendered + [
                     Observation(text: label, frame: CGRect(x: 0.4, y: 0.1, width: 0.5, height: 0.03))
                 ], controls, passes: true)
             }
@@ -187,7 +197,7 @@ enum OracleContractTests {
                     controls: [label: present, scenario.absenceKey: false],
                     labelFrames: frames ?? [label: frame], pixelWidth: width
                 )
-                guard output[label] == expected, output[scenario.absenceKey] == false, output.count == 14 else {
+                guard output[label] == expected, output[scenario.absenceKey] == false, output.count == 13 else {
                     throw NSError(domain: "GeneralNativeLabelGeometry", code: 1,
                                   userInfo: [NSLocalizedDescriptionKey: "\(label) \(name): \(output)"])
                 }

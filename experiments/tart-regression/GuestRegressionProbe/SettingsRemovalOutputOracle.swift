@@ -5,6 +5,7 @@ enum SettingsRemovalScenario: String {
     case notifications = "notifications-ai-replies-removed"
     case general = "general-haptics-removed"
     case panelSwipes = "general-panel-swipes-removed"
+    case compactMode = "general-compact-mode-removed"
 
     var pane: String { self == .notifications ? "Notifications" : "General" }
     var prefix: String { pane.lowercased() }
@@ -14,18 +15,19 @@ enum SettingsRemovalScenario: String {
         case .notifications: return "testInstalledNotificationsWithoutAIReplies"
         case .general: return "testInstalledGeneralWithoutHaptics"
         case .panelSwipes: return "testInstalledGeneralWithoutPanelSwipes"
+        case .compactMode: return "testInstalledGeneralWithoutCompactMode"
         }
     }
     var retainedLabels: [String] {
         switch self {
         case .notifications: return ["Show notifications in the notch", "From all apps"]
-        case .general, .panelSwipes:
+        case .general, .panelSwipes, .compactMode:
             return [
                 "Show menu bar icon", "Launch at login", "Language", "Show on all displays",
                 "Preferred display", "Automatically switch displays",
                 "Notch height on notch displays", "Notch height on non-notch displays",
                 "Open notch on hover", "Remember last tab", "Notch animation",
-                "Compact mode", "Enable media gestures"
+                "Enable media gestures"
             ]
         }
     }
@@ -38,6 +40,11 @@ enum SettingsRemovalScenario: String {
                 "Enable gestures", "Close gesture",
                 "Two-finger swipe up on notch to close, two-finger swipe down on notch to open when **Open notch on hover** option is disabled"
             ]
+        case .compactMode:
+            return [
+                "Compact mode",
+                "Shows a smaller opened notch with just the music player — no tabs, calendar or mirror."
+            ]
         }
     }
     var absenceKey: String {
@@ -45,6 +52,7 @@ enum SettingsRemovalScenario: String {
         case .notifications: return "suggestionControlAbsent"
         case .general: return "hapticControlAbsent"
         case .panelSwipes: return "panelGestureControlsAbsent"
+        case .compactMode: return "compactModeControlAbsent"
         }
     }
     var forbiddenText: [String] {
@@ -52,6 +60,7 @@ enum SettingsRemovalScenario: String {
         case .notifications: return ["suggest replies", "apple intelligence"]
         case .general: return ["haptic"]
         case .panelSwipes: return ["enable gestures", "close gesture", "two-finger swipe up", "two-finger swipe down"]
+        case .compactMode: return ["compact mode", "shows a smaller opened notch", "no tabs, calendar or mirror"]
         }
     }
     var leadingOCRPaddingPixels: [String: Int] {

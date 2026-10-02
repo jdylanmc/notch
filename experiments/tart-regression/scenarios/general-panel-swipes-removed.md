@@ -48,9 +48,11 @@ the existing structural form mapping and two native endpoint captures.
 
 Assertions:
 
-- Thirteen retained labels render with visible native label geometry and aligned
+- Twelve retained labels render with visible native label geometry and aligned
   OCR in at least one endpoint, including **Enable media gestures**, hover,
-  animation, remembered tabs, compact mode, language and display controls.
+  animation, remembered tabs, language and display controls. The subsequent
+  owner-selected [compact-mode removal](general-compact-mode-removed.md) retires
+  only **Compact mode** from this positive set; all other properties remain.
 - **Enable gestures**, **Close gesture** and the two-finger panel-open/close
   instruction are absent from the Accessibility form and both endpoint pixels.
   Media gesture text is explicitly not forbidden.
@@ -82,6 +84,9 @@ labels, haptic absence, measured label-specific four-pixel OCR allowance,
 capture/geometry/restoration gates and earlier negative controls remain.
 Historical haptic receipts and documentation of their original thirteen labels
 remain historical evidence, not rewritten proof against this candidate.
+The later CMP removal makes this scenario's current positive set twelve labels;
+the original SWIPE scope, validation counts and ten-case proof requirements
+below remain historical. Current integration must run the eleven-case registry.
 
 ## Full ledger / changed-path map
 

@@ -52,16 +52,10 @@ struct ContentView: View {
         return effectiveHeight / 38.0
     }
     
-    /// Compact mode gets a rounder opened shape (35 vs 19) — at its smaller
-    /// size the standard radius reads square rather than pill-like.
-    private var openedInsets: (top: CGFloat, bottom: CGFloat) {
-        Defaults[.compactMode] ? compactCornerRadiusInsets.opened : cornerRadiusInsets.opened
-    }
-
     private var topCornerRadius: CGFloat {
         // If the notch is open, return the opened radius.
         if vm.notchState == .open {
-            return openedInsets.top
+            return cornerRadiusInsets.opened.top
         }
 
         // For the closed notch, scale if enabled
@@ -78,7 +72,7 @@ struct ContentView: View {
         let bottomCorner: CGFloat
 
         if vm.notchState == .open {
-            bottomCorner = openedInsets.bottom
+            bottomCorner = cornerRadiusInsets.opened.bottom
         } else if let scaleFactor = cornerRadiusScaleFactor {
             bottomCorner = max(0, baseClosedBottom * scaleFactor)
         } else {
@@ -115,27 +109,14 @@ struct ContentView: View {
     /// A notification is a glance, not a workspace — it doesn't need the full
     /// height the home/shelf tabs are sized for, and stretching to fill it
     /// just surrounds two lines of text with empty black.
-    /// nil means "size to content".
-    ///
-    /// Compact mode must use nil: this frame bounds hit-testing as well as
-    /// layout, so any value shorter than the content leaves the transport
-    /// row outside the hover region — moving toward the buttons registered
-    /// as a hover-exit and closed the notch. The compact panel's height is
-    /// controlled by its own internal padding instead, which is the honest
-    /// lever anyway.
-    private var openNotchHeight: CGFloat? {
+    private var openNotchHeight: CGFloat {
         if notificationManager.activeNotification != nil { return 132 }
-        return Defaults[.compactMode] ? nil : vm.notchSize.height
+        return vm.notchSize.height
     }
 
-    /// Compact mode drops the tab bar along with the tabs it switches
-    /// between — there's only the player to show, so a switcher would have
-    /// nothing to switch to. Also what keeps the panel narrow, since the
-    /// header spans the full notch width.
     private var showsHeader: Bool {
         vm.notchState == .open
             && notificationManager.activeNotification == nil
-            && !Defaults[.compactMode]
     }
 
     /// The activity currently on top of the stack — what the chin has to be
@@ -526,15 +507,6 @@ struct ContentView: View {
                     // reply UI — the usual tabs can wait until it's dismissed.
                     if let notification = notificationManager.activeNotification {
                         NotificationExpandedView(notification: notification)
-                    } else if Defaults[.compactMode] {
-                        // Player only — no tab switching, so currentView is
-                        // ignored here rather than offering a shelf the
-                        // compact layout has no room (or tab bar) for.
-                        // 336 = Atoll's 420 base less 20%, which also lands
-                        // within a few points of their Dynamic Island width
-                        // (340) — the tighter of their two compact sizes.
-                        CompactHomeView(albumArtNamespace: albumArtNamespace)
-                            .frame(width: 336)
                     } else {
                         switch coordinator.currentView {
                         case .dashboard:

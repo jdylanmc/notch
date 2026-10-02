@@ -239,6 +239,12 @@ final class GuestRegressionProbe: XCTestCase {
     }
 
     @MainActor
+    func testInstalledGeneralWithoutCompactMode() {
+        runInstalledSettingsOutput(testName: "testInstalledGeneralWithoutCompactMode",
+                                   modes: ["general-compact-mode-removed"])
+    }
+
+    @MainActor
     private func settingsForm(_ settings: XCUIElement, scenario: SettingsRemovalScenario) throws -> XCUIElement {
         let scrollViews = settings.scrollViews.allElementsBoundByIndex
         let sidebars = scrollViews.filter { $0.outlines.count == 1 }

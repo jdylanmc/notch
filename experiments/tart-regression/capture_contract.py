@@ -9,7 +9,7 @@ GENERAL_LABELS = {
     "Show menu bar icon", "Launch at login", "Language", "Show on all displays",
     "Preferred display", "Automatically switch displays",
     "Notch height on notch displays", "Notch height on non-notch displays",
-    "Open notch on hover", "Remember last tab", "Notch animation", "Compact mode", "Enable media gestures",
+    "Open notch on hover", "Remember last tab", "Notch animation", "Enable media gestures",
 }
 SCENARIOS = {
     "notifications-ai-replies-removed": {
@@ -23,6 +23,10 @@ SCENARIOS = {
     "general-panel-swipes-removed": {
         "pane": "General", "test": "testInstalledGeneralWithoutPanelSwipes",
         "labels": GENERAL_LABELS, "absence": "panelGestureControlsAbsent",
+    },
+    "general-compact-mode-removed": {
+        "pane": "General", "test": "testInstalledGeneralWithoutCompactMode",
+        "labels": GENERAL_LABELS, "absence": "compactModeControlAbsent",
     },
 }
 VERSION_KEYS = {"notificationsCaptureVersion", "generalCaptureVersion"}
