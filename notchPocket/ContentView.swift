@@ -856,9 +856,7 @@ struct ContentView: View {
             try? await Task.sleep(for: .milliseconds(140))
             withAnimation(animationSpring) {
                 horizontalMediaGestureFeedback = .zero
-                if vm.notchState == .closed {
-                    mediaGestureProgress = .zero
-                }
+                mediaGestureProgress = .zero
             }
         }
     }

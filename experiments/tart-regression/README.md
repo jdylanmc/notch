@@ -77,6 +77,11 @@ run its new scenario on an identified OLD panel-swipe candidate, then all **ten*
 on NEW. The prior General scenario now requires **Enable media gestures**
 instead of the deliberately removed **Enable gestures** panel master; its
 other retained labels, haptic absence and measured OCR policy are unchanged.
+Do not apply that post-rename General expectation to an older pre-rename haptic
+baseline. Historical negative evidence has its own recorded harness revision
+requiring **Enable gestures**; see the
+[historical haptic comparison](scenarios/general-haptics-removed.md#historical-haptic-comparison-harness).
+
 The scoped [compact-mode removal](scenarios/general-compact-mode-removed.md)
 adds an eleventh case and intentionally drops **Compact mode** from both prior
 General retained-label lists. All other twelve labels and each prior removal's
@@ -211,6 +216,12 @@ Retained automatic system attachments are disabled.
   only that positive expectation; the other twelve labels remain.
   Conditional media configuration and live horizontal gestures have source
   contracts, not native interaction proof from this Settings-only scenario.
+  Removed panel instructions are queried as rendered static text, without
+  Markdown emphasis markers; footer-only AX/OCR matching is unit-covered.
+  The media pulse cleanup has an unconditional-reset source contract, not
+  executed gesture/timer proof. After remediation 1/5, old-source candidate
+  `03f9` is stale; fresh full validation and native evidence require a rebuilt
+  candidate and current harness.
 - Readiness and cleanup are checked, but this remains prototype code, not a
   hardened multi-user execution service or an authorization boundary.
 - User-controlled OS consent, guest idle lock, hardware and application readiness

@@ -359,7 +359,7 @@ final class GuestRegressionProbe: XCTestCase {
                 controls[label] = visible
                 if visible { labelFrames[label] = normalized(matches.firstMatch.frame) }
             }
-            controls[scenario.absenceKey] = scenario.removedLabels.allSatisfy { !form.staticTexts[$0].exists }
+            controls[scenario.absenceKey] = scenario.removedLabelsAbsent { form.staticTexts[$0].exists }
             let capture = settings.screenshot()
             try require(try windowID() == identifier, "\(prefix)_capture_identity_changed")
             let after = try content()

@@ -79,6 +79,29 @@ enum OracleContractTests {
                     Observation(text: label, frame: CGRect(x: 0.4, y: 0.1, width: 0.5, height: 0.03))
                 ], controls, passes: true)
             }
+            let footerSource = "Two-finger swipe up on notch to close, two-finger swipe down on notch to open when **Open notch on hover** option is disabled"
+            let footer = footerSource.replacingOccurrences(of: "**", with: "")
+            for sourceTrue in [false, true] {
+                for visible in [false, true] {
+                    var accessible = controls
+                    accessible[absence] = scenario.removedLabelsAbsent { $0 == footer && sourceTrue }
+                    let pixels = rendered + (visible ? [
+                        Observation(text: footer, frame: CGRect(x: 0.4, y: 0.1, width: 0.5, height: 0.03))
+                    ] : [])
+                    let result = SettingsRemovalOutputOracle.evaluate(
+                        pixels, scenario: scenario, contentFrame: content, controls: accessible,
+                        labelFrames: labelFrames, pixelWidth: 700
+                    )
+                    guard accessible[absence] == !sourceTrue,
+                          result[absence] == (!sourceTrue && !visible),
+                          labels.allSatisfy({ result[$0] == true }) else {
+                        throw NSError(domain: "PanelFooterOnly", code: 1, userInfo: [
+                            NSLocalizedDescriptionKey: "sourceTrue=\(sourceTrue), visible=\(visible): \(result)"
+                        ])
+                    }
+                    count += 1
+                }
+            }
         }
         if scenario == .compactMode {
             for label in ["Notch sizing", "Match real notch height", "Custom height",

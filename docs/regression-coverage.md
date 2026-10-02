@@ -131,6 +131,12 @@ the other twelve labels, removed-control absence and capture/restoration gates r
 The measured static-text/Vision alignment correction has targeted
 failure-boundary contracts and one author OLD-only check (13 retained labels
 true, haptic absence false), not fresh independent or NEW-candidate signoff.
+That historical check used a pre-rename harness; the current haptic case must
+not be applied to the older baseline's **Enable gestures** label. Panel-swipe
+remediation 1/5 adds synthetic footer-only Accessibility/OCR matching cases and
+an unconditional media-pulse cleanup source contract, not executed gesture
+proof. Candidate `03f9` predates the product fix and is stale; parent-owned fresh
+full validation and independent native evidence require a rebuild.
 
 | Pane / source | Important controls and journeys | Existing evidence / remaining work |
 | --- | --- | --- |
