@@ -260,41 +260,106 @@ direction, alongside the existing secure root-object round trip and
 `lunarStreamDidStop:`, `startLunarEventStreamWith:` and `stopLunarEventStream`.
 These checks do not exercise an XPC connection, authorization or hardware.
 
-**STREAM-FIX:** Two proved lifecycle defects required bounded production changes:
+**STREAM-FIX (fresh remediation of `1457d75`):** The prior closed flag plus
+cancel-triggered `FileHandle.close()` was insufficient. It prevented entry
+after close, but an already-admitted cached `AsyncBytes` iterator could publish
+buffered values or read an unrelated pipe after descriptor reuse. Checking
+before each `next()` would still leave a check/read race; that is not the fix.
+Earlier cancellation/entry faults remain in the local evidence; the two new
+before-fix controls actually reproduced buffered delivery and consumption of
+the other pipe's `"foreign"` record.
 
-- Cancellation of an already-active `AsyncBytes` read could wait indefinitely
-  when the producer sent no further bytes. The before-fix
-  `testCancellationAfterDeliveredValueReturnsWithoutProducerEOF` failed its
-  three-second deadline; fixture-owned EOF then drained the task successfully.
-  The existing read loop is wrapped in `withTaskCancellationHandler`, calling
-  the existing nonisolated `close()` on cancellation to release both
-  handler-owned endpoints and wake the read.
-- Starting a read after `close()` could use the pre-created iterator's stale
-  numeric descriptor after another pipe reused it.
-  `testRepeatedCloseBeforeReadingReturnsAndDoesNotCloseAnotherPipe` failed all
-  five before-fix repetitions when the replacement pipe was allocated after
-  close; closing that owned replacement rescued cleanup. A lock-protected,
-  monotonic closed flag now rejects a read started after close. Iterator
-  creation remains on the valid handle at initialization: constructing
-  `FileHandle.bytes` on an already-closed handle throws an Objective-C exception,
-  so moving construction to read entry was rejected.
+Production source scope is **only `Shared/JSONLinesPipeHandler.swift`**: the
+actor plus one private `JSONLinesPipeReader`, compiled into both existing
+targets. There is no generic I/O framework or producer task. The real
+`NowPlayingStreamSession`/controller and helper Lunar stream/listener paths
+were traced and remain unchanged, including stop/deinit signatures.
 
-Framing, decoding, malformed threshold/reset, EOF/trailing-line and swallowed
-read-error policies are unchanged. Consumer wiring is unchanged. An in-flight
-async callback remains cooperative and must return; concurrent/restarted
-reads on one handler are not a newly supported contract. Per-handler isolation
-does not establish independent scheduling/progress of multiple idle
-`FileHandle.AsyncBytes` readers in one process; these consumers run in separate
-app/helper processes.
+### Lifetime and backpressure contract
 
-Fixtures use callback expectations and actor gates, never sleeps, to order
-writer/cancellation actions. Every expectation has a three-second failing
-deadline, not a skip or an expected timeout. Teardown releases gates, cancels
-and joins retained reader/close tasks, closes every owned writer (including
-duplicates) to rescue failed reads with EOF, repeats handler close and verifies
-the owned handles reject further operations. Writers are bounded synchronous
-writes, not detached tasks. No fake iterator, child process, media controller,
-host device, UI, preferences or dependency injection is involved in the tests.
+- One reader invocation per handler lifetime. Reentrant/additional readers
+  are rejected with a diagnostic, without cancelling or stealing from the
+  admitted reader. Create a new handler for a new session, as the consumers do.
+- One `DispatchSourceRead` owns descriptor I/O and disposal. Its read endpoint
+  is nonblocking; a short lock serializes demand, a single bounded read syscall,
+  and cancellation. No lock spans an `await` or user callback.
+- `close()` immediately rejects further read/value admissions and resumes any
+  pending read continuation. It is idempotent and does not wait for a suspended
+  callback. An already-admitted callback may still run/finish cooperatively;
+  close cannot revoke its existing work. Buffered/future records cannot be
+  admitted after logical close.
+- Physical close happens asynchronously, **only in the source cancellation
+  handler**. The SDK's `dispatch/source.h` cancellation contract guarantees
+  that its event handler has returned and the system has released references
+  to the descriptor before this handler runs. A cancelled suspended source is
+  resumed so disposal can run. Both owned endpoints are attempted once even
+  when the first close throws; an ambiguous raw numeric `close` is never retried.
+  `waitUntilClosed()` is an optional disposal-attempt barrier, not a callback
+  join; close errors are logged. Existing consumers need not await it.
+- The public pipe/handle references remain for compatibility; the read endpoint
+  is exclusively owned by this lifetime, not for concurrent external reading
+  or closing. Independently duplicated producer descriptors are not closed.
+  Dropping an unstarted handler also cancels/disposes its source.
+- Demand reads at most 16 KiB, then suspends the source before resuming the
+  consumer. No further chunk is read while a callback is awaited. No per-byte
+  dispatch, detached production task, idle polling, blocked idle thread, or
+  unbounded queued stream buffer. The current unfinished JSON line retains
+  the existing size policy; this change does not impose a new record limit.
+
+Framing, UTF-8/CRLF handling, third-malformed-line termination, success reset,
+empty EOF, and dropping unterminated EOF data remain unchanged. EOF and
+malformed-threshold returns still leave close to the caller. Unexpected read
+errors now terminate with `os.Logger` diagnostics in
+`com.jdylanmc.notchpocket` / `json-lines`, containing a public numeric `errno`
+and no payload. Cancellation is normal, not an error; `EINTR`/`EAGAIN` are
+nonterminal. Close diagnostics contain only a public numeric error code.
+
+### Focused test evidence
+
+All **20 pre-remediation stream cases** remain (including the earlier 18-case
+behavior scope); ten additional cases bring this suite to 30. Four unchanged
+wire-identity tests bring the targeted gate to **34 tests**. Additions cover:
+close-only at a suspended callback with buffered/future data; admitted-reader
+descriptor reuse; concurrent cancellation/repeated close with exactly-once
+disposal; first-close errors in production and fixture cleanup; rejection of a
+second reader; kernel backpressure during callback suspension; a 48 KiB record
+plus 4,096 subsequent lines; another idle handler's independent progress; and
+unstarted-owner deallocation.
+
+The pipe tests use real Foundation handles, not a fake iterator. A narrow
+optional close-operation seam records calls and injects an error **after closing
+the real handle**; reads and cancellation still use the actual source. Reuse
+allocates with `F_DUPFD`, never `dup2` over an arbitrary live descriptor.
+Temporary owned reservations place the old reader above low host-allocation
+slots, then release those reservations before closing/reusing the reader.
+The test still fails unless the exact numeric slot is reused. Identity checks
+pair `fstat` device/inode with operations on the owned handle, and the foreign
+pipe's complete record must remain unread.
+
+Callback gates and expectations order actions without sleeps. Three-second
+deadlines fail, never skip. Teardown collects the first close error but still
+closes all other owned handles, opens gates and joins every retained reader,
+closer, disposal waiter and bulk producer before rethrowing. Undrained tasks
+fail explicitly and their references are not silently discarded. Most writes
+are small/synchronous; the large-line throughput case owns one finite producer
+task with `F_SETNOSIGPIPE`, cancellation/EOF rescue and a bounded join.
+
+Local evidence is retained under this worktree's ignored `.build/`:
+
+| Evidence | Result |
+| --- | --- |
+| `fresh1-before.xcresult`, `fresh1-before-{source,tests}.swift`, `fresh1-before-full.log` | Exact old `1457d75` reader: both new controls failed, including actual foreign-record consumption. |
+| `fresh1-cleanup-faults.xcresult`, `fresh1-cleanup-faults.patch`, corresponding full log | Both deliberate faults failed: skipping callback-gate release left a reader undrained; stopping on the first close error left the writer unclosed. Faults removed afterward; the gated reader was rescued. |
+| `fresh1-after-06.xcresult` | 34/34 passed, zero skipped, including the throughput case. |
+| `fresh1-final-repeat-02.xcresult`, summary/tests JSON and exported attachments | Final 34 cases passed ten iterations each (340 executions), zero failures/skips. 4,097 records / 121,784 bytes took 6.11-6.32 ms per measured run, versus the asserted three-second ceiling. This is synthetic pipeline throughput, not a live-producer benchmark or an old/new speedup claim. |
+| `fresh1-shared-lint.log` | Changed Shared source clean; existing configuration warning about disabled `force_unwrapping` only. |
+
+Intermediate evidence is not erased: `fresh1-after-04` records a rejected
+Foundation subclass fault fixture that crashed; final fixtures use normal
+handles and the close seam. `fresh1-final-repeat` records a low-descriptor
+allocation collision (the test failed rather than pretending reuse occurred);
+the final owned high-slot reservation fixes that fixture contention without
+overwriting any host descriptor. Initial compilation failures are also retained.
 
 Run the focused gate from the repository root:
 
@@ -310,6 +375,11 @@ scripts/test.sh \
   -default-test-execution-time-allowance 20 \
   -maximum-test-execution-time-allowance 30
 ```
+
+The final repetition added `-test-iterations 10`,
+`-derivedDataPath .build/shared-json-lines-derived`, and
+`-resultBundlePath .build/fresh1-final-repeat-02.xcresult`; output is retained in
+`.build/fresh1-final-repeat-02.log`. Use a new result-bundle path for another run.
 
 The ordinary XCTest app host still starts. These isolated unit-pipeline
 contracts are **not installed-app/Tart regression proof**, whole-app isolation,
