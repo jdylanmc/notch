@@ -16,7 +16,7 @@ haptic/AI/face removal is authorized.
 | `closeGestureEnabled`: General close toggle and up attachment only | Remove declaration, control and all readers. An existing stored value is inert, not deleted. |
 | `gestureSensitivity`: General slider, vertical thresholds and horizontal-media threshold | Remove only vertical consumers. Retain key/default `200`, `100...300` step-100 slider and strict media `translation > sensitivity` threshold. |
 | `normalizeGestureDirection`: Advanced toggle and shared scroll monitor | Retain key/default `true`, UI and natural-scrolling normalization unchanged. |
-| `gestureProgress`: vertical stretch plus horizontal-media pulse and shared rendering | Remove vertical writers; rename the still-live value to `mediaGestureProgress`. Preserve the media pulse (`2`, then `0` after 140 ms), scale/opacity/width consumers, including the InlineOSD binding. Remove the negative-stretch-only scale floor. |
+| `gestureProgress`: vertical stretch plus horizontal-media pulse and shared rendering | Remove vertical writers; rename the still-live value to `mediaGestureProgress`. Preserve the closed-panel media pulse (`2`, then unconditional `0` after 140 ms even if the panel opens), animations and scale/opacity/width consumers, including the InlineOSD binding. Remove the negative-stretch-only scale floor. |
 | `isHoveringCalendar`: Home hover writer, model field, up-handler guard | Remove this now-unused field and writer. Calendar's own two local scroll monitors, hover guards, day/week selection and click handlers remain untouched. |
 | `PanGesture` / `ScrollMonitor` | Preserve drag/scroll recognition, thresholds, event-window filter, horizontal 1.5x axis dominance, normalization, phase/timeouts and cleanup. Remove only unused up/down directions and vertical projection branches. |
 
@@ -53,7 +53,9 @@ Assertions:
   animation, remembered tabs, compact mode, language and display controls.
 - **Enable gestures**, **Close gesture** and the two-finger panel-open/close
   instruction are absent from the Accessibility form and both endpoint pixels.
-  Media gesture text is explicitly not forbidden.
+  Accessibility matches the rendered instruction, without the source/catalog's
+  Markdown `**` markers around `Open notch on hover`. Media gesture text is
+  explicitly not forbidden.
 - Exact run/scenario/test/candidate hash/PID/window/pane identity,
   `generalCaptureVersion: 1`, stable endpoints, no offscreen omission, uniform
   translation and at least 64-point overlap are required. Invalid evidence is
@@ -82,6 +84,10 @@ labels, haptic absence, measured label-specific four-pixel OCR allowance,
 capture/geometry/restoration gates and earlier negative controls remain.
 Historical haptic receipts and documentation of their original thirteen labels
 remain historical evidence, not rewritten proof against this candidate.
+Do not run the current haptic case against a pre-rename baseline and interpret
+the missing **Enable media gestures** label as a haptic regression. Historical
+negative evidence uses its own pre-rename harness revision, recorded separately
+from the app identity; see the [haptic comparison](general-haptics-removed.md#historical-haptic-comparison-harness).
 
 ## Full ledger / changed-path map
 
@@ -108,7 +114,7 @@ Paths below are relative to the checkout root.
 | SWIPE-CONTRACT | `docs/regression-coverage.md` | Record new Settings coverage and remaining runtime gaps. |
 | SWIPE-CONTRACT / SWIPE-NATIVE | `experiments/tart-regression/scenarios/general-panel-swipes-removed.md` | This dependency ledger, authoring contract and parent proof requirements. |
 
-## Author validation (2026-10-02)
+## Initial author validation (2026-10-02, before remediation 1/5)
 
 All generated homes, temporary directories, module caches and build products
 were directed beneath this worktree's ignored `.build/`. No installed app,
@@ -130,6 +136,47 @@ and `.build/swipe-harness/{build.log,build.xcresult}`. Ignored build/cache resid
 is retained for the parent. No application XCTest/full build/helper/CI gate,
 independent review or native runtime signoff was attempted.
 
+## Remediation 1/5 (2026-10-02)
+
+Uncommitted remediation against `30c85008d7ef817344ccc51a742b21da7ef4bf93`,
+limited to **SWIPE-REMOVE / SWIPE-CONTRACT / SWIPE-NATIVE**:
+
+- The media pulse set progress to `2` while closed, but its timer skipped reset
+  if hover/keyboard opened the panel within 140 ms. Removing the vertical
+  handler also removed a secondary clear path, leaving scale `1.02` and opacity
+  `0.8`. Cleanup now resets both feedback values unconditionally in the existing
+  animation. No changes to pulse start, delay, actions, two-key media gate or
+  bound UI. A focused source contract locks this cleanup; private SwiftUI state
+  has no existing behavior-unit seam, and no new state abstraction was added.
+- The removed footer's AX descriptor now uses rendered text. The native probe
+  and oracle tests share the same exact-label presence matcher, still backed by
+  `form.staticTexts[...].exists`, without broader queries or new setup gates.
+  Four synthetic footer-only cases cross `sourceTrue` with `visible`: either
+  Accessibility presence or visible OCR rejects absence even when neither
+  removed toggle is present and all thirteen retained labels pass. Raw Markdown
+  remains in the fixture's source string; raw catalog/source removal contracts
+  remain unchanged.
+- Current versus historical General/haptic harness expectations are separated
+  explicitly. No historical receipt or negative evidence was rewritten.
+
+| Command / check | Result |
+| --- | --- |
+| `python3 -B -m unittest scripts.tests.test_regression_probe.PanelSwipeRemovalSourceContractTests` before the product fix | Expected RED: 7 tests, only the new unconditional-cleanup source contract failed. |
+| `bash experiments/tart-regression/test-oracle.sh "$PWD/.build/swipe-remediation1-5/oracle"` before the descriptor fix | Expected RED: `PanelFooterOnly`, `sourceTrue=true, visible=false` incorrectly reported absence. The existing top-level Swift error exits 133. |
+| `python3 -B -m unittest discover -s scripts/tests -p 'test_regression_probe.py'` after both fixes | **65 passed**. Source and mocked receipt/policy tests, not executed gestures. |
+| Same oracle command after both fixes | **354 passed**: About 11, Appearance 52, Notifications 35, haptics 98, panel swipes 110, and 24 geometry cases for each General descriptor. Synthetic matching/OCR inputs, not live Accessibility or captures. |
+| `xcrun swiftc -frontend -parse notchPocket/ContentView.swift experiments/tart-regression/GuestRegressionProbe/GuestRegressionProbe.swift` | Passed; syntax only, not application or harness type-check/build. |
+| `git diff --check` | Passed. |
+
+Logs and owned compiler/test residue remain under ignored
+`.build/swipe-remediation1-5/`: `python-red.log`, `oracle-red.log`,
+`python-green.log`, `oracle-green.log`, `swift-parse.log`. No VM, host UI,
+signing, remote, commit, agent or credential operations were performed.
+The initial validation table above is historical, not fresh validation of this
+patch. **Candidate `03f9` from the old source is stale after the product fix.**
+The parent must rebuild and record fresh candidate and harness identities, then
+perform full validation and independent native verification.
+
 ## Parent-owned proof still required
 
 Identify an actual OLD panel-swipe-bearing executable, SHA-256 and build/source
@@ -149,7 +196,10 @@ Separate bounded runtime checks must prove vertical scroll no longer opens or
 closes the panel; hover, click and keyboard access with hover disabled and media
 off; unchanged horizontal media opt-in/opt-out combinations, sensitivity,
 normalization and static transport; unchanged Calendar scrolling and Shelf
-actions. These are not claims of the General label scenario. Any fixture
+actions. Include a closed-panel media pulse followed by hover/keyboard opening
+before cleanup; verify scale/opacity return to normal while open. Source checks
+do not execute that timing transition. These are not claims of the General
+label scenario. Any fixture
 preference writes require parent-owned recording/restoration, not a domain reset.
 
 Parent owns full app/helper/CI checks, review, independent Tart execution,

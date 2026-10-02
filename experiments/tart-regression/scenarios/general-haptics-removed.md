@@ -39,6 +39,9 @@ exception to a failing haptic assertion. The other twelve labels and all haptic,
 capture and restoration requirements remain. Compact mode is still retained
 pending its own scoped change. The historical evidence below describes the
 original label set and does not establish proof for the new panel-swipe candidate.
+The current case is for the post-rename candidate, not an older pre-rename
+baseline: its missing **Enable media gestures** label would be an expected
+version mismatch, not evidence about haptic removal.
 
 Disabled labels still exist and render: presence never requires `isHittable`.
 Conditional controls (hover delay, custom heights, animation speed, expanded
@@ -111,9 +114,18 @@ require exact frame equality in teardown. A failure/abort still runs restoration
 an unverified scroll restore blocks the result. No stored data is migrated or
 deleted, and the obsolete `enableHaptics` preference is simply no longer read.
 
-The parent must identify and record an actual OLD haptic-bearing executable,
+### Historical haptic comparison harness
+
+The following nine-case comparison belongs to the pre-panel-rename haptic
+removal. Use its own recorded test-source revision, such as the corrected
+pre-rename harness at `3c94d451c806024d83ac6ce25cd8b2f6641634a2`, which requires
+**Enable gestures**. Preserve the actual harness identity in each historical
+receipt; do not relabel evidence with the current revision or rerun the current
+**Enable media gestures** expectation against that older baseline.
+
+For that comparison, the parent must identify and record an actual OLD haptic-bearing executable,
 its SHA-256 and source/build provenance; the source base alone is **not** a
-candidate identity. Run this one unchanged scenario on OLD and require **FAIL**
+candidate identity. Run the historical scenario unchanged on OLD and require **FAIL**
 because the haptic option is actually found with complete valid evidence.
 An environment/scroll block is not negative proof. Then run the full **nine-case**
 registry on the exact NEW candidate across closed, General and About fixtures.
@@ -138,8 +150,9 @@ Independent OLD/NEW execution is parent-owned and pending. No VM, host UI,
 consent, signing, credentials, stored-user-data or remote changes are needed
 for authoring this scenario.
 
-This remediation changes only **HAP-NATIVE** (measured General OCR alignment and
+The historical haptic remediation changed only **HAP-NATIVE** (measured General OCR alignment and
 scenario documentation) and **HAP-CONTRACT** (targeted oracle/policy cases).
 Product source, the nine-entry registry/eight prior cases, generic capture
 schema, receipt/export boundaries, fixture preferences, exact scroll restoration
-and signing/CI configuration are unchanged.
+and signing/CI configuration were unchanged at that revision. The later
+panel-swipe removal has its own tenth case and fresh-candidate validation.

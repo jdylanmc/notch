@@ -36,9 +36,12 @@ enum SettingsRemovalScenario: String {
         case .panelSwipes:
             return [
                 "Enable gestures", "Close gesture",
-                "Two-finger swipe up on notch to close, two-finger swipe down on notch to open when **Open notch on hover** option is disabled"
+                "Two-finger swipe up on notch to close, two-finger swipe down on notch to open when Open notch on hover option is disabled"
             ]
         }
+    }
+    func removedLabelsAbsent(isPresent: (String) -> Bool) -> Bool {
+        removedLabels.allSatisfy { !isPresent($0) }
     }
     var absenceKey: String {
         switch self {

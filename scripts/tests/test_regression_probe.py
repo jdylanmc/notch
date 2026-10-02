@@ -914,6 +914,20 @@ class PanelSwipeRemovalSourceContractTests(unittest.TestCase):
         for fragment in ["ShelfStateViewModel.shared.load(providers)", "ShelfView(", "CompactHomeView("]:
             self.assertIn(fragment, content)
 
+    def test_media_pulse_cleanup_is_unconditional_after_delay(self):
+        content = (ROOT / "notchPocket/ContentView.swift").read_text()
+        feedback = content.split("private func triggerHorizontalMediaFeedback(", 1)[1].split(
+            "private var isHorizontalMediaGestureContext:", 1)[0]
+        start, cleanup = feedback.split("Task { @MainActor in", 1)
+        self.assertIn("withAnimation(.interactiveSpring(response: 0.18, dampingFraction: 0.62))", start)
+        self.assertRegex(start, r"horizontalMediaGestureFeedback = feedback\s+"
+                         r"if vm\.notchState == \.closed \{\s+mediaGestureProgress = 2\s+\}")
+        # Source contract only: opening before the timer must not gate either reset.
+        self.assertRegex(cleanup, r"^\s*try\? await Task\.sleep\(for: \.milliseconds\(140\)\)\s+"
+                         r"withAnimation\(animationSpring\) \{\s+"
+                         r"horizontalMediaGestureFeedback = \.zero\s+"
+                         r"mediaGestureProgress = \.zero\s+\}\s+\}\s+\}\s*$")
+
     def test_catalog_removes_only_panel_copy_and_retains_media_configuration(self):
         def unique(pairs):
             self.assertEqual(len(dict(pairs)), len(pairs), "Duplicate localization key")
@@ -937,10 +951,11 @@ class PanelSwipeRemovalSourceContractTests(unittest.TestCase):
         self.assertIn('modes: ["general-panel-swipes-removed"]', native)
         self.assertIn('if scenario.pane == "General"', native)
         output = native.split("var controls: [String: Bool]", 1)[1].split("let capture =", 1)[0]
-        self.assertIn("scenario.removedLabels.allSatisfy { !form.staticTexts[$0].exists }", output)
+        self.assertIn("scenario.removedLabelsAbsent { form.staticTexts[$0].exists }", output)
         self.assertNotIn("require(", output)
         self.assertNotIn("isHittable", output)
         oracle = (root / "SettingsRemovalOutputOracle.swift").read_text()
+        self.assertIn("removedLabels.allSatisfy { !isPresent($0) }", oracle)
         for label in ["Enable gestures", "Close gesture", "Enable media gestures", "panelGestureControlsAbsent"]:
             self.assertIn('"' + label + '"', oracle)
 
@@ -1183,7 +1198,7 @@ class AIReplyRemovalSourceContractTests(unittest.TestCase):
         for fragment in [
             '.containing(.staticText, identifier: scenario.pane)', 'row.staticTexts[scenario.pane]',
             "form.staticTexts.matching(identifier: label)",
-            "scenario.removedLabels.allSatisfy { !form.staticTexts[$0].exists }",
+            "scenario.removedLabelsAbsent { form.staticTexts[$0].exists }",
             "formFrame.contains(matches.firstMatch.frame)", "first.map(\\.frame) == confirmed.map(\\.frame)",
             "overlap >= 64", r"\(prefix)_scroll_coverage_incomplete",
             "frames.allSatisfy { $0.minY >= formFrame.minY }",
