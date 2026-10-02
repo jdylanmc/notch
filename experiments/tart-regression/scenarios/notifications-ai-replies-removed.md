@@ -189,7 +189,7 @@ translations remain for catalog-owner maintenance.
 | AI-CONTRACT | `README.md` | Document suggestion removal, retained manual behavior and ignored legacy preference |
 | AI-CONTRACT | `docs/regression-coverage.md` | Remove obsolete generation coverage; record Settings coverage and native gaps |
 | AI-NATIVE | `experiments/tart-regression/GuestRegressionProbe/GuestRegressionProbe.swift` | Add Notifications selector/navigation, structural viewport proof and output dispatch; reuse lifecycle/restoration |
-| AI-NATIVE | `experiments/tart-regression/GuestRegressionProbe/NotificationsOutputOracle.swift` | Add typed-control/pixel output oracle with existing same-row OCR helper |
+| AI-NATIVE | `experiments/tart-regression/GuestRegressionProbe/SettingsRemovalOutputOracle.swift` | Notifications descriptor/oracle, now shared with General haptic removal; retains existing same-row OCR helper |
 | AI-NATIVE | `experiments/tart-regression/GuestRegressionProbe/GuestRegressionProbe.xcodeproj/project.pbxproj` | Register new standalone oracle source |
 | AI-NATIVE | `experiments/tart-regression/run-suite.py` | Add exact Notifications assertion/discovery validation; preserve transport/export/lock contracts |
 | AI-NATIVE | `experiments/tart-regression/capture_contract.py` | Shared exact two-capture schema, endpoint/overlap/identity and aggregate-output checks |

@@ -336,7 +336,8 @@ final class GuestRegressionProbe: XCTestCase {
                         "\(prefix)_scroll_endpoint_incomplete")
             try require(try windowID() == identifier, "\(prefix)_capture_identity_changed")
 
-            // Disabled static text can still render. Interaction eligibility is not presence.
+            // General's Launch at login/Remember last tab also expose static-text AXValue, not checkbox titles.
+            // Disabled text can still render. Interaction eligibility is not presence.
             var controls: [String: Bool] = [:]
             var labelFrames: [String: CGRect] = [:]
             for label in scenario.retainedLabels {
@@ -368,7 +369,7 @@ final class GuestRegressionProbe: XCTestCase {
             try require(!observations.isEmpty, "ocr_unavailable")
             let observed = SettingsRemovalOutputOracle.evaluate(
                 observations, scenario: scenario, contentFrame: normalized(formFrame),
-                controls: controls, labelFrames: labelFrames
+                controls: controls, labelFrames: labelFrames, pixelWidth: image.width
             )
             let name = "guest-public-\(prefix)-\(runID)-\(role)"
             let hash = SHA256.hash(data: capture.pngRepresentation).map { String(format: "%02x", $0) }.joined()

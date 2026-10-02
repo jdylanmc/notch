@@ -31,6 +31,10 @@ label geometry plus aligned OCR in at least one capture:
 - Open notch on hover; Remember last tab; Notch animation.
 - Compact mode; Enable gestures.
 
+These thirteen labels are unchanged in **this haptic removal**, not permanent
+product requirements. Planned compact-mode and panel-swipe PRs deliberately
+revise their own behavior and must update their own contracts and evidence.
+
 Disabled labels still exist and render: presence never requires `isHittable`.
 Conditional controls (hover delay, custom heights, animation speed, expanded
 gesture settings) are not enabled or changed for this probe. Their source
@@ -38,6 +42,58 @@ wiring remains covered by contracts, not claimed as native interaction proof.
 Missing retained output or a remaining haptic option after valid navigation and
 complete scroll coverage is **FAIL / rendered_output_mismatch**. Incomplete
 scroll coverage, identity, capture or restoration is **BLOCKED**, never absence.
+
+## Measured native-label remediation
+
+The original independent report at the primary checkout's ignored
+`.local/vm-regression/evidence/haptics-old-independent-3507acc/report.json`
+is preserved unchanged. Its raw FAIL found the haptic option, but only eleven
+of thirteen retained labels passed; that is **not correct negative proof**.
+
+Scoped author diagnosis on run02 used the existing OLD executable SHA-256
+`9896a6ffb6025a5b69aeae65aeec512b1eeda8677ce30b1dc8c38abad58703a0`,
+built from `8844ddfff2ea42cdefc04ec0d3172aa439942d37` (AI replies already
+removed). No app build, install or re-sign occurred. Only the two public General
+labels were queried for native class/label/value/frame metadata:
+
+| Label / visible endpoint | Native query evidence | Label frame in capture pixels | Vision box in capture pixels |
+| --- | --- | --- | --- |
+| Launch at login / top | One static text (type 48), AXValue is exact text; AXLabel/identifier empty; zero checkboxes | x=238, width=93, height=16 | x=234, width=98, height=16 |
+| Remember last tab / bottom | Same static-text class/value behavior; zero checkboxes | x=238, width=114, height=16 | x=234, width=120, height=16 |
+
+Both labels were already found by `form.staticTexts.matching(identifier:)`;
+the checkbox-title hypothesis was disproved. The oracle rejected Vision's
+left edge, four pixels before the native label frame: its existing normalized
+0.005 alignment allowance is only 3.5 pixels in the actual 700x600 capture.
+Vertical midpoints aligned. Local bound screenshots show both exact labels.
+
+The fixed General descriptor permits **four leading OCR pixels for only these
+two labels**, using actual capture width and nearest integer pixel edges to
+remove Vision's subpixel serialization noise. Typed unique static-text lookup,
+unaltered native label frames, full viewport containment, vertical alignment
+and exact same-row text remain required. Five-pixel displacement, wrong rows,
+missing labels/frames/pixels and near text still fail. No global OCR allowance,
+checkbox fallback, scroll/frame float tolerance or missing-output BLOCKED gate
+was added; Notifications and the other General labels keep their prior policy.
+
+Current fixture measurements: 492x548-point form, 353-point endpoint translation,
+195-point overlap (**131 points above the 64-point minimum**). The owner-set
+conditional preferences were not changed: hover delay and animation speed were
+visible; custom heights and expanded gesture settings were not enabled.
+The diagnostic closed case restored General and closed Settings. One corrected
+author development check from pre-existing General produced **FAIL /
+rendered_output_mismatch**, all thirteen retained assertions true and only
+`hapticControlAbsent=false`. Teardown observed General already selected, scrolled
+by +353 points and verified exact original content-frame equality
+(`generalScrollRestored=true`), leaving General open. Fixture cleanup then closed
+Settings, normally quit the task-launched app and shut down run02; both VMs stopped.
+
+Raw diagnosis and corrected receipts, public images, source archive identities,
+build logs and app-integrity checks are retained separately under the primary
+checkout's ignored `.local/vm-regression/{work,evidence}/haptics-remediation-1-diagnosis`
+and `haptics-remediation-1-devcheck`. These are **author development evidence,
+not independent signoff**. The full NEW registry and fresh independent OLD/NEW
+comparison remain parent-owned.
 
 ## Restoration and wrong-behavior proof
 
@@ -76,3 +132,9 @@ behavior, live media/Shelf/notification actions, or native pixels/restoration.
 Independent OLD/NEW execution is parent-owned and pending. No VM, host UI,
 consent, signing, credentials, stored-user-data or remote changes are needed
 for authoring this scenario.
+
+This remediation changes only **HAP-NATIVE** (measured General OCR alignment and
+scenario documentation) and **HAP-CONTRACT** (targeted oracle/policy cases).
+Product source, the nine-entry registry/eight prior cases, generic capture
+schema, receipt/export boundaries, fixture preferences, exact scroll restoration
+and signing/CI configuration are unchanged.

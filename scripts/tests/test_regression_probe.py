@@ -297,6 +297,22 @@ class RegressionSuiteContractTests(unittest.TestCase):
             failed["observedPublicText"]["hapticControlAbsent"] = False
             self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64)[0], "FAIL")
 
+    def test_general_missing_measured_labels_remains_output_failure_not_block(self):
+        case, receipt = self.general_receipt()
+        for label in ["Launch at login", "Remember last tab"]:
+            failed = copy.deepcopy(receipt)
+            failed.update(verdict="FAIL", reason="rendered_output_mismatch", suiteExit=10, xcodeExit=65)
+            failed["observedPublicText"][label] = False
+            for capture in failed["captures"]:
+                capture["labelFrames"].pop(label, None)
+                capture["observedPublicText"][label] = False
+            self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64),
+                             ("FAIL", "rendered_output_mismatch"))
+            self.assertEqual(PROBE.settings_captures(failed), failed["captures"])
+            lying = copy.deepcopy(failed)
+            lying["observedPublicText"][label] = True
+            self.assertEqual(SUITE.evaluate(case, lying, self.framework(False), 10, "a" * 64)[0], "BLOCKED")
+
     def test_notifications_requires_complete_consistent_output_and_viewport_proof(self):
         case, receipt = self.notifications_receipt()
         observations, discovery = receipt["observedPublicText"], receipt["discovery"]
@@ -863,6 +879,19 @@ class HapticRemovalSourceContractTests(unittest.TestCase):
         project = (root / "GuestRegressionProbe.xcodeproj/project.pbxproj").read_text()
         self.assertIn("path = SettingsRemovalOutputOracle.swift;", project)
         self.assertIn("dependencies = ();", project)
+
+    def test_measured_general_labels_keep_static_text_query_and_scoped_pixel_allowance(self):
+        root = ROOT / "experiments/tart-regression/GuestRegressionProbe"
+        oracle = (root / "SettingsRemovalOutputOracle.swift").read_text()
+        self.assertIn('self == .general ? ["Launch at login": 4, "Remember last tab": 4] : [:]', oracle)
+        self.assertIn("leadingPixels <= CGFloat(padding)", oracle)
+        native = (root / "GuestRegressionProbe.swift").read_text()
+        output = native.split("var controls: [String: Bool]", 1)[1].split("let capture =", 1)[0]
+        self.assertIn("form.staticTexts.matching(identifier: label)", output)
+        self.assertIn("matches.count == 1", output)
+        self.assertNotIn("checkBoxes", output)
+        self.assertNotIn("descendants(matching: .any)", output)
+        self.assertIn("pixelWidth: image.width", native)
 
 
 class AIReplyRemovalSourceContractTests(unittest.TestCase):

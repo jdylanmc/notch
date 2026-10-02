@@ -42,6 +42,7 @@ enum OracleContractTests {
         try checkAppearance()
         try checkSettingsRemoval(.notifications)
         try checkSettingsRemoval(.general)
+        try checkGeneralNativeLabelGeometry()
     }
 
     private static func checkSettingsRemoval(_ scenario: SettingsRemovalScenario) throws {
@@ -58,7 +59,8 @@ enum OracleContractTests {
         var count = 0
         func check(_ name: String, _ observations: [Observation], _ accessible: [String: Bool], passes: Bool) throws {
             let result = SettingsRemovalOutputOracle.evaluate(
-                observations, scenario: scenario, contentFrame: content, controls: accessible, labelFrames: labelFrames
+                observations, scenario: scenario, contentFrame: content, controls: accessible,
+                labelFrames: labelFrames, pixelWidth: 700
             )
             guard result.count == labels.count + 1 && result.values.allSatisfy({ $0 }) == passes else {
                 throw NSError(domain: "\(scenario.pane)OracleContractTests", code: 1,
@@ -110,7 +112,8 @@ enum OracleContractTests {
         }
         try check("sidebar is not detail output", sidebarOnly, controls, passes: false)
         let emptyOutput = SettingsRemovalOutputOracle.evaluate(
-            sidebarOnly, scenario: scenario, contentFrame: content, controls: controls, labelFrames: labelFrames
+            sidebarOnly, scenario: scenario, contentFrame: content, controls: controls,
+            labelFrames: labelFrames, pixelWidth: 700
         )
         guard emptyOutput[absence] == false else {
             throw NSError(domain: "\(scenario.pane)EmptyViewport", code: 1)
@@ -123,7 +126,8 @@ enum OracleContractTests {
                        labelFrames.mapValues { $0.offsetBy(dx: 0, dy: -0.1) },
                        labelFrames.mapValues { $0.offsetBy(dx: 0, dy: 1) }] {
             let output = SettingsRemovalOutputOracle.evaluate(
-                rendered, scenario: scenario, contentFrame: content, controls: controls, labelFrames: frames
+                rendered, scenario: scenario, contentFrame: content, controls: controls,
+                labelFrames: frames, pixelWidth: 700
             )
             guard output.values.contains(false) else {
                 throw NSError(domain: "\(scenario.pane)LabelGeometry", code: 1)
@@ -150,6 +154,65 @@ enum OracleContractTests {
             count += 1
         }
         print("\(scenario.pane) output oracle: \(count) cases passed.")
+    }
+
+    private static func checkGeneralNativeLabelGeometry() throws {
+        typealias Observation = AboutOutputOracle.Observation
+        let content = CGRect(x: 208.0 / 700, y: 0, width: 492.0 / 700, height: 548.0 / 600)
+        let cases: [(String, CGRect, CGRect)] = [
+            ("Launch at login",
+             CGRect(x: 0.34, y: 0.7316666666666667, width: 93.0 / 700, height: 16.0 / 600),
+             CGRect(x: 0.33428571560714287, y: 0.72666666633333343,
+                    width: 0.13999999999999996, height: 0.026666666666666616)),
+            ("Remember last tab",
+             CGRect(x: 0.34, y: 0.5716666666666667, width: 114.0 / 700, height: 16.0 / 600),
+             CGRect(x: 0.33428571214285724, y: 0.56999999983333338,
+                    width: 0.17142857142857143, height: 0.026666666666666616))
+        ]
+        var count = 0
+        for (label, frame, pixels) in cases {
+            func check(_ name: String, _ text: String, _ box: CGRect, expected: Bool,
+                       present: Bool = true, frames: [String: CGRect]? = nil, width: Int = 700) throws {
+                let output = SettingsRemovalOutputOracle.evaluate(
+                    [Observation(text: text, frame: box)], scenario: .general, contentFrame: content,
+                    controls: [label: present, "hapticControlAbsent": false],
+                    labelFrames: frames ?? [label: frame], pixelWidth: width
+                )
+                guard output[label] == expected, output["hapticControlAbsent"] == false, output.count == 14 else {
+                    throw NSError(domain: "GeneralNativeLabelGeometry", code: 1,
+                                  userInfo: [NSLocalizedDescriptionKey: "\(label) \(name): \(output)"])
+                }
+                count += 1
+            }
+            try check("actual guest OCR and AXValue", label, pixels, expected: true)
+            try check("missing native label", label, pixels, expected: false, present: false)
+            try check("missing native frame", label, pixels, expected: false, frames: [:])
+            try check("missing pixels", "", pixels, expected: false)
+            try check("near text", label + "x", pixels, expected: false)
+            try check("wrong row", label, pixels.offsetBy(dx: 0, dy: -0.05), expected: false)
+            try check("wrong right-hand label", label, pixels.offsetBy(dx: 0.3, dy: 0), expected: false)
+            try check("five pixels left is outside measured allowance", label,
+                      CGRect(x: frame.minX - 5.0 / 700, y: pixels.minY,
+                             width: pixels.width, height: pixels.height), expected: false)
+            try check("no pixel dimensions", label, pixels, expected: false, width: 0)
+            try check("same fraction is eight pixels at double resolution", label, pixels, expected: false, width: 1400)
+            try check("clipped label frame", label, pixels, expected: false,
+                      frames: [label: frame.offsetBy(dx: 0, dy: 1)])
+        }
+        for (scenario, label) in [
+            (SettingsRemovalScenario.general, "Show menu bar icon"),
+            (.notifications, "From all apps")
+        ] {
+            let frame = cases[0].1
+            let output = SettingsRemovalOutputOracle.evaluate(
+                [Observation(text: label, frame: cases[0].2)], scenario: scenario,
+                contentFrame: content, controls: [label: true, scenario.absenceKey: true],
+                labelFrames: [label: frame], pixelWidth: 700
+            )
+            guard output[label] == false else { throw NSError(domain: "UnchangedLabelAlignment", code: 1) }
+            count += 1
+        }
+        print("General measured native label geometry: \(count) cases passed.")
     }
 
     private static func checkAppearance() throws {

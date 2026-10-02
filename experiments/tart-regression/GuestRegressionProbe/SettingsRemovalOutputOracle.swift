@@ -31,6 +31,10 @@ enum SettingsRemovalScenario: String {
     var forbiddenText: [String] {
         self == .notifications ? ["suggest replies", "apple intelligence"] : ["haptic"]
     }
+    var leadingOCRPaddingPixels: [String: Int] {
+        // Guest Vision boxes begin four pixels before these verified static-text AXValue frames.
+        self == .general ? ["Launch at login": 4, "Remember last tab": 4] : [:]
+    }
 }
 
 struct SettingsRemovalOutputOracle {
@@ -39,7 +43,8 @@ struct SettingsRemovalOutputOracle {
         scenario: SettingsRemovalScenario,
         contentFrame: CGRect,
         controls: [String: Bool],
-        labelFrames: [String: CGRect]
+        labelFrames: [String: CGRect],
+        pixelWidth: Int
     ) -> [String: Bool] {
         let content = observations.filter {
             !$0.frame.isEmpty && contentFrame.contains($0.frame)
@@ -51,7 +56,17 @@ struct SettingsRemovalOutputOracle {
             guard let frame = labelFrames[label], !frame.isEmpty, contentFrame.contains(frame),
                   controls[label] == true else { return (label, false) }
             let aligned = content.filter {
-                frame.insetBy(dx: -0.005, dy: -0.005).contains(CGPoint(x: $0.frame.minX, y: $0.frame.midY))
+                let anchor = CGPoint(x: $0.frame.minX, y: $0.frame.midY)
+                let alignment = frame.insetBy(dx: -0.005, dy: -0.005)
+                if alignment.contains(anchor) { return true }
+                guard pixelWidth > 0, let padding = scenario.leadingOCRPaddingPixels[label],
+                      anchor.x < frame.minX, anchor.y >= alignment.minY, anchor.y <= alignment.maxY else {
+                    return false
+                }
+                // Vision's normalized coordinates have subpixel serialization noise; compare pixel edges.
+                let leadingPixels = (frame.minX * CGFloat(pixelWidth)).rounded()
+                    - (anchor.x * CGFloat(pixelWidth)).rounded()
+                return leadingPixels >= 0 && leadingPixels <= CGFloat(padding)
             }
             return (label, aligned.contains {
                 let row = AboutOutputOracle.rowText(anchor: $0, observations: content)

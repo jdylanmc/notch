@@ -122,6 +122,12 @@ authored but still need independent old/new proof; they do not extend the helper
 navigation/restoration remains an engineering gap, not a demand for routine
 human clicks. Preference writes need a whole-app fixture profile first.
 
+General's thirteen retained-label assertions apply to this haptic removal;
+planned compact-mode/panel-swipe PRs deliberately revise their own behavior and
+evidence. The measured static-text/Vision alignment correction has targeted
+failure-boundary contracts and one author OLD-only check (13 retained labels
+true, haptic absence false), not fresh independent or NEW-candidate signoff.
+
 | Pane / source | Important controls and journeys | Existing evidence / remaining work |
 | --- | --- | --- |
 | [General](../notchPocket/components/Settings/Views/GeneralSettingsView.swift) | Menu icon, launch at login, language/restart, display selection/height, hover, gestures, animation, compact/remembered tabs; haptic feedback removed. | [Registered haptic-removal scenario](../experiments/tart-regression/scenarios/general-haptics-removed.md): thirteen retained labels, haptic-option absence, real pane navigation, bound top/bottom pixels and scroll restoration. Source contracts preserve surrounding handlers; independent OLD/NEW Tart proof remains parent-owned and pending. No preference-toggle or physical actuator coverage. |

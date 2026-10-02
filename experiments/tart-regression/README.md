@@ -184,6 +184,14 @@ Retained automatic system attachments are disabled.
   combine with OR, removed-control absence with AND. Existing restoration is
   unchanged; General additionally records and verifies a pre-existing General
   form's scroll position through teardown, including failed assertions.
+  General's Launch at login and Remember last tab were empirically confirmed as
+  static-text AXValue, not checkbox titles. Their measured four-pixel leading
+  Vision-box allowance is label-specific; native frames, exact text, vertical
+  alignment and other labels' policies remain unchanged. See the
+  [diagnosis and failure-boundary evidence](scenarios/general-haptics-removed.md#measured-native-label-remediation).
+  The thirteen retained General labels are preservation requirements for this
+  haptic removal only; planned compact-mode/panel-swipe PRs revise their own
+  behavior, contracts and native evidence.
 - Readiness and cleanup are checked, but this remains prototype code, not a
   hardened multi-user execution service or an authorization boundary.
 - User-controlled OS consent, guest idle lock, hardware and application readiness
