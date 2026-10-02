@@ -313,6 +313,18 @@ commands. Omitting it preserves full-name selection and the existing result
 shape. An unavailable certificate is a native build/signing failure, not
 permission to retry by name or change credentials.
 
+`--certificate-sha1` belongs to **`scripts/distribution.py` only**.
+`scripts/notarize.py` DMG signing and the hosted release pipeline remain
+name-selected and unchanged; neither accepts or forwards this option.
+Use a human-provided known public certificate fingerprint, or follow the
+[README's artifact-only extraction example](README.md#local-developer-id-candidate-9-bounded-slice):
+`codesign --extract-certificates` reads the embedded public certificate of an
+already-approved signed artifact into a new task-owned temporary directory, then
+`openssl x509` reports the leaf's SHA-1 fingerprint. No Keychain inspection or
+enumeration, private-key export, or artifact mutation is authorized. This does
+not replace any signer, chain, team, timestamp, runtime, entitlement or
+all-architecture verification below.
+
 The explicit plain command-line `CODE_SIGN_IDENTITY=...` and
 `DEVELOPMENT_TEAM=...` overrides take precedence over project settings, including
 SDK-conditional identities. Do not pass `CODE_SIGN_IDENTITY[sdk=macosx*]=...`
