@@ -60,9 +60,13 @@ executable hashes and source/build provenance separately; both apps can be
 0.1.0 (272). The available old artifact is the PR97 preview from `4fff039`, not a
 build of the removal branch's base. See the scenario's exact pins and report
 requirements; the minimal launcher manifest alone is insufficient provenance.
-The Notifications removal uses the same documented prior artifact for its
-independent wrong-behavior check; see its [scenario note](scenarios/notifications-ai-replies-removed.md).
-It is not a build of the AI-removal branch's base either.
+The Notifications removal instead uses the previous-face candidate installed
+in the guest: source `2e28bd1920265ee30d8761ad03c0b420e3f2168b`, executable
+`7a30c4d4939da81c165744050bc38e0a91ea699786cddd605de9c4735d6c5aa0`.
+Do not substitute the host installation/PR97 preview or copy host evidence.
+Run only its Notifications wrong-behavior scenario on OLD; run the full eight
+cases across the existing fixtures on NEW only. See its
+[scenario note](scenarios/notifications-ai-replies-removed.md).
 
 ## Exercise the installed app in the guest
 
@@ -139,7 +143,11 @@ Do not convert the two negative controls into passing application tests.
 `jobs/` holds the bounded launcher receipts. Missing receipts, wrong test counts,
 skips, unexpected outcomes or unverified restoration are non-success.
 Export attachments with `xcrun xcresulttool export attachments`, verify the named
-public About image hash against the receipt, and inspect the pixels locally.
+public image hashes against the receipt, and inspect the pixels locally.
+Notifications alone uses `notificationsCaptureVersion: 1` and exactly two named
+top/bottom captures rather than `screenshotSHA256`; the suite's `captures` report
+field binds both native attachment names/hashes/dimensions. Other cases retain
+their single `capture` contract.
 Retained automatic system attachments are disabled.
 
 ## Limits
@@ -156,12 +164,15 @@ Retained automatic system attachments are disabled.
   for General/Media and the removed section. Missing retained controls are
   output failures after pane setup, never setup guards. OCR shares About's
   same-row fragment geometry; this does not authorize offscreen absence claims.
-- Notifications likewise uses row-scoped navigation, typed static-text value
-  lookup, structural form mapping and full-form fit at both scroll endpoints.
-  Prepare a tall enough guest Settings window to include the default allow-list
-  and the old suggestion tail in both candidates. Overflow is BLOCKED, never
-  absence proof. No preference is toggled to force fit; missing retained labels
-  are output failures. The same one-capture receipt/restoration contract applies.
+- Notifications uses row-scoped navigation, typed static-text value lookup and
+  structural form mapping at the existing 1440x900 display. Two actual endpoint
+  captures cover the scrollable form: stable repeated endpoint geometry, no
+  clipped content before the top/after the bottom, uniform translation and at
+  least 64 points of overlap. Incomplete coverage is BLOCKED, not absence proof.
+  Disabled retained labels need presence, visible geometry and aligned OCR, not
+  `isHittable`. No preferences or window/display dimensions change. Both captures
+  carry exact run/candidate/PID/native-window/pane identity; retained labels
+  combine with OR, suggestion absence with AND. Restoration is unchanged.
 - Readiness and cleanup are checked, but this remains prototype code, not a
   hardened multi-user execution service or an authorization boundary.
 - User-controlled OS consent, guest idle lock, hardware and application readiness

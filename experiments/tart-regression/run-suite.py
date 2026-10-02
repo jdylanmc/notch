@@ -8,11 +8,15 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import struct
 import sys
 import time
 import uuid
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+from capture_contract import notifications_captures, SCENARIO as NOTIFICATIONS_SCENARIO
+
 ID = re.compile(r"[a-z][a-z0-9-]{0,63}")
 TEST = re.compile(r"GuestRegressionProbe/[A-Za-z_][A-Za-z0-9_]*/test[A-Za-z0-9_]+")
 EXITS = {"PASS": 0, "FAIL": 10, "BLOCKED": 20}
@@ -83,7 +87,10 @@ def evaluate(case, receipt, framework, command_exit, candidate_hash):
         return "BLOCKED", "raw_framework_mismatch"
     if receipt.get("xcodeExit") != (0 if raw == "PASS" else 65):
         return "BLOCKED", "raw_xctest_exit_mismatch"
-    if raw in {"PASS", "FAIL"} and (
+    notifications = case["id"] == NOTIFICATIONS_SCENARIO
+    if not notifications and ("captures" in receipt or "notificationsCaptureVersion" in receipt):
+        return "BLOCKED", "unexpected_capture_schema"
+    if not notifications and raw in {"PASS", "FAIL"} and (
         not isinstance(receipt.get("screenshotSHA256"), str)
         or not re.fullmatch(r"[a-f0-9]{64}", receipt["screenshotSHA256"])
     ):
@@ -106,16 +113,9 @@ def evaluate(case, receipt, framework, command_exit, candidate_hash):
                 ])):
             return "BLOCKED", "appearance_assertions_unverified"
     if case["id"] == "notifications-ai-replies-removed" and raw in {"PASS", "FAIL"}:
-        expected = {"Show notifications in the notch", "From all apps", "suggestionControlAbsent"}
-        observed = receipt.get("observedPublicText")
-        discovery = receipt.get("discovery")
-        if (not isinstance(observed, dict) or set(observed) != expected
-                or any(type(value) is not bool for value in observed.values())
-                or (raw == "PASS") != all(observed.values())
-                or not isinstance(discovery, dict)
-                or any(discovery.get(field) is not True for field in [
-                    "notificationsPaneSelected", "notificationsFormMapped", "notificationsFullFormVisible",
-                ])):
+        try:
+            notifications_captures(receipt)
+        except (ValueError, TypeError, KeyError):
             return "BLOCKED", "notifications_assertions_unverified"
     if case["kind"] == "regression":
         if raw == "PASS" and receipt.get("reason") != case["expectedReason"]:
@@ -132,6 +132,45 @@ def export_capture(run, destination, receipt):
                     "--path", str(run / "result.xcresult"), "--output-path", str(destination)],
                    check=True, capture_output=True, timeout=30)
     files = [p for p in destination.iterdir() if p.is_file() and p.name != "manifest.json"]
+    if receipt.get("scenario") == NOTIFICATIONS_SCENARIO:
+        captures = notifications_captures(receipt)
+        manifest = json.loads((destination / "manifest.json").read_text())
+        if not isinstance(manifest, list) or len(manifest) != 1 or len(files) != len(captures):
+            raise ValueError("Unexpected Notifications attachment count")
+        test = manifest[0]
+        if (not isinstance(test, dict)
+                or test.get("testIdentifier") != "GuestRegressionProbe/testInstalledNotificationsWithoutAIReplies()"):
+            raise ValueError("Unexpected Notifications attachment test")
+        attachments = test.get("attachments")
+        if not isinstance(attachments, list) or len(attachments) != len(captures):
+            raise ValueError("Missing or extra Notifications attachment manifest")
+        results = []
+        used = set()
+        for capture in captures:
+            matches = [item for item in attachments if isinstance(item, dict)
+                       and isinstance(item.get("suggestedHumanReadableName"), str)
+                       and item["suggestedHumanReadableName"].startswith(capture["name"] + "_")]
+            if len(matches) != 1:
+                raise ValueError("Missing or duplicate Notifications capture role")
+            filename = matches[0].get("exportedFileName")
+            if not isinstance(filename, str) or Path(filename).name != filename or filename in used:
+                raise ValueError("Invalid or duplicate Notifications capture filename")
+            used.add(filename)
+            image = destination / filename
+            if image not in files or image.is_symlink() or image.suffix != ".png" or image.stat().st_size > 2_000_000:
+                raise ValueError("Unexpected Notifications capture artifact")
+            data = image.read_bytes()
+            if (hashlib.sha256(data).hexdigest() != capture["sha256"] or len(data) < 24
+                    or data[:16] != b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+                    or struct.unpack(">II", data[16:24]) != (capture["pixelWidth"], capture["pixelHeight"])):
+                raise ValueError("Notifications capture digest or pixel dimensions mismatch")
+            results.append({"role": capture["role"], "name": capture["name"],
+                            "sha256": capture["sha256"], "path": str(image)})
+        if used != {image.name for image in files}:
+            raise ValueError("Unbound Notifications attachment")
+        return results
+    if "captures" in receipt or "notificationsCaptureVersion" in receipt:
+        raise ValueError("Unexpected capture schema for single-capture scenario")
     expected = receipt.get("screenshotSHA256")
     if len(files) != (1 if expected else 0):
         raise ValueError("Unexpected result attachment count")
@@ -221,7 +260,8 @@ def run(args):
                            rawXcodeExit=receipt.get("xcodeExit"), rawScenarioExit=result.returncode,
                            receipt=receipt, evidenceDirectory=str(native_run), jobUnloaded=True)
                 if status in {"PASS", "FAIL"}:
-                    row["capture"] = export_capture(native_run, output / (case["id"] + "-captures"), receipt)
+                    exported = export_capture(native_run, output / (case["id"] + "-captures"), receipt)
+                    row["captures" if case["id"] == NOTIFICATIONS_SCENARIO else "capture"] = exported
                 if case["kind"] == "regression" and status == "FAIL":
                     report["potentialBugs"].append({
                         "scenario": case["id"], "candidateSHA256": candidate["executableSHA256"],

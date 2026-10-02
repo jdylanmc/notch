@@ -52,9 +52,12 @@ enum OracleContractTests {
         }
         var controls = Dictionary(uniqueKeysWithValues: labels.map { ($0, true) })
         controls["suggestionControlAbsent"] = true
+        let labelFrames = Dictionary(uniqueKeysWithValues: rendered.map { ($0.text, $0.frame) })
         var count = 0
         func check(_ name: String, _ observations: [Observation], _ accessible: [String: Bool], passes: Bool) throws {
-            let result = NotificationsOutputOracle.evaluate(observations, contentFrame: content, controls: accessible)
+            let result = NotificationsOutputOracle.evaluate(
+                observations, contentFrame: content, controls: accessible, labelFrames: labelFrames
+            )
             guard result.count == labels.count + 1 && result.values.allSatisfy({ $0 }) == passes else {
                 throw NSError(domain: "NotificationsOracleContractTests", code: 1,
                               userInfo: [NSLocalizedDescriptionKey: "\(name): \(result)"])
@@ -102,6 +105,40 @@ enum OracleContractTests {
             Observation(text: $0.text, frame: CGRect(x: 0, y: $0.frame.minY, width: 0.2, height: 0.03))
         }
         try check("sidebar is not detail output", sidebarOnly, controls, passes: false)
+        let emptyOutput = NotificationsOutputOracle.evaluate(
+            sidebarOnly, contentFrame: content, controls: controls, labelFrames: labelFrames
+        )
+        guard emptyOutput["suggestionControlAbsent"] == false else {
+            throw NSError(domain: "NotificationsEmptyViewport", code: 1)
+        }
+        count += 1
+        try check("clipped remnant still rejects absence", rendered + [
+            Observation(text: "Suggest replies", frame: CGRect(x: 0.4, y: 0.99, width: 0.3, height: 0.03))
+        ], controls, passes: false)
+        for frames in [[:], [labels[0]: rendered[0].frame],
+                       labelFrames.mapValues { $0.offsetBy(dx: 0, dy: -0.1) },
+                       labelFrames.mapValues { $0.offsetBy(dx: 0, dy: 1) }] {
+            let output = NotificationsOutputOracle.evaluate(
+                rendered, contentFrame: content, controls: controls, labelFrames: frames
+            )
+            guard output.values.contains(false) else {
+                throw NSError(domain: "NotificationsLabelGeometry", code: 1)
+            }
+            count += 1
+        }
+        let top = [labels[0]: true, labels[1]: true, "suggestionControlAbsent": true]
+        let bottom = [labels[0]: false, labels[1]: false, "suggestionControlAbsent": true]
+        for (captures, expected) in [
+            ([top, bottom], true), ([top], false), ([], false), ([top, bottom, bottom], false),
+            ([top, [:]], false),
+            ([top, [labels[0]: false, labels[1]: false, "suggestionControlAbsent": false]], false),
+            ([[labels[0]: false, labels[1]: true, "suggestionControlAbsent": true], bottom], false),
+        ] {
+            guard NotificationsOutputOracle.combine(captures).values.allSatisfy({ $0 }) == expected else {
+                throw NSError(domain: "NotificationsCaptureCombination", code: 1)
+            }
+            count += 1
+        }
         print("Notifications output oracle: \(count) cases passed.")
     }
 

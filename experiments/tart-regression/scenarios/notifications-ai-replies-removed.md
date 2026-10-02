@@ -20,30 +20,52 @@ Use XCTest's typed `form.staticTexts.matching(identifier:)` lookup for both
 retained labels and the removed label, not a generic label-only predicate.
 All sidebar clicks, including restoration, remain scoped to their outline row.
 
-Visit both native scroll endpoints. Require nonempty direct content frames,
-fully contained in the form at each endpoint, with identical frames at both.
-This full-form-fit contract covers the old suggestion section at the bottom as
-well as the retained controls. The test never infers absence from an offscreen
-control or changes a notification preference to shorten the form.
+Visit both native scroll endpoints and capture each separately. Repeat each
+endpoint scroll once and require unchanged nonempty direct content geometry.
+The top must have no content above the viewport; the bottom must have no content
+below it. Both snapshots must have the same ordered content types and frames,
+translated by one nonnegative vertical offset, with at least **64 points of
+viewport overlap**. Otherwise block with incomplete scroll evidence, never infer
+absence from an offscreen control. This bounded two-capture contract is not an
+unbounded scroll loop and does not change notification preferences.
 
 After pane/geometry setup, assert:
 
 - **Show notifications in the notch** renders in Accessibility and detail pixels.
 - **From all apps** renders in Accessibility and detail pixels, even when disabled.
-- **Suggest replies with Apple Intelligence** is absent from the whole visible
-  form's typed static texts and from the detail pixels. OCR also rejects partial
-  `Suggest replies` / `Apple Intelligence` remnants.
+- **Suggest replies with Apple Intelligence** is absent from the form's typed
+  static texts at both endpoints and from both detail captures. OCR also rejects
+  partial `Suggest replies` / `Apple Intelligence` remnants.
 
-None of these controls is a prerequisite gate. Missing retained output reaches
+Retained text presence requires unique typed lookup, a nonempty label frame
+fully within the viewport, and matching actual OCR pixels aligned with that
+frame. `isHittable`/enabled state is not a retained-text assertion: disabled
+static text can render. Retained assertions combine with OR across the two
+captures; suggestion absence combines with AND. An empty detail OCR result
+cannot prove absence. None of these controls is a prerequisite gate. Missing retained output reaches
 **FAIL / rendered_output_mismatch**, not an environment block. The unchanged
 About same-row OCR fragment helper supplies normalization and row geometry.
 
 `observedPublicText` must contain exactly the three Boolean assertions
 `Show notifications in the notch`, `From all apps`, `suggestionControlAbsent`.
 The evaluator also requires true discovery receipts `notificationsPaneSelected`,
-`notificationsFormMapped`, `notificationsFullFormVisible`, with verdict/output
-consistency. The single `guest-public-notifications-<runID>` PNG is bound to the
-receipt by SHA-256 and exported/verified through the existing suite contract.
+`notificationsFormMapped`, `notificationsScrollComplete`, plus measured offset
+and overlap and verdict/output consistency. `notificationsCaptureVersion: 1`
+requires exactly two ordered `captures`, named
+`guest-public-notifications-<runID>-top` and `...-bottom`; there is no legacy
+`screenshotSHA256` for this scenario. Each includes its role/name/hash, run,
+scenario/test, candidate path/executable hash/PID, native window ID, Settings marker,
+pane, window/form/content/endpoint geometry, pixel dimensions, visible label
+frames and exact per-capture assertions. The native window/PID/pane/frame and
+content are rechecked across capture; source bytes and signatures remain
+separately verified by the runner/operator.
+
+The shared Python contract recomputes endpoint coverage and output aggregation.
+Export binds each named test attachment in the native manifest to its role,
+SHA-256 and PNG dimensions; missing, extra, duplicate, stale or inconsistent
+evidence is rejected. Equal image hashes are allowed only for zero translation
+with full endpoint containment. The seven prior cases keep their single-capture
+contracts, selectors and registry entries unchanged.
 
 ## Fixture and restoration
 
@@ -54,15 +76,28 @@ does not enable it, send a notification, access Contacts, invoke a model or send
 a message. Apple Intelligence availability is irrelevant: the old app renders
 its suggestion control even when disabled.
 
-Settings must be at least 700 x 600 **and tall enough to fit the entire form in
-both candidates**. With the default per-app allow-list visible, the old form
-may need a taller window than 600 points. The independent coordinator must
-prepare a sufficiently tall Settings window/display before dispatch, preserving
-that fixture for both apps and recording its dimensions. The scenario neither
-resizes the window nor flips `From all apps`; it blocks explicitly with
-`notifications_full_form_not_visible` if the content overflows or moves between
-endpoints. Do not accept that block as proof of removal or shorten only the old
-app's fixture. A larger supported guest viewport is required, not a weaker test.
+Settings must be at least 700 x 600 and fully onscreen at the existing
+**1440x900** guest display. Do not enlarge the display/window or flip
+`From all apps` to force full-form fit. The previous independent attempt at
+`8844ddfff2ea42cdefc04ec0d3172aa439942d37` blocked at
+`notifications_full_form_not_visible`; its unchanged report remains at the
+primary checkout's ignored `.local/vm-regression/evidence/ai-old-independent-8844ddf/report.json`.
+
+Isolated author diagnosis on the exact old guest candidate measured a
+492x548-point viewport, a 191-point top-to-bottom translation and 357-point
+overlap. The allow-list group extended below the viewport; the suggestion label
+was at screen y=797 at the top and y=606 at the bottom. Repeated endpoint actions
+left the geometry unchanged. The old gate incorrectly required all those
+offscreen content frames to fit one capture. Local real top/bottom images
+confirmed the retained labels and the old suggestion control, without any
+preference change. This is **development diagnosis, not independent signoff**;
+its original diagnostic-only BLOCKED result is retained separately.
+The subsequent single author development run reached **FAIL /
+rendered_output_mismatch** on OLD, with both retained assertions true and
+`suggestionControlAbsent=false`. Its two real PNGs, native counts, restoration
+and interpretation are retained under the primary checkout's ignored
+`.local/vm-regression/evidence/ai-remediation-1-devcheck/`. This is not an
+independent wrong-behavior signoff or a retry promoted to verification.
 Per-app allow-list values are left untouched; their mutation behavior is not
 claimed by these two retained-label assertions.
 
@@ -78,18 +113,19 @@ This does not extend restoration to arbitrary panes or claim exact OS focus.
 
 ## Independent wrong-behavior proof
 
-Run this **same harness scenario and assertions** against the documented PR97
-development preview, source
-`4fff039f5a62249c7ac84466c5cb0c124b2c9a06`, executable SHA-256
-`32331e682ed6fb6bba460019c1a949dee39e32ce92decafda48312ef0ce3aaaf`.
-These prior-artifact pins are recorded in the existing Appearance scenario;
-the author has not accessed or reverified the binary. The independent worker
-must identify the actual supplied artifact and verify those pins before use.
-It is **not** a build of this removal's base. Both apps may identify themselves
+Run this **same harness scenario and assertions** against the **previous-face
+candidate already installed in run02**, source
+`2e28bd1920265ee30d8761ad03c0b420e3f2168b`, executable SHA-256
+`7a30c4d4939da81c165744050bc38e0a91ea699786cddd605de9c4735d6c5aa0`.
+The independent worker must verify the supplied guest artifact against its
+preparation provenance (`face-candidate-2e28bd1-preparation/provenance.json` in
+the primary checkout's ignored evidence directory). It is **not the host
+installation or the older PR97 preview** documented for Appearance; do not copy
+host install evidence or substitute artifacts. Both apps may identify themselves
 as **0.1.0 (272)**; version equality is not source provenance or identity.
 
 Expect old-app **FAIL / rendered_output_mismatch**, with
-`suggestionControlAbsent=false`, the retained output present, a bound screenshot
+`suggestionControlAbsent=false`, the retained output present, two bound captures
 and verified restoration. A BLOCKED run is not negative proof. Then run the
 exact new candidate, expecting **PASS / rendered_output_verified**. Do not
 weaken assertions, register old behavior as an expected new-app failure or
@@ -100,15 +136,27 @@ before/after signature and integrity checks, source revision and build provenanc
 (including the diff digest for uncommitted source), deployed harness/source
 hashes, registry/runner identity, receipt/capture digests and actual dispatch
 identity. The minimal launcher manifest cannot replace this provenance.
-Unavailable provenance is a gap. The worker must also run the full eight-case registry
-and exercise the existing closed, pre-existing General and pre-existing About
-fixtures, without modifying the seven prior cases.
+Unavailable provenance is a gap. Run the OLD candidate only for this one
+wrong-behavior scenario. The worker must run the full eight-case registry on the
+**NEW candidate only**, exercising the existing closed, pre-existing General
+and pre-existing About fixtures without modifying the seven prior cases.
 
-No native run or independent report is supplied by this authoring change.
-Permission-free checks cover source boundaries, the output oracle and receipt
-policy. They do not prove native AX lookup, pixels, scroll geometry, teardown or
-manual reply delivery. Full app/build/lint/CI and independent Tart signoff remain
-parent-owned.
+Author development evidence is scoped to diagnosis and the old-candidate
+scenario; it is not an independent report or full-suite result. Permission-free
+checks cover source boundaries, the output oracle and strict receipt/export
+policy, not native behavior. Fresh independent old/new comparison and the
+NEW-only full registry still remain parent-owned. No manual reply delivery or
+separate `canReply` false-positive classification is certified.
+
+## Remediation-only scope
+
+The current remediation above `8844ddf` changes **AI-NATIVE** harness,
+Notifications oracle, shared capture contract, export/evaluation and scenario
+documentation; **AI-CONTRACT** policy/oracle tests and coverage documentation.
+It does not alter product source, signatures, preferences, configuration,
+the eight-entry registry, or the seven prior native scenarios. Both manual
+FocusState listeners remain intact. The ledger below also records the earlier
+removal work; it does not authorize new AI-REMOVE changes in this remediation.
 
 ## Removal and preservation trace
 
@@ -144,9 +192,11 @@ translations remain for catalog-owner maintenance.
 | AI-NATIVE | `experiments/tart-regression/GuestRegressionProbe/NotificationsOutputOracle.swift` | Add typed-control/pixel output oracle with existing same-row OCR helper |
 | AI-NATIVE | `experiments/tart-regression/GuestRegressionProbe/GuestRegressionProbe.xcodeproj/project.pbxproj` | Register new standalone oracle source |
 | AI-NATIVE | `experiments/tart-regression/run-suite.py` | Add exact Notifications assertion/discovery validation; preserve transport/export/lock contracts |
+| AI-NATIVE | `experiments/tart-regression/capture_contract.py` | Shared exact two-capture schema, endpoint/overlap/identity and aggregate-output checks |
+| AI-NATIVE | `experiments/tart-regression/GuestRegressionProbe/run-guest.py` | Validate Notifications multi-capture evidence; retain legacy single-capture checks |
 | AI-NATIVE | `experiments/tart-regression/suite.json` | Append one functional case; retain all seven existing cases |
 | AI-NATIVE | `experiments/tart-regression/OracleContractTests.swift` | Add positive/missing/wrong/old Notifications output cases; retain prior cases |
 | AI-NATIVE | `experiments/tart-regression/test-oracle.sh` | Compile new oracle in existing permission-free runner |
 | AI-NATIVE | `scripts/tests/test_regression_probe.py` | Extend registry, receipt consistency, native-query and old-artifact provenance contracts |
-| AI-NATIVE | `experiments/tart-regression/README.md` | Document third journey and full-form viewport requirement |
+| AI-NATIVE | `experiments/tart-regression/README.md` | Document third journey, exact old guest provenance and bounded viewport coverage |
 | AI-NATIVE | `experiments/tart-regression/scenarios/notifications-ai-replies-removed.md` | Scenario, fixture, negative proof, limits and ledger |

@@ -33,8 +33,7 @@ final class GuestRegressionProbe: XCTestCase {
         var discovery: [String: Any] = [:]
         var appearanceContentFrame: CGRect?
         var appearanceControls: [String: Bool] = [:]
-        var notificationsContentFrame: CGRect?
-        var notificationsControls: [String: Bool] = [:]
+        var notificationsCaptures: [[String: Any]] = []
     }
 
     private let candidate = URL(fileURLWithPath: "/Applications/notch-pocket.app")
@@ -169,6 +168,10 @@ final class GuestRegressionProbe: XCTestCase {
             "nativeFailureCountBeforeReport": nativeFailures
         ]
         if let hash = state.screenshotHash { receipt["screenshotSHA256"] = hash }
+        if !state.notificationsCaptures.isEmpty {
+            receipt["notificationsCaptureVersion"] = 1
+            receipt["captures"] = state.notificationsCaptures
+        }
         if let error = state.nativeError { receipt["nativeError"] = error }
         do {
             let data = try JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys])
@@ -201,7 +204,7 @@ final class GuestRegressionProbe: XCTestCase {
     }
 
     @MainActor
-    private func inspectNotifications(_ settings: XCUIElement, state: RunState) throws {
+    private func inspectNotifications(_ settings: XCUIElement, state: RunState, runID: String) throws {
         let row = settings.descendants(matching: .outlineRow)
             .containing(.staticText, identifier: "Notifications").firstMatch
         let notifications = row.staticTexts["Notifications"]
@@ -220,35 +223,133 @@ final class GuestRegressionProbe: XCTestCase {
                     "notifications_form_mapping_unverified")
         state.discovery["notificationsFormMapped"] = true
 
-        // The allow-list and the old suggestion section must fit, not disappear below the capture.
-        // No notification setting is toggled to make the form shorter.
-        func contentFrames() throws -> [CGRect] {
-            let snapshot = try form.snapshot()
-            let content = snapshot.children.filter { $0.elementType != .scrollBar && !$0.frame.isEmpty }
-            try require(!content.isEmpty && content.allSatisfy { snapshot.frame.contains($0.frame) },
-                        "notifications_full_form_not_visible")
-            return content.map(\.frame)
-        }
-        form.scroll(byDeltaX: 0, deltaY: 10_000)
-        let headFrames = try contentFrames()
-        form.scroll(byDeltaX: 0, deltaY: -10_000)
-        let tailFrames = try contentFrames()
-        try require(headFrames == tailFrames, "notifications_full_form_not_visible")
-        state.discovery["notificationsFullFormVisible"] = true
-        let frame = form.frame
         let windowFrame = settings.frame
-        state.notificationsContentFrame = CGRect(
-            x: (frame.minX - windowFrame.minX) / windowFrame.width,
-            y: (windowFrame.maxY - frame.maxY) / windowFrame.height,
-            width: frame.width / windowFrame.width, height: frame.height / windowFrame.height
-        )
-        // Typed staticTexts resolves native SwiftUI AXValue labels even when AXLabel is empty.
-        state.notificationsControls = Dictionary(uniqueKeysWithValues: NotificationsOutputOracle.retainedLabels.map {
-            let controls = form.staticTexts.matching(identifier: $0)
-            return ($0, controls.count == 1 && controls.firstMatch.isHittable)
-        })
-        state.notificationsControls["suggestionControlAbsent"] =
-            !form.staticTexts[NotificationsOutputOracle.suggestionLabel].exists
+        let formFrame = form.frame
+        try require(NSScreen.screens.count == 1, "notifications_single_display_required")
+        let display = CGDisplayBounds(CGMainDisplayID())
+        try require(display.contains(windowFrame), "notifications_window_offscreen")
+        func windowID() throws -> Int {
+            try require(currentCandidatePID() == state.originalPID && row.isSelected
+                        && settings.frame == windowFrame && form.frame == formFrame,
+                        "notifications_capture_identity_changed")
+            let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                                     kCGNullWindowID) as? [[String: Any]] ?? []
+            let matches = windows.filter {
+                guard $0[kCGWindowOwnerPID as String] as? Int == Int(state.originalPID ?? -1),
+                      let bounds = $0[kCGWindowBounds as String] as? NSDictionary,
+                      let frame = CGRect(dictionaryRepresentation: bounds) else { return false }
+                return frame == windowFrame
+            }
+            try require(matches.count == 1, "notifications_native_window_ambiguous")
+            guard let identifier = matches[0][kCGWindowNumber as String] as? Int else {
+                throw Blocked.reason("notifications_native_window_unavailable")
+            }
+            return identifier
+        }
+        let identifier = try windowID()
+        func content() throws -> [XCUIElementSnapshot] {
+            let snapshot = try form.snapshot()
+            let items = snapshot.children.filter { $0.elementType != .scrollBar && !$0.frame.isEmpty }
+            try require(snapshot.frame == formFrame && !items.isEmpty && items.count <= 100
+                        && items.allSatisfy {
+                            $0.frame.minX >= formFrame.minX && $0.frame.maxX <= formFrame.maxX
+                                && $0.frame.minY.isFinite && $0.frame.maxY.isFinite
+                        }, "notifications_content_geometry_unavailable")
+            return items
+        }
+        func rect(_ frame: CGRect) -> [String: CGFloat] {
+            ["x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height]
+        }
+        func normalized(_ frame: CGRect) -> CGRect {
+            CGRect(x: (frame.minX - windowFrame.minX) / windowFrame.width,
+                   y: (windowFrame.maxY - frame.maxY) / windowFrame.height,
+                   width: frame.width / windowFrame.width, height: frame.height / windowFrame.height)
+        }
+        var endpointContent: [[XCUIElementSnapshot]] = []
+        var outputs: [[String: Bool]] = []
+        for (role, delta) in [("top", 10_000.0), ("bottom", -10_000.0)] {
+            form.scroll(byDeltaX: 0, deltaY: delta)
+            let first = try content()
+            form.scroll(byDeltaX: 0, deltaY: delta)
+            let confirmed = try content()
+            try require(first.map(\.frame) == confirmed.map(\.frame)
+                        && first.map(\.elementType) == confirmed.map(\.elementType),
+                        "notifications_scroll_endpoint_unverified")
+            let frames = confirmed.map(\.frame)
+            try require(role == "top" ? frames.allSatisfy { $0.minY >= formFrame.minY }
+                        : frames.allSatisfy { $0.maxY <= formFrame.maxY },
+                        "notifications_scroll_endpoint_incomplete")
+            try require(try windowID() == identifier, "notifications_capture_identity_changed")
+
+            // Disabled static text can still render. Interaction eligibility is not presence.
+            var controls: [String: Bool] = [:]
+            var labelFrames: [String: CGRect] = [:]
+            for label in NotificationsOutputOracle.retainedLabels {
+                let matches = form.staticTexts.matching(identifier: label)
+                let visible = matches.count == 1 && !matches.firstMatch.frame.isEmpty
+                    && formFrame.contains(matches.firstMatch.frame)
+                controls[label] = visible
+                if visible { labelFrames[label] = normalized(matches.firstMatch.frame) }
+            }
+            controls["suggestionControlAbsent"] =
+                !form.staticTexts[NotificationsOutputOracle.suggestionLabel].exists
+            let capture = settings.screenshot()
+            try require(try windowID() == identifier, "notifications_capture_identity_changed")
+            let after = try content()
+            try require(after.map(\.frame) == frames
+                        && after.map(\.elementType) == confirmed.map(\.elementType),
+                        "notifications_capture_content_changed")
+            guard let image = capture.image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+                throw Blocked.reason("capture_pixels_unavailable")
+            }
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.recognitionLanguages = ["en-US"]
+            request.usesLanguageCorrection = false
+            try VNImageRequestHandler(cgImage: image).perform([request])
+            let observations = (request.results ?? []).compactMap { observation -> AboutOutputOracle.Observation? in
+                guard let text = observation.topCandidates(1).first?.string else { return nil }
+                return AboutOutputOracle.Observation(text: text, frame: observation.boundingBox)
+            }
+            try require(!observations.isEmpty, "ocr_unavailable")
+            let observed = NotificationsOutputOracle.evaluate(
+                observations, contentFrame: normalized(formFrame), controls: controls, labelFrames: labelFrames
+            )
+            let name = "guest-public-notifications-\(runID)-\(role)"
+            let hash = SHA256.hash(data: capture.pngRepresentation).map { String(format: "%02x", $0) }.joined()
+            let attachment = XCTAttachment(screenshot: capture)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            state.notificationsCaptures.append([
+                "role": role, "name": name, "sha256": hash, "runID": runID,
+                "scenario": "notifications-ai-replies-removed",
+                "testIdentifier": "GuestRegressionProbe/GuestRegressionProbe/testInstalledNotificationsWithoutAIReplies",
+                "candidateSHA256": expectedHash, "candidatePID": Int(state.originalPID ?? -1),
+                "appPath": candidate.path,
+                "windowID": identifier, "windowMarker": "NotchPocketSettingsWindow", "pane": "Notifications",
+                "windowFrame": rect(windowFrame), "formFrame": rect(formFrame),
+                "contentFrames": frames.map(rect), "endpointFrames": first.map { rect($0.frame) },
+                "contentTypes": confirmed.map { $0.elementType.rawValue },
+                "labelFrames": labelFrames.mapValues(rect), "observedPublicText": observed,
+                "pixelWidth": image.width, "pixelHeight": image.height
+            ])
+            endpointContent.append(confirmed)
+            outputs.append(observed)
+        }
+        let head = endpointContent[0]
+        let tail = endpointContent[1]
+        let offset = head[0].frame.minY - tail[0].frame.minY
+        let overlap = formFrame.height - offset
+        try require(head.count == tail.count && offset >= 0 && overlap >= 64
+                    && zip(head, tail).allSatisfy {
+                        $0.elementType == $1.elementType
+                            && $0.frame.offsetBy(dx: 0, dy: -offset) == $1.frame
+                    }, "notifications_scroll_coverage_incomplete")
+        state.discovery["notificationsScrollComplete"] = true
+        state.discovery["notificationsScrollOffsetPoints"] = offset
+        state.discovery["notificationsOverlapPoints"] = overlap
+        state.observed = NotificationsOutputOracle.combine(outputs)
     }
 
     @MainActor
@@ -411,7 +512,10 @@ final class GuestRegressionProbe: XCTestCase {
             if mode == "appearance-idle-face-removed" {
                 try inspectAppearance(settings, state: state)
             } else if mode == "notifications-ai-replies-removed" {
-                try inspectNotifications(settings, state: state)
+                try inspectNotifications(settings, state: state, runID: runID)
+                state.verdict = state.observed.values.allSatisfy { $0 } ? "PASS" : "FAIL"
+                state.reason = state.verdict == "PASS" ? "rendered_output_verified" : "rendered_output_mismatch"
+                return
             } else {
                 let about = settings.descendants(matching: .outlineRow)
                     .containing(.staticText, identifier: "About").firstMatch.staticTexts["About"]
@@ -461,13 +565,6 @@ final class GuestRegressionProbe: XCTestCase {
                 state.observed = AppearanceOutputOracle.evaluate(
                     observations, contentFrame: contentFrame, controls: state.appearanceControls
                 )
-            } else if mode == "notifications-ai-replies-removed" {
-                guard let contentFrame = state.notificationsContentFrame else {
-                    throw Blocked.reason("notifications_content_frame_unavailable")
-                }
-                state.observed = NotificationsOutputOracle.evaluate(
-                    observations, contentFrame: contentFrame, controls: state.notificationsControls
-                )
             } else {
                 state.observed = AboutOutputOracle.evaluate(observations, version: expectedVersion, build: expectedBuild)
             }
@@ -475,7 +572,6 @@ final class GuestRegressionProbe: XCTestCase {
             let pane: String
             switch mode {
             case "appearance-idle-face-removed": pane = "appearance"
-            case "notifications-ai-replies-removed": pane = "notifications"
             default: pane = "about"
             }
             attachment.name = "guest-public-\(pane)-\(runID)"
