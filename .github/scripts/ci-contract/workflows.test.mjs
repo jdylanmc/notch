@@ -183,6 +183,15 @@ function hostedContract(config, kind) {
           { name: 'Test helper', run: `${helper} test` },
           { name: 'Lint helper', run: `${helper} lint` },
           { name: 'Test regression pixel oracle', run: 'bash experiments/tart-regression/test-oracle.sh "$PWD/.build/regression-oracle"' },
+          {
+            name: 'Check media fixture',
+            run: 'mkdir -p "$PWD/.build"\n'
+              + 'python3 -B experiments/tart-regression/MediaFixture/build.py check --output "$PWD/.build/mediafixture-ci"\n',
+          },
+          {
+            name: 'Test media fixture build recipe',
+            run: "python3 -B -m unittest discover -s experiments/tart-regression/MediaFixture/Tests -p 'test_build.py'",
+          },
         ] : [
           { name: 'Install contract test dependency', run: install },
           { name: 'Test workflow contracts', run: 'npm test --prefix .github/scripts/ci-contract' },
@@ -525,6 +534,53 @@ const mutations = [
   ['helper credentials persisted', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => { c.jobs.validate.steps[0].with['persist-credentials'] = true; }],
   ['helper write permissions', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => { c.permissions.contents = 'write'; }],
   ['helper runtime step', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => { c.jobs.validate.steps.push({ run: `${helper} run inspect` }); }],
+  ['media fixture on Ubuntu', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => {
+    c.jobs.validate['runs-on'] = 'ubuntu-latest';
+  }],
+  ['skipped media fixture job', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => {
+    c.jobs.validate.if = 'false';
+  }],
+  ['ignored media fixture job failures', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => {
+    c.jobs.validate['continue-on-error'] = true;
+  }],
+  ['missing media fixture parent directory', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => {
+    const fixture = step(c.jobs.validate, 'Check media fixture');
+    fixture.run = fixture.run.replace('mkdir -p "$PWD/.build"\n', '');
+  }],
+  ['media fixture app build instead of check', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => {
+    const fixture = step(c.jobs.validate, 'Check media fixture');
+    fixture.run = fixture.run.replace('build.py check', 'build.py build');
+  }],
+  ['filtered media fixture recipe tests', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => {
+    step(c.jobs.validate, 'Test media fixture build recipe').run += ' -k test_check';
+  }],
+  ['media fixture recipe before parent preparation', 'notch_control', (c) => hostedContract(c, 'helper'), (c) => {
+    const steps = c.jobs.validate.steps;
+    const recipe = steps.splice(steps.findIndex((s) => s.name === 'Test media fixture build recipe'), 1)[0];
+    steps.splice(steps.findIndex((s) => s.name === 'Check media fixture'), 0, recipe);
+  }],
+  ...['Check media fixture', 'Test media fixture build recipe'].flatMap((name) => [
+    ['missing', (c) => { c.jobs.validate.steps = c.jobs.validate.steps.filter((s) => s.name !== name); }],
+    ['skipped', (c) => { step(c.jobs.validate, name).if = 'false'; }],
+    ['ignored failures', (c) => { step(c.jobs.validate, name)['continue-on-error'] = true; }],
+    ['masked exit status', (c) => {
+      const fixture = step(c.jobs.validate, name);
+      fixture.run = `${fixture.run.trimEnd()} || true`;
+    }],
+    ['non-failing shell', (c) => { step(c.jobs.validate, name).shell = 'bash {0}'; }],
+    ['before oracle gate', (c) => {
+      const steps = c.jobs.validate.steps;
+      const fixture = steps.splice(steps.findIndex((s) => s.name === name), 1)[0];
+      steps.splice(steps.findIndex((s) => s.name === 'Test regression pixel oracle'), 0, fixture);
+    }],
+  ].map(([mutation, mutate]) => [
+    `${name}: ${mutation}`, 'notch_control', (c) => hostedContract(c, 'helper'), mutate,
+  ])),
+  ...['Check media fixture', 'Test media fixture build recipe'].map((name) => [
+    `${name}: added to Ubuntu contracts`, 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
+      c.jobs.test.steps.push(step(workflow('notch_control').jobs.validate, name));
+    },
+  ]),
   ['missing policy regression run', 'ci_contract_tests', (c) => hostedContract(c, 'contracts'), (c) => {
     c.jobs.test.steps = c.jobs.test.steps.filter(({ name }) => name !== 'Test PR target policy');
   }],

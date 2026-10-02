@@ -300,5 +300,33 @@ python3 -B -m unittest discover -s scripts/tests -p 'test_regression_probe.py'
 bash experiments/tart-regression/test-oracle.sh "$PWD/.local/vm-regression/work/oracle-contract"
 ```
 
-Run these commands from the repository root. Hosted CI runs these deterministic
-checks only; it does not launch a VM or establish native UI evidence.
+Run these commands from the repository root. Hosted CI runs deterministic checks
+only; it does not launch a VM or establish native UI evidence.
+
+### Public media fixture checks
+
+The [test-only public-API media fixture](MediaFixture/README.md) is separate from
+the thirteen registered scenarios. After the helper and pixel-oracle gates,
+`notch_control.yml` runs these additional checks on **macos-26**, for every
+`pocket` push and pull request, without path filters:
+
+```bash
+mkdir -p "$PWD/.build"
+python3 -B experiments/tart-regression/MediaFixture/build.py check --output "$PWD/.build/mediafixture-ci"
+python3 -B -m unittest discover -s experiments/tart-regression/MediaFixture/Tests -p 'test_build.py'
+```
+
+Run from the repository root with the fixture sources present. `.build` must
+exist before Python recipe discovery; the check output must be a **new immediate
+child** of it (choose another name for a local rerun, never overwrite retained
+evidence). Check mode compiles arm64/x86_64 objects and runs only Foundation/
+Darwin state, generated-WAV bytes and owned-storage contracts. Python recipe
+tests mock native tools. Neither check signs, installs or launches a player,
+executes AppKit/MediaPlayer or plays audio; no UI, VM or credentials are used.
+For this fixture, the Ubuntu workflow checks only workflow structure; no native
+fixture code runs there.
+
+These gates preserve fixture source/build correctness, not actual OS Now Playing
+delivery, successful Notch activation or **Spotify account/playback proof**.
+The [idle launcher scenario](scenarios/music-idle-launcher.md) and fixture guide
+retain the separate exact-candidate independent guest proof requirements.

@@ -91,6 +91,23 @@ still usable when launcher history is absent. No new player backend is added.
 Calendar/Mirror, Shelf contents/actions and other Settings retained behavior
 also require their own fixture evidence, not this default music-only slice.
 
+### Public fixture automation boundary
+
+[`MediaFixture`](../MediaFixture/README.md) supplies a separate test-only producer
+using public AppKit, AVFoundation and MediaPlayer APIs, not a product integration
+or Spotify impersonation. The [suite's CI checks](../README.md#public-media-fixture-checks)
+run its object compilation, Foundation/Darwin pure contracts and mocked Python
+build-recipe tests after the macOS helper/oracle gates. They do not build/sign/
+install a player app, execute audio/UI, or establish OS delivery.
+
+The fixture does not add a registered scenario or replace the thirteen-case
+suite, independent guest activation/playback assertions, or real Spotify
+account/playback evidence. Fixture-generated remembered history also makes a
+guest unsuitable for these no-target cases: retain a separate clean baseline,
+not deleted preferences or cleared history. Use the fixture guide's actual
+engine, consumer, identity and negative-control assertions for separate
+parent-owned native proof; CI success alone cannot satisfy them.
+
 ## Remediation 1: LAUNCH-INTEGRATE / LAUNCH-TEST
 
 Base: PR #86 head `21012dfce4e670697da500fec63e8858deb15d24`.
