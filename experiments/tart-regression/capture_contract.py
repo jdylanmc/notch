@@ -1,14 +1,26 @@
-"""Versioned Notifications-only multi-capture evidence; legacy captures stay unchanged."""
+"""Two fixed scrollable Settings removal cases; legacy single captures stay unchanged."""
 
 import math
 import re
 import uuid
 
 
-SCENARIO = "notifications-ai-replies-removed"
-TEST = "GuestRegressionProbe/GuestRegressionProbe/testInstalledNotificationsWithoutAIReplies"
-LABELS = {"Show notifications in the notch", "From all apps"}
-ASSERTIONS = LABELS | {"suggestionControlAbsent"}
+SCENARIOS = {
+    "notifications-ai-replies-removed": {
+        "pane": "Notifications", "test": "testInstalledNotificationsWithoutAIReplies",
+        "labels": {"Show notifications in the notch", "From all apps"}, "absence": "suggestionControlAbsent",
+    },
+    "general-haptics-removed": {
+        "pane": "General", "test": "testInstalledGeneralWithoutHaptics",
+        "labels": {
+            "Show menu bar icon", "Launch at login", "Language", "Show on all displays",
+            "Preferred display", "Automatically switch displays",
+            "Notch height on notch displays", "Notch height on non-notch displays",
+            "Open notch on hover", "Remember last tab", "Notch animation", "Compact mode", "Enable gestures",
+        }, "absence": "hapticControlAbsent",
+    },
+}
+VERSION_KEYS = {"notificationsCaptureVersion", "generalCaptureVersion"}
 FIELDS = {
     "role", "name", "sha256", "runID", "scenario", "testIdentifier", "candidateSHA256",
     "candidatePID", "appPath", "windowID", "windowMarker", "pane", "windowFrame", "formFrame",
@@ -19,7 +31,7 @@ FIELDS = {
 
 def require(condition):
     if not condition:
-        raise ValueError("Notifications capture/scroll evidence is incomplete or inconsistent")
+        raise ValueError("Settings capture/scroll evidence is incomplete or inconsistent")
 
 
 def number(value):
@@ -38,29 +50,37 @@ def contains(outer, inner):
             and inner["y"] + inner["height"] <= outer["y"] + outer["height"])
 
 
-def booleans(value):
-    require(isinstance(value, dict) and set(value) == ASSERTIONS
+def booleans(value, assertions):
+    require(isinstance(value, dict) and set(value) == assertions
             and all(type(item) is bool for item in value.values()))
     return value
 
 
-def notifications_captures(receipt):
-    require(type(receipt.get("notificationsCaptureVersion")) is int
-            and receipt["notificationsCaptureVersion"] == 1 and "screenshotSHA256" not in receipt)
+def settings_captures(receipt):
+    scenario = receipt.get("scenario")
+    require(scenario in SCENARIOS)
+    descriptor = SCENARIOS[scenario]
+    pane, labels, absence = descriptor["pane"], descriptor["labels"], descriptor["absence"]
+    prefix = pane.lower()
+    test = "GuestRegressionProbe/GuestRegressionProbe/" + descriptor["test"]
+    version_key = prefix + "CaptureVersion"
+    assertions = labels | {absence}
+    require(type(receipt.get(version_key)) is int and receipt[version_key] == 1
+            and VERSION_KEYS.intersection(receipt) == {version_key} and "screenshotSHA256" not in receipt)
     captures = receipt.get("captures")
     require(isinstance(captures, list) and len(captures) == 2)
     run_id = receipt.get("runID")
     require(isinstance(run_id, str))
     require(str(uuid.UUID(run_id)) == run_id)
-    require(receipt.get("scenario") == SCENARIO and receipt.get("testIdentifier") == TEST)
+    require(receipt.get("testIdentifier") == test)
     for role, capture in zip(["top", "bottom"], captures):
         require(isinstance(capture, dict) and set(capture) == FIELDS)
         require(capture["role"] == role and capture["runID"] == run_id
-                and capture["name"] == f"guest-public-notifications-{run_id}-{role}"
-                and capture["scenario"] == SCENARIO and capture["testIdentifier"] == TEST
+                and capture["name"] == f"guest-public-{prefix}-{run_id}-{role}"
+                and capture["scenario"] == scenario and capture["testIdentifier"] == test
                 and capture["candidateSHA256"] == receipt.get("expectedCandidateSHA256")
                 and capture["appPath"] == "/Applications/notch-pocket.app"
-                and capture["windowMarker"] == "NotchPocketSettingsWindow" and capture["pane"] == "Notifications")
+                and capture["windowMarker"] == "NotchPocketSettingsWindow" and capture["pane"] == pane)
         require(isinstance(capture["sha256"], str) and re.fullmatch(r"[a-f0-9]{64}", capture["sha256"]))
         for key in ["candidatePID", "windowID", "pixelWidth", "pixelHeight"]:
             require(type(capture[key]) is int and capture[key] > 0)
@@ -78,15 +98,15 @@ def notifications_captures(receipt):
             require(frame["x"] >= form["x"] and frame["x"] + frame["width"] <= form["x"] + form["width"])
             require(frame["y"] >= form["y"] if role == "top"
                     else frame["y"] + frame["height"] <= form["y"] + form["height"])
-        observed = booleans(capture["observedPublicText"])
-        labels = capture["labelFrames"]
-        require(isinstance(labels, dict) and set(labels).issubset(LABELS))
+        observed = booleans(capture["observedPublicText"], assertions)
+        label_frames = capture["labelFrames"]
+        require(isinstance(label_frames, dict) and set(label_frames).issubset(labels))
         normalized = {"x": (form["x"] - window["x"]) / window["width"],
                       "y": (window["y"] + window["height"] - form["y"] - form["height"]) / window["height"],
                       "width": form["width"] / window["width"], "height": form["height"] / window["height"]}
-        for frame in labels.values():
+        for frame in label_frames.values():
             require(contains(normalized, rectangle(frame)))
-        require(all(not observed[label] or label in labels for label in LABELS))
+        require(all(not observed[label] or label in label_frames for label in labels))
     top, bottom = captures
     for key in ["candidatePID", "windowID", "windowFrame", "formFrame", "contentTypes", "pixelWidth", "pixelHeight"]:
         require(top[key] == bottom[key])
@@ -99,15 +119,20 @@ def notifications_captures(receipt):
     discovery = receipt.get("discovery")
     require(isinstance(discovery, dict))
     require(all(discovery.get(key) is True for key in [
-        "notificationsPaneSelected", "notificationsFormMapped", "notificationsScrollComplete",
+        prefix + "PaneSelected", prefix + "FormMapped", prefix + "ScrollComplete",
     ]))
-    require(number(discovery.get("notificationsScrollOffsetPoints"))
-            and number(discovery.get("notificationsOverlapPoints"))
-            and discovery["notificationsScrollOffsetPoints"] == offset
-            and discovery["notificationsOverlapPoints"] == overlap)
-    combined = {label: any(c["observedPublicText"][label] for c in captures) for label in LABELS}
-    combined["suggestionControlAbsent"] = all(c["observedPublicText"]["suggestionControlAbsent"] for c in captures)
-    require(booleans(receipt.get("observedPublicText")) == combined)
+    require(number(discovery.get(prefix + "ScrollOffsetPoints"))
+            and number(discovery.get(prefix + "OverlapPoints"))
+            and discovery[prefix + "ScrollOffsetPoints"] == offset
+            and discovery[prefix + "OverlapPoints"] == overlap)
+    if scenario == "general-haptics-removed":
+        require(discovery.get("generalNavigationObserved") is True
+                and receipt.get("originalPane") in {"closed", "General", "About"})
+        if receipt["originalPane"] == "General":
+            require(discovery.get("generalScrollRestored") is True)
+    combined = {label: any(c["observedPublicText"][label] for c in captures) for label in labels}
+    combined[absence] = all(c["observedPublicText"][absence] for c in captures)
+    require(booleans(receipt.get("observedPublicText"), assertions) == combined)
     require(receipt.get("verdict") in {"PASS", "FAIL"}
             and (receipt["verdict"] == "PASS") == all(combined.values())
             and receipt.get("reason") == ("rendered_output_verified" if all(combined.values())

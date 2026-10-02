@@ -23,7 +23,6 @@ struct WheelPicker: View {
     @EnvironmentObject var vm: NotchPocketViewModel
     @Binding var selectedDate: Date
     @State private var scrollPosition: Int?
-    @State private var haptics: Bool = false
     @State private var byClick: Bool = false
     @State private var scrollAccumulator: CGFloat = 0
     @State private var isHovering: Bool = false
@@ -53,9 +52,6 @@ struct WheelPicker: View {
                             withAnimation {
                                 scrollPosition = index
                             }
-                            if Defaults[.enableHaptics] {
-                                haptics.toggle()
-                            }
                         }
                     }
                 }
@@ -67,7 +63,6 @@ struct WheelPicker: View {
         .scrollPosition(id: $scrollPosition, anchor: .center)
         .scrollTargetBehavior(.viewAligned)  // Ensures scroll view snaps the centered view
         .safeAreaPadding(.horizontal)
-        .sensoryFeedback(.alignment, trigger: haptics)
         .onContinuousHover { phase in
             switch phase {
             case .active(_):
@@ -137,9 +132,6 @@ struct WheelPicker: View {
                 }
                 let newDate = dateForItemIndex(index: newIndex, spacerNum: spacerNum)
                 selectedDate = newDate
-                if Defaults[.enableHaptics] {
-                    haptics.toggle()
-                }
             }
         }
     }
@@ -193,9 +185,6 @@ struct WheelPicker: View {
         let date = dateForItemIndex(index: newIndex, spacerNum: spacerNum)
         if !Calendar.current.isDate(date, inSameDayAs: selectedDate) {
             selectedDate = date
-            if Defaults[.enableHaptics] {
-                haptics.toggle()
-            }
         }
     }
 
@@ -246,7 +235,6 @@ struct WeekStripPicker: View {
     @Default(.weekStartDay) private var weekStartDay
     @State private var displayedWeekStart: Date = Date()
     @State private var slideForward: Bool = true
-    @State private var haptics: Bool = false
     @State private var scrollAccumulator: CGFloat = 0
     @State private var isHovering: Bool = false
     @State private var scrollMonitor: Any?
@@ -278,7 +266,6 @@ struct WeekStripPicker: View {
         .frame(height: 50)
         .clipped()  // keep the week-flip slide inside the calendar column (no bleed into music)
         .padding(.horizontal, 2)
-        .sensoryFeedback(.alignment, trigger: haptics)
         .onContinuousHover { phase in
             switch phase {
             case .active:
@@ -369,9 +356,6 @@ struct WeekStripPicker: View {
             }
             selectedDate = newDate
         }
-        if Defaults[.enableHaptics] {
-            haptics.toggle()
-        }
     }
 
     /// Chevrons page the visible week and carry the selection along (same weekday column).
@@ -383,17 +367,11 @@ struct WeekStripPicker: View {
             displayedWeekStart = newStart
             selectedDate = newSelection
         }
-        if Defaults[.enableHaptics] {
-            haptics.toggle()
-        }
     }
 
     private func selectDate(_ date: Date) {
         withAnimation {
             selectedDate = date
-        }
-        if Defaults[.enableHaptics] {
-            haptics.toggle()
         }
     }
 
