@@ -9,6 +9,9 @@ import subprocess
 import sys
 import uuid
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from capture_contract import notifications_captures, SCENARIO as NOTIFICATIONS_SCENARIO
+
 
 def blocked(reason, **details):
     print(json.dumps({"verdict": "BLOCKED", "reason": reason, **details}), flush=True)
@@ -149,11 +152,21 @@ def main():
     if not framework_matches:
         return blocked("framework_verdict_mismatch", runID=run_id)
     if verdict in ["PASS", "FAIL"]:
-        if (not receipt.get("candidateVerified") or not receipt.get("screenshotSHA256")
+        if (not receipt.get("candidateVerified")
                 or receipt.get("cleanup") not in ["restored_general", "restored_closed_settings", "restored_original_state"]):
             return blocked("required_evidence_or_cleanup_missing", runID=run_id)
-        if not isinstance(receipt["screenshotSHA256"], str) or not re.fullmatch(r"[a-f0-9]{64}", receipt["screenshotSHA256"]):
-            return blocked("capture_digest_invalid", runID=run_id)
+        if args.scenario == NOTIFICATIONS_SCENARIO:
+            try:
+                notifications_captures(receipt)
+            except (ValueError, TypeError, KeyError):
+                return blocked("notifications_assertions_unverified", runID=run_id)
+        else:
+            if "captures" in receipt or "notificationsCaptureVersion" in receipt:
+                return blocked("unexpected_capture_schema", runID=run_id)
+            if not receipt.get("screenshotSHA256"):
+                return blocked("required_evidence_or_cleanup_missing", runID=run_id)
+            if not isinstance(receipt["screenshotSHA256"], str) or not re.fullmatch(r"[a-f0-9]{64}", receipt["screenshotSHA256"]):
+                return blocked("capture_digest_invalid", runID=run_id)
     subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict",
                     "/Applications/notch-pocket.app"], check=True, capture_output=True, timeout=30)
     exits = {"PASS": 0, "FAIL": 10, "BLOCKED": 20}

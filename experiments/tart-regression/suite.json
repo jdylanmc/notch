@@ -63,6 +63,15 @@
       "expectedVerdict": "PASS",
       "expectedReason": "rendered_output_verified",
       "notes": "scenarios/appearance-idle-face-removed.md"
+    },
+    {
+      "id": "notifications-ai-replies-removed",
+      "kind": "regression",
+      "scenario": "notifications-ai-replies-removed",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledNotificationsWithoutAIReplies",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/notifications-ai-replies-removed.md"
     }
   ]
 }

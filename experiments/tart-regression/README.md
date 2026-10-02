@@ -1,7 +1,7 @@
 # Source-only installed-app probe
 
 This is the initial **registered installed-app regression suite**, built from the
-XCTest/Vision Tart experiment. It currently covers two application journeys and
+XCTest/Vision Tart experiment. It currently covers three application journeys and
 five explicit oracle/restoration controls, not the whole app. See the
 [VM reconstruction recipe](../../docs/agents/vm-regression.md) first.
 
@@ -60,6 +60,13 @@ executable hashes and source/build provenance separately; both apps can be
 0.1.0 (272). The available old artifact is the PR97 preview from `4fff039`, not a
 build of the removal branch's base. See the scenario's exact pins and report
 requirements; the minimal launcher manifest alone is insufficient provenance.
+The Notifications removal instead uses the previous-face candidate installed
+in the guest: source `2e28bd1920265ee30d8761ad03c0b420e3f2168b`, executable
+`7a30c4d4939da81c165744050bc38e0a91ea699786cddd605de9c4735d6c5aa0`.
+Do not substitute the host installation/PR97 preview or copy host evidence.
+Run only its Notifications wrong-behavior scenario on OLD; run the full eight
+cases across the existing fixtures on NEW only. See its
+[scenario note](scenarios/notifications-ai-replies-removed.md).
 
 ## Exercise the installed app in the guest
 
@@ -129,21 +136,27 @@ panes are an explicit unsupported fixture, not silently replaced.
 | `visual-no-reveal` | FAIL / 10; XCTest 65 | Missing revealed build text reaches the pixel oracle, not an environment-block classification |
 | `native-abort-after-open` | BLOCKED / 20; XCTest 65 | A real XCTest failure after opening Settings still runs teardown and reports restoration |
 | `native-abort-after-about` | BLOCKED / 20; XCTest 65 | A real XCTest failure after About selection still restores the fixture |
+| `notifications-ai-replies-removed` | PASS / 0 on new candidate | Retained notification labels render; suggestion control is absent in Accessibility and pixels |
 
 Do not convert the two negative controls into passing application tests.
 `runs/<name>/` holds invocation/framework/result receipts, log and `.xcresult`;
 `jobs/` holds the bounded launcher receipts. Missing receipts, wrong test counts,
 skips, unexpected outcomes or unverified restoration are non-success.
 Export attachments with `xcrun xcresulttool export attachments`, verify the named
-public About image hash against the receipt, and inspect the pixels locally.
+public image hashes against the receipt, and inspect the pixels locally.
+Notifications alone uses `notificationsCaptureVersion: 1` and exactly two named
+top/bottom captures rather than `screenshotSHA256`; the suite's `captures` report
+field binds both native attachment names/hashes/dimensions. Other cases retain
+their single `capture` contract.
 Retained automatic system attachments are disabled.
 
 ## Limits
 
 - The examples expect an English Settings UI and the repository's versioned panel
   and Settings markers, with one guest display and a visible Settings gear.
-- It covers About version/build and
-  [Appearance idle-face removal](scenarios/appearance-idle-face-removed.md), not
+- It covers About version/build,
+  [Appearance idle-face removal](scenarios/appearance-idle-face-removed.md) and
+  [Notifications AI-reply removal](scenarios/notifications-ai-replies-removed.md), not
   all retained features. New features need their own independent scenarios.
 - Appearance uses typed static-text value lookup, row-scoped sidebar navigation,
   and structural form mapping. Its single screenshot requires positive full-form
@@ -151,6 +164,15 @@ Retained automatic system attachments are disabled.
   for General/Media and the removed section. Missing retained controls are
   output failures after pane setup, never setup guards. OCR shares About's
   same-row fragment geometry; this does not authorize offscreen absence claims.
+- Notifications uses row-scoped navigation, typed static-text value lookup and
+  structural form mapping at the existing 1440x900 display. Two actual endpoint
+  captures cover the scrollable form: stable repeated endpoint geometry, no
+  clipped content before the top/after the bottom, uniform translation and at
+  least 64 points of overlap. Incomplete coverage is BLOCKED, not absence proof.
+  Disabled retained labels need presence, visible geometry and aligned OCR, not
+  `isHittable`. No preferences or window/display dimensions change. Both captures
+  carry exact run/candidate/PID/native-window/pane identity; retained labels
+  combine with OR, suggestion absence with AND. Restoration is unchanged.
 - Readiness and cleanup are checked, but this remains prototype code, not a
   hardened multi-user execution service or an authorization boundary.
 - User-controlled OS consent, guest idle lock, hardware and application readiness
