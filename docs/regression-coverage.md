@@ -97,6 +97,7 @@ regression preservation, not a new player support commitment.
 | Dashboard revisions, corrupt/future/numeric payloads, persistence and teardown; [store](../notchPocket/components/Dashboard/DashboardConfigurationStore.swift) | Configuration/numeric/controller suites; real Defaults suites cover seed identity, reconstructed stores, stale commits and exact recovery bytes. | Process restart durability and whole-app fixture selection remain missing; same-process reconstruction is not relaunch proof. | None for deterministic storage integration. |
 | Shelf Summary count, open-Shelf/drop actions, disabled/editing state; [widget policy](../notchPocket/components/Dashboard/ShelfSummaryWidgetPolicy.swift) | [Shelf Summary policy](../notchPocketTests/ShelfSummaryWidgetPolicyTests.swift), [overlapping drop state](../notchPocketTests/DropInteractionStateTests.swift). | Seed isolated Shelf state; observe count/drop acceptance; actual drop sessions remain separate from policy calls. | File access only for explicitly owned fixture files. |
 | Playback, seek, volume, shuffle/repeat/favorite, source fallback; [MusicManager](../notchPocket/managers/MusicManager.swift), [Home](../notchPocket/components/Notch/NotchHomeView.swift) | [Now Playing availability](../notchPocketTests/NowPlayingAvailabilityTests.swift) and [playback equality/event tests](../notchPocketTests/NotchUIEventTests.swift). | Manager/view provider injection and scenario assertions for command dispatch, progress and runtime failure/recovery. | Spotify installation/account/playback consent for end-to-end checks; inherited players are not promised support. |
+| Shared media/Lunar newline-delimited streams; [reader](../Shared/JSONLinesPipeHandler.swift) | [Owned-pipe tests](../notchPocketTests/JSONLinesPipeHandlerTests.swift) execute framing, decoding, malformed-line policy, EOF, cancellation and close against real Foundation pipes; see the bounded #7 ledger below. | Unit pipeline evidence only. Real producer exit/restart, helper lifecycle and installed-app recovery still need candidate-bound integration checks. | Media/Lunar installations and any required grants for live consumers, not these fixtures. |
 | Lyrics, artwork/tinting, visualizer and output-route selection; [lyrics](../notchPocket/managers/LyricsService.swift), [audio capture](../notchPocket/managers/AudioCaptureManager.swift), [routes](../notchPocket/managers/AudioRouteManager.swift) | No dedicated provider or native interaction suite. | Synthetic metadata/lyrics/audio levels/output devices; missing/error/stale response scenarios; verify routing separately from UI. | Network/provider availability, audio-capture grant and physical output devices for live cases. |
 | Shelf file/text/link/image drop, deduplication and selection; [drop service](../notchPocket/components/Shelf/Services/ShelfDropService.swift), [state](../notchPocket/components/Shelf/ViewModels/ShelfStateViewModel.swift) | Drop-target aggregation tests do not cover payload ingestion or the state singleton. | Inject owned storage/services; deterministic item-provider cases, internal-drag rejection, selection and cancellation. | Security-scoped access to owned fixtures; no use of personal shelf items. |
 | Shelf Quick Look, open/copy/share, drag out and removal; [actions](../notchPocket/components/Shelf/Services/ShelfActionService.swift), [Quick Look](../notchPocket/components/Shelf/Services/QuickLookService.swift), [share](../notchPocket/components/Shelf/Services/QuickShareService.swift) | No dedicated native journey suite. | App-scoped keyboard/drag/focus scenarios and injectable share/open sinks; verify no unrelated files removed and restore transient selection. | Opening external apps or sending shares requires separate effects approval. |
@@ -228,6 +229,92 @@ scripts/test.sh \
   -only-testing:notchPocketTests/DropInteractionStateTests \
   -only-testing:notchPocketTests/ShelfSummaryWidgetPolicyTests
 ```
+
+### Shared JSON-lines and stream wire contracts (#7)
+
+**STREAM-TEST:** [JSONLinesPipeHandlerTests](../notchPocketTests/JSONLinesPipeHandlerTests.swift)
+exercise the production actor with owned `Pipe`/`FileHandle` instances, not a
+substituted byte iterator. Both the supplied-pipe and default initializer paths
+are covered. The source remains in the existing synchronized `Shared` group,
+compiled by both app and helper targets.
+
+- Multiple ordered values, separate writes splitting JSON/UTF-8/CRLF, awaited
+  callbacks and callback-capture release.
+- One/two malformed lines are skipped; the third consecutive malformed line
+  ends reading before a buffered valid value, without needing EOF. Empty,
+  whitespace, invalid UTF-8 and wrong-schema lines count; a valid value resets
+  the counter. Separate handlers do not share that counter or close ownership.
+- Empty EOF returns; unterminated valid JSON, partial JSON and trailing CR are
+  discarded. EOF and malformed-threshold returns do not implicitly close the
+  reader: the caller still owns cleanup.
+- Pre-cancellation, cancellation at an explicitly suspended callback, active
+  read cancellation, cancel/close with buffered values, close without
+  cancellation, and repeated close before reading. An owned duplicated writer
+  models a producer retaining its stdout descriptor without launching a
+  process; cancellation must return without closing that producer descriptor.
+
+The small additions to [identity tests](../notchPocketTests/IdentityCompatibilityTests.swift)
+verify `brightness`/`display` primitive keys independently in each coding
+direction, alongside the existing secure root-object round trip and
+`BNLunarBrightnessEvent` Objective-C identity. Selectors include
+`lunarStreamDidStop:`, `startLunarEventStreamWith:` and `stopLunarEventStream`.
+These checks do not exercise an XPC connection, authorization or hardware.
+
+**STREAM-FIX:** Two proved lifecycle defects required bounded production changes:
+
+- Cancellation of an already-active `AsyncBytes` read could wait indefinitely
+  when the producer sent no further bytes. The before-fix
+  `testCancellationAfterDeliveredValueReturnsWithoutProducerEOF` failed its
+  three-second deadline; fixture-owned EOF then drained the task successfully.
+  The existing read loop is wrapped in `withTaskCancellationHandler`, calling
+  the existing nonisolated `close()` on cancellation to release both
+  handler-owned endpoints and wake the read.
+- Starting a read after `close()` could use the pre-created iterator's stale
+  numeric descriptor after another pipe reused it.
+  `testRepeatedCloseBeforeReadingReturnsAndDoesNotCloseAnotherPipe` failed all
+  five before-fix repetitions when the replacement pipe was allocated after
+  close; closing that owned replacement rescued cleanup. A lock-protected,
+  monotonic closed flag now rejects a read started after close. Iterator
+  creation remains on the valid handle at initialization: constructing
+  `FileHandle.bytes` on an already-closed handle throws an Objective-C exception,
+  so moving construction to read entry was rejected.
+
+Framing, decoding, malformed threshold/reset, EOF/trailing-line and swallowed
+read-error policies are unchanged. Consumer wiring is unchanged. An in-flight
+async callback remains cooperative and must return; concurrent/restarted
+reads on one handler are not a newly supported contract. Per-handler isolation
+does not establish independent scheduling/progress of multiple idle
+`FileHandle.AsyncBytes` readers in one process; these consumers run in separate
+app/helper processes.
+
+Fixtures use callback expectations and actor gates, never sleeps, to order
+writer/cancellation actions. Every expectation has a three-second failing
+deadline, not a skip or an expected timeout. Teardown releases gates, cancels
+and joins retained reader/close tasks, closes every owned writer (including
+duplicates) to rescue failed reads with EOF, repeats handler close and verifies
+the owned handles reject further operations. Writers are bounded synchronous
+writes, not detached tasks. No fake iterator, child process, media controller,
+host device, UI, preferences or dependency injection is involved in the tests.
+
+Run the focused gate from the repository root:
+
+```bash
+scripts/test.sh \
+  -only-testing:notchPocketTests/JSONLinesPipeHandlerTests \
+  -only-testing:notchPocketTests/IdentityCompatibilityTests/testLunarEventKeepsObjectiveCWireNameAndSecureCoding \
+  -only-testing:notchPocketTests/IdentityCompatibilityTests/testLunarEventDecodesIndependentPrimitiveWireFields \
+  -only-testing:notchPocketTests/IdentityCompatibilityTests/testLunarEventEncodesStablePrimitiveWireFields \
+  -only-testing:notchPocketTests/IdentityCompatibilityTests/testRenamedXPCProtocolsKeepMessageSelectors \
+  -parallel-testing-enabled NO \
+  -test-timeouts-enabled YES \
+  -default-test-execution-time-allowance 20 \
+  -maximum-test-execution-time-allowance 30
+```
+
+The ordinary XCTest app host still starts. These isolated unit-pipeline
+contracts are **not installed-app/Tart regression proof**, whole-app isolation,
+or signoff on media/Lunar process cleanup. The full gates and independent
+installed-app suite remain parent-owned.
 
 ## Next bounded isolation/control increments
 

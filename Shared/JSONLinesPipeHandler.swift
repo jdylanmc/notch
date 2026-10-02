@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import os
 
 /// Streams newline-delimited JSON from a pipe, decoding each line.
 /// Used by the app (mediaremote-adapter now-playing stream) and the XPC
@@ -16,6 +17,7 @@ import Foundation
 actor JSONLinesPipeHandler {
     nonisolated let outputPipe: Pipe
     nonisolated let fileHandle: FileHandle
+    nonisolated private let isClosed = OSAllocatedUnfairLock(initialState: false)
     private var byteIterator: FileHandle.AsyncBytes.Iterator
     private var consecutiveMalformedLines = 0
 
@@ -32,38 +34,46 @@ actor JSONLinesPipeHandler {
         var line = Data()
         var iterator = byteIterator
 
-        do {
-            while let byte = try await iterator.next() {
-                guard !Task.isCancelled else { return }
+        await withTaskCancellationHandler {
+            // AsyncBytes captures a numeric descriptor that can be reused after close.
+            guard !isClosed.withLock({ $0 }) else { return }
+            do {
+                while let byte = try await iterator.next() {
+                    guard !Task.isCancelled else { return }
 
-                guard byte == UInt8(ascii: "\n") else {
-                    line.append(byte)
-                    continue
-                }
-
-                if line.last == UInt8(ascii: "\r") {
-                    line.removeLast()
-                }
-
-                guard !line.isEmpty,
-                      let decoded = try? JSONDecoder().decode(Value.self, from: line)
-                else {
-                    consecutiveMalformedLines += 1
-                    line.removeAll(keepingCapacity: true)
-                    if consecutiveMalformedLines >= 3 {
-                        return
+                    guard byte == UInt8(ascii: "\n") else {
+                        line.append(byte)
+                        continue
                     }
-                    continue
-                }
 
-                consecutiveMalformedLines = 0
-                line.removeAll(keepingCapacity: true)
-                await onValue(decoded)
-            }
-        } catch {}
+                    if line.last == UInt8(ascii: "\r") {
+                        line.removeLast()
+                    }
+
+                    guard !line.isEmpty,
+                          let decoded = try? JSONDecoder().decode(Value.self, from: line)
+                    else {
+                        consecutiveMalformedLines += 1
+                        line.removeAll(keepingCapacity: true)
+                        if consecutiveMalformedLines >= 3 {
+                            return
+                        }
+                        continue
+                    }
+
+                    consecutiveMalformedLines = 0
+                    line.removeAll(keepingCapacity: true)
+                    await onValue(decoded)
+                }
+            } catch {}
+        } onCancel: {
+            // AsyncBytes can stay suspended on an idle pipe after task cancellation.
+            close()
+        }
     }
 
     nonisolated func close() {
+        isClosed.withLock { $0 = true }
         try? fileHandle.close()
         try? outputPipe.fileHandleForWriting.close()
     }
