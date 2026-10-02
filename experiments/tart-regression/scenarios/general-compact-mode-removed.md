@@ -1,8 +1,10 @@
 # General: music-only compact mode removed
 
-Ledger: **CMP-REMOVE / CMP-CONTRACT / CMP-NATIVE**. Author-only work in
+Ledger: **CMP-REMOVE / CMP-CONTRACT / CMP-NATIVE**. Initial author-only work in
 `chore/remove-compact-mode`, local-stack base
-`30c85008d7ef817344ccc51a742b21da7ef4bf93`. Changes remain uncommitted.
+`30c85008d7ef817344ccc51a742b21da7ef4bf93`. That snapshot is historical;
+the fresh remediation below remains uncommitted against merged parent
+`229721a820f98d16f87aa226c334ebd0190b8ba3`.
 The owner selected the full panel instead of the smaller music-only mode.
 No gesture, lock-screen, native on-screen display, notification reply, permission,
 identity, data-reset or signing changes are authorized.
@@ -119,7 +121,7 @@ Paths are relative to this checkout.
 
 | Ledger | Path | Change |
 | --- | --- | --- |
-| CMP-REMOVE | `notchPocket/ContentView.swift` | Remove compact routing/shape/height/header bypass; retain notification and full-panel routes. |
+| CMP-REMOVE | `notchPocket/ContentView.swift` | Remove compact routing/shape/height/header bypass; retain notification and full-panel routes. Fresh remediation fixes opened padding without changing its closed branch. |
 | CMP-REMOVE | `notchPocket/models/Constants.swift` | Remove only compact preference declaration. |
 | CMP-REMOVE | `notchPocket/sizing/matters.swift` | Remove compact-only opened corners. |
 | CMP-REMOVE | `notchPocket/components/Settings/Views/GeneralSettingsView.swift` | Remove only compact section/footer. |
@@ -130,7 +132,7 @@ Paths are relative to this checkout.
 | CMP-REMOVE | `notchPocket/components/LiveActivities/NotchPocketBattery.swift` | Comment-only update; scaled small battery unchanged. |
 | CMP-REMOVE | `notchPocket/managers/AudioRouteManager.swift` | Comment-only update; shared route manager unchanged. |
 | CMP-CONTRACT | `notchPocket/Localizable.xcstrings` | Delete exactly two compact-only entries. |
-| CMP-CONTRACT | `scripts/tests/test_regression_probe.py` | Source preservation, preference/default and receipt failure contracts; surgical prior compact expectation removal. |
+| CMP-CONTRACT | `scripts/tests/test_regression_probe.py` | Source preservation, preference/default and receipt failure contracts; surgical prior compact expectation removal. Fresh remediation pins padding, shared absence semantics and twelve retained labels. |
 | CMP-NATIVE | `experiments/tart-regression/GuestRegressionProbe/GuestRegressionProbe.swift` | Add one native selector using existing fixed capture/restore. |
 | CMP-NATIVE | `experiments/tart-regression/GuestRegressionProbe/SettingsRemovalOutputOracle.swift` | Fixed compact descriptor, scoped forbidden text, twelve unchanged retained labels. |
 | CMP-NATIVE | `experiments/tart-regression/capture_contract.py` | Bind new descriptor to unchanged evidence contract; remove prior compact positive label. |
@@ -138,12 +140,18 @@ Paths are relative to this checkout.
 | CMP-NATIVE | `experiments/tart-regression/suite.json` | Add case eleven; preserve ten previous entries. |
 | CMP-CONTRACT | `experiments/tart-regression/README.md` | Current registry and evidence limits. |
 | CMP-CONTRACT | `experiments/tart-regression/scenarios/general-haptics-removed.md` | Owner-directed compact expectation removal; historical evidence unchanged. |
-| CMP-CONTRACT | `experiments/tart-regression/scenarios/general-panel-swipes-removed.md` | Same narrow current expectation update; historical scope/results unchanged. |
+| CMP-CONTRACT | `experiments/tart-regression/scenarios/general-panel-swipes-removed.md` | Same narrow current expectation update; mark pre-merge tables historical without changing their results. |
 | CMP-CONTRACT | `docs/regression-coverage.md` | Current removal coverage and required panel proof gap. |
 | CMP-CONTRACT | `docs/specs/mvp-widget-foundation.md` | Retire obsolete compact bypass expectation; preserve notification precedence. |
 | CMP-CONTRACT / CMP-NATIVE | `experiments/tart-regression/scenarios/general-compact-mode-removed.md` | This trace, ledger, scenario and parent evidence contract. |
 
-## Author validation (2026-10-02)
+## HISTORICAL pre-merge author validation (2026-10-02)
+
+These results describe the initial author snapshot before the parent panel-swipe
+remediation was merged, not HEAD `229721a820f98d16f87aa226c334ebd0190b8ba3`
+or the fresh remediation below. The merged parent adds four footer-only oracle
+cases and uses the shared `removedLabelsAbsent` matcher. Do not reuse the old
+73/462 counts or syntax-only result as current compilation evidence.
 
 Commands ran from this worktree. Swift/Xcode used
 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`, with generated homes,
@@ -151,7 +159,7 @@ temporary directories and module caches under the named ignored `.build/`
 directories. Python fixtures used `.build/cmp-contracts/tmp`. No app/runtime
 execution, VM operation, signing, remote operation, agent or credential access.
 
-| Command / check | Current result |
+| Command / check | Historical result |
 | --- | --- |
 | `python3 -B -m unittest discover -s scripts/tests -p 'test_regression_probe.py'` | **73 passed**. Initial run caught a new test's incorrect assumed label `Show mirror`; verified existing source/catalog uses `Enable mirror`, corrected only that expectation, then reran all 73. Both logs retained. |
 | `bash experiments/tart-regression/test-oracle.sh "$PWD/.build/cmp-contracts/oracle"` | **462 synthetic cases passed**: About 11, Appearance 52, Notifications 35, haptics 92, panel swipes 100, compact removal 100, plus 24 measured-label boundaries for each of the three General descriptors. Prior General totals each drop six compact-positive cases only; their other properties remain. |
@@ -166,3 +174,60 @@ and `.build/cmp-harness/{build.log,build.xcresult}`. Generated build/cache resid
 under those two directories is intentionally ignored and retained for the parent.
 No full app/helper/CI gates, independent review, OLD/NEW native Settings proof or
 full-panel native proof ran here; all remain required parent-owned work.
+
+## Fresh remediation 1/5 (2026-10-02)
+
+Uncommitted against `229721a820f98d16f87aa226c334ebd0190b8ba3`, limited to
+**CMP-REMOVE / CMP-CONTRACT**:
+
+- `notchPocket/ContentView.swift:199` still used the deleted `openedInsets`.
+  Use `cornerRadiusInsets.opened.top` for opened horizontal padding; the closed
+  branch remains `cornerRadiusInsets.closed.bottom`. The source contract rejects
+  any `openedInsets` remnant and pins both padding branches.
+- The compact native source contract expected the pre-merge inline predicate.
+  It now requires `scenario.removedLabelsAbsent { form.staticTexts[$0].exists }`
+  and pins the shared helper's `removedLabels.allSatisfy { !isPresent($0) }`
+  semantics. All twelve retained labels are pinned; earlier scenario assertions,
+  the four footer-only cases, capture/restore code and oracle implementation
+  remain unchanged.
+- This table and the panel-swipe author tables distinguish historical pre-merge
+  evidence from fresh current-source results. No product feature scope changed.
+
+Before this fix, both retained canonical `scripts/build.sh` attempts exited
+**65** with `ContentView.swift:199:50: error: cannot find 'openedInsets' in scope`.
+Their evidence is in session files
+`overnight-retention-20261001/compact-local-validation/`, including
+`01-app-build.full.log`, `01b-app-build-retry.full.log` and `report.json`.
+**No successful old artifact was produced by those failed builds.** No OLD
+candidate identity or native negative proof can be inferred from build residue.
+The stale Python expectation is confirmed by source comparison; no pre-fix
+Python run is claimed for this remediation.
+
+### Fresh current-source results
+
+Commands ran from this worktree after both fixes, with no pre-fix rerun.
+Swift/Xcode used `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`;
+the canonical app build used Debug, scheme `notchPocket`, `platform=macOS`.
+`SIGN_IDENTITY` was unset and `local.env` was absent (existence check only).
+Build scripts/project signing settings were unchanged; Xcode's normal local
+ad-hoc build is not separately prepared candidate signing or distribution proof.
+
+| Command / check | Fresh result |
+| --- | --- |
+| `python3 -B -m unittest discover -v -s scripts/tests -p 'test_regression_probe.py'` | **74 passed**, no failures, errors or skips. All 74 existing test methods remain; only the two coupled compact contracts changed, and the other 72 are identical to HEAD. |
+| `bash experiments/tart-regression/test-oracle.sh "$PWD/.build/cmp-fresh-remediation1-5/oracle"` | **466 synthetic cases passed**: About 11, Appearance 52, Notifications 35, haptics 92, panel swipes 104, compact removal 100, plus 24 measured-label boundaries for each of the three General descriptors. The four merged footer-only cases explain 466 versus historical 462. |
+| `scripts/build.sh` | **Exit 0, BUILD SUCCEEDED**, 2026-10-02 07:43:37-07:43:56 UTC. Actual `SwiftCompile normal arm64` for this worktree's `notchPocket/ContentView.swift`, module emission and newly linked executable verified from the fresh build activity log and output timestamps. Compiler name resolution, not a parse proxy. |
+| Read-only preservation / `git diff --check` | Passed. Oracle cases/implementation, native capture/restore, capture contract and eleven-case registry are byte-identical to HEAD. Twelve retained labels remain required. Python temporary fixtures were cleaned. |
+
+Evidence is retained in ignored `.build/cmp-fresh-remediation1-5/`:
+`python.log`, `oracle.log`, `build.{json,stdout.log,stderr.log}`,
+`app-build.xcactivitylog`, `compiler-trace.txt`, `compiler-evidence.json`,
+`preservation.json`, `source.patch` and `source-before.sha256`.
+The compiler evidence records exact source/object/product paths and hashes.
+The generated Debug app was not installed or launched. This fresh build is not
+an OLD compact-bearing artifact or an independently signed native candidate.
+
+Only the two source/test files and two scenario documents changed. No VM,
+host UI, separate signing, remote, commit, agent, Keychain or `local.env`
+operations occurred. No application XCTest, helper, lint, full CI or native
+Settings/panel gates ran; those remain parent-owned.

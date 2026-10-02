@@ -892,6 +892,10 @@ class CompactModeRemovalSourceContractTests(unittest.TestCase):
 
     def test_full_panel_shape_height_header_and_all_routes_ignore_legacy_flag(self):
         content = (ROOT / "notchPocket/ContentView.swift").read_text()
+        self.assertNotIn("openedInsets", content)
+        self.assertRegex(content, r"\.padding\(\s*\.horizontal,\s*"
+                         r"vm\.notchState == \.open \? cornerRadiusInsets\.opened\.top"
+                         r" : cornerRadiusInsets\.closed\.bottom\s*\)")
         self.assertIn("return cornerRadiusInsets.opened.top", content)
         self.assertIn("bottomCorner = cornerRadiusInsets.opened.bottom", content)
         height = content.split("private var openNotchHeight: CGFloat {", 1)[1].split("\n    }", 1)[0]
@@ -1005,7 +1009,16 @@ class CompactModeRemovalSourceContractTests(unittest.TestCase):
         retained = oracle.split("var retainedLabels: [String] {", 1)[1].split("var removedLabels", 1)[0]
         self.assertNotIn('"Compact mode"', retained)
         self.assertIn("case .general, .panelSwipes, .compactMode:", retained)
-        self.assertIn("scenario.removedLabels.allSatisfy { !form.staticTexts[$0].exists }", native)
+        self.assertEqual(re.findall(r'"([^"]+)"', retained.split(
+            "case .general, .panelSwipes, .compactMode:", 1)[1]), [
+                "Show menu bar icon", "Launch at login", "Language", "Show on all displays",
+                "Preferred display", "Automatically switch displays",
+                "Notch height on notch displays", "Notch height on non-notch displays",
+                "Open notch on hover", "Remember last tab", "Notch animation", "Enable media gestures",
+            ])
+        self.assertIn("scenario.removedLabelsAbsent { form.staticTexts[$0].exists }", native)
+        self.assertRegex(oracle, r"func removedLabelsAbsent\(isPresent: \(String\) -> Bool\) -> Bool \{\s*"
+                         r"removedLabels\.allSatisfy \{ !isPresent\(\$0\) \}\s*\}")
         self.assertIn("SettingsRemovalOutputOracle.combine(outputs, scenario: scenario)", native)
         self.assertIn('state.discovery["generalScrollRestored"] = restored == original', native)
         self.assertEqual(native.count("VNImageRequestHandler"), 2)

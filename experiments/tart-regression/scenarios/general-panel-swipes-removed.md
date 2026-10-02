@@ -122,12 +122,17 @@ Paths below are relative to the checkout root.
 
 ## Initial author validation (2026-10-02, before remediation 1/5)
 
+**HISTORICAL pre-merge evidence:** this table and the remediation table below
+record their own panel-swipe snapshots, before compact-mode integration. Their
+64/65 Python and 350/354 synthetic counts are not current integration results;
+see [fresh compact remediation](general-compact-mode-removed.md#fresh-remediation-15).
+
 All generated homes, temporary directories, module caches and build products
 were directed beneath this worktree's ignored `.build/`. No installed app,
 host UI, VM, remote, user preferences, Keychain, signing identity or credentials
 were operated on.
 
-| Command / check | Result |
+| Command / check | Historical result |
 | --- | --- |
 | `python3 -B -m unittest discover -s scripts/tests -p 'test_regression_probe.py'` | **64 passed**. The first run exposed an overbroad new assignment matcher treating the key declaration as a preference write; corrected to match writes, then reran all 64. Both logs retained. |
 | `bash experiments/tart-regression/test-oracle.sh "$PWD/.build/swipe-contracts/oracle"` | **350 cases passed**: About 11, Appearance 52, Notifications 35, haptics 98, panel swipes 106, and 24 measured-label boundary cases for each General descriptor. Synthetic oracle inputs, not native captures. |
@@ -165,7 +170,7 @@ limited to **SWIPE-REMOVE / SWIPE-CONTRACT / SWIPE-NATIVE**:
 - Current versus historical General/haptic harness expectations are separated
   explicitly. No historical receipt or negative evidence was rewritten.
 
-| Command / check | Result |
+| Command / check | Historical result |
 | --- | --- |
 | `python3 -B -m unittest scripts.tests.test_regression_probe.PanelSwipeRemovalSourceContractTests` before the product fix | Expected RED: 7 tests, only the new unconditional-cleanup source contract failed. |
 | `bash experiments/tart-regression/test-oracle.sh "$PWD/.build/swipe-remediation1-5/oracle"` before the descriptor fix | Expected RED: `PanelFooterOnly`, `sourceTrue=true, visible=false` incorrectly reported absence. The existing top-level Swift error exits 133. |
