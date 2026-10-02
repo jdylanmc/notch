@@ -11,6 +11,7 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from capture_contract import settings_captures, SCENARIOS, VERSION_KEYS
+from build_runner import add_prepared_arguments, prepared_arguments, verify_prepared
 
 
 def blocked(reason, **details):
@@ -25,7 +26,9 @@ def main():
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--xctestrun", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    add_prepared_arguments(parser)
     args = parser.parse_args()
+    prepared = prepared_arguments(args)
 
     if sys.platform != "darwin":
         return blocked("macos_guest_required")
@@ -60,6 +63,14 @@ def main():
     target = manifest["GuestRegressionProbe"]
     if target.get("UseUITargetAppProvidedByTests") is not True or target.get("UITargetAppPath"):
         return blocked("candidate_not_owned_by_test", uiTestsStarted=False)
+
+    runner_identity = None
+    if prepared:
+        artifact = verify_prepared(source.parent, args.runner_manifest, args.runner_manifest_sha256)
+        if source.name != artifact["xctestrun"]:
+            return blocked("prepared_runner_manifest_mismatch", uiTestsStarted=False)
+        runner_identity = {"manifestSHA256": args.runner_manifest_sha256,
+                           "source": artifact["source"]["sha256"], "roles": artifact["roles"]}
 
     run_id = str(uuid.uuid4())
     target.setdefault("EnvironmentVariables", {}).update({
@@ -115,6 +126,7 @@ def main():
         "xcodeExit": process.returncode,
         "timedOut": timed_out,
         "temporaryManifestRemoved": not configured.exists(),
+        "preparedRunner": runner_identity,
     }, indent=2) + "\n")
     if timed_out:
         return blocked("framework_timeout", runID=run_id, cleanup="unverified")

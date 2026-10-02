@@ -16,6 +16,7 @@ import uuid
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from capture_contract import settings_captures, SCENARIOS, VERSION_KEYS
+from build_runner import add_prepared_arguments, prepared_arguments
 
 ID = re.compile(r"[a-z][a-z0-9-]{0,63}")
 TEST = re.compile(r"GuestRegressionProbe/[A-Za-z_][A-Za-z0-9_]*/test[A-Za-z0-9_]+")
@@ -186,6 +187,7 @@ def export_capture(run, destination, receipt):
 
 
 def run(args):
+    prepared = prepared_arguments(args)
     if sys.platform != "darwin":
         raise ValueError("macOS guest required")
     model = subprocess.run(["/usr/sbin/sysctl", "-n", "hw.model"], capture_output=True,
@@ -214,6 +216,7 @@ def run(args):
         "requesterID": args.requester_id, "workerID": args.worker_id, "dispatchRef": args.dispatch_ref,
         "independenceQualification": "Coordinator must bind these declared identities to actual fresh-context dispatch evidence.",
         "registrySHA256": hashlib.sha256(args.registry.read_bytes()).hexdigest(),
+        "preparedRunnerManifestSHA256": getattr(args, "runner_manifest_sha256", None),
         "scope": "full-registered-suite" if full else "subset",
         "selected": [case["id"] for case in selected],
         "notSelected": [case["id"] for case in cases if case not in selected],
@@ -236,7 +239,7 @@ def run(args):
             row = {"id": case["id"], "kind": case["kind"], "runName": name, "status": "BLOCKED"}
             try:
                 command = [sys.executable, str(ROOT / "run-gui-probe.py"), name, case["scenario"],
-                           "--test", case["test"], "--candidate", str(args.candidate.resolve())]
+                           "--test", case["test"], "--candidate", str(args.candidate.resolve()), *prepared]
                 result = subprocess.run(command, capture_output=True, text=True, timeout=270)
                 (output / (case["id"] + ".log")).write_text(result.stdout + result.stderr)
                 records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
@@ -256,6 +259,12 @@ def run(args):
                 if invocation.get("timedOut") is not False or invocation.get("xcodeExit") != receipt.get("xcodeExit"):
                     raise ValueError("Native process termination is unverified")
                 termination_verified = True
+                if prepared:
+                    runner_identity = invocation.get("preparedRunner")
+                    if (not isinstance(runner_identity, dict)
+                            or runner_identity.get("manifestSHA256") != args.runner_manifest_sha256):
+                        raise ValueError("Prepared runner identity is unverified")
+                    row["preparedRunner"] = runner_identity
                 status, reason = evaluate(case, receipt, framework, result.returncode, candidate["executableSHA256"])
                 row.update(status=status, reason=reason, rawVerdict=receipt.get("verdict"),
                            rawXcodeExit=receipt.get("xcodeExit"), rawScenarioExit=result.returncode,
@@ -322,6 +331,7 @@ def main():
     execute.add_argument("--worker-id", required=True)
     execute.add_argument("--dispatch-ref", required=True)
     execute.add_argument("--scenario", action="append")
+    add_prepared_arguments(execute)
     args = parser.parse_args()
     if args.command == "list":
         print(json.dumps(load_registry(args.registry), indent=2))

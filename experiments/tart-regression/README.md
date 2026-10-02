@@ -11,6 +11,14 @@ The runner deliberately refuses a physical host before launching UI tests.
 
 ## Rebuild
 
+For parent-prepared stable signing, exact-source manifests, immutable transfer
+and pre-consent guest verification, use the [runner owner contract](RUNNER.md).
+`build_runner.py build` also supports the default ad-hoc mode and an explicit
+unsigned compile; neither needs credentials. Stable signing preserves XCTest
+debug/sandbox behavior and is not a product release/notarization route.
+
+The original ad-hoc/permission-free build remains supported:
+
 Copy this directory into `.local/vm-regression/work/portable-probe` and build
 there, using a full compatible Xcode:
 
@@ -27,6 +35,9 @@ The project is standalone: there is no Notch app target, import or build depende
 Use an immutable archive to transfer the source and Products into the guest,
 then extract guest-locally; preserve all framework symlinks and verify signatures.
 Delete stale generated runner manifests instead of choosing the newest one.
+Never delete or replace another run's Products or an existing owner-granted
+runner. Use a new output path; new panel/ScreenCapture-dependent cases require
+the parent's verified stable Products, not a worker's fresh ad-hoc build.
 
 ## Select the exact candidate
 
@@ -248,6 +259,7 @@ Permission-free policy checks:
 
 ```bash
 python3 -B -m unittest discover -s scripts/tests -p 'test_regression_probe.py'
+python3 -B -m unittest discover -s scripts/tests -p 'test_regression_runner.py'
 bash experiments/tart-regression/test-oracle.sh "$PWD/.local/vm-regression/work/oracle-contract"
 ```
 

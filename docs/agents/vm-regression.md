@@ -21,8 +21,11 @@ operator handoff. Do not expect this directory to exist in a fresh clone.
 | `evidence/` | Candidate-specific receipts, logs and local-only public About screenshots |
 
 The portable sources are in [`experiments/tart-regression/`](../../experiments/tart-regression/).
-They contain no VM image, credentials, signing selector or machine-specific
-candidate identity. Copy them into local scratch space before building/running.
+They contain no VM image, credentials, personal signing selector or
+machine-specific candidate identity. The parent can build exact checkout
+sources into ignored local work with the opt-in
+[stable runner entrypoint](../../experiments/tart-regression/RUNNER.md);
+copy prepared source/Products into guest-local scratch space before running.
 Older local proof files and receipts can reference historical session paths;
 those paths are not reconstruction dependencies.
 
@@ -74,6 +77,15 @@ those paths are not reconstruction dependencies.
    local candidate manifest from the actual installed artifact, and supply it
    explicitly. No product module, mock, internal controller call or successful
    command dispatch substitutes for the guest UI/pixel assertion.
+   Existing permission-free About may use ad-hoc builds. New panel or
+   ScreenCapture-dependent cases require parent-signed stable Products prepared
+   outside the guest with the already-approved certificate; never copy private
+   keys. Verify the complete immutable artifact/source/designated requirement
+   before a human grants guest permissions. Record the actual responsible
+   `.xctrunner` and fixed ignored work path separately from candidate identity.
+   Preserve existing owner-granted runners during migration. A changed source
+   hash with the same requirement still needs native permission/readiness proof;
+   stable signing alone does not guarantee TCC reuse or a successful headless exit.
 8. **Prove reset and isolation.** Shut down the guest normally before cloning a
    baseline. Run one disposable clone at a time with
    `tart run <clone> --no-graphics --no-audio --no-clipboard --no-usb-accessories --net-host`.

@@ -7,6 +7,10 @@ Use this as the bounded worker assignment, not an implementation task.
 - Approved expected behavior and relevant issue/PR context.
 - Exact installed candidate manifest and its provenance/signature qualification.
 - Exact test source revision, compiled standalone runner and scenario registry.
+- For panel/ScreenCapture-dependent cases: parent-prepared stable Products,
+  exact source snapshot, signer/role evidence, and independently supplied
+  `runner-manifest.json` SHA-256. Read the
+  [runner owner contract](../../../experiments/tart-regression/RUNNER.md).
 - Full suite or explicitly requested subset; negative controls, if requested.
 - Existing local/custom Tart setup instructions, named guest, unique output path.
 - Requester and actual worker identities; dispatch reference establishing that
@@ -27,7 +31,13 @@ Use this as the bounded worker assignment, not an implementation task.
    author or patch fixture/test code during verification.
 4. Run the registered suite with explicit candidate and actor identities. The
    application must already be installed; the worker may build the submitted
-   standalone harness but must not rebuild/replace/re-sign the app, edit tests,
+   standalone ad-hoc harness for existing permission-free About cases but must
+   use the parent's prepared stable Products for new panel/ScreenCapture cases.
+   Pass `--runner-manifest` and `--runner-manifest-sha256` through the existing
+   launchers; verify the artifact before human-only authorization. No guest
+   private keys, signing fallback, overwrite of the existing owner-granted
+   runner, or assumptions that signature validity establishes permission
+   readiness. The worker must not rebuild/replace/re-sign the app, edit tests,
    change expectations or implement repairs.
 5. Inspect actual output evidence, raw XCTest result, executed-test count,
    candidate/run/capture identity and restoration. Export only expected

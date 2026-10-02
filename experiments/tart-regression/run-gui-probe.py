@@ -6,6 +6,7 @@ import plistlib
 import re
 import subprocess
 import time
+from build_runner import add_prepared_arguments, prepared_arguments
 
 
 def unload_job(domain, label):
@@ -63,7 +64,9 @@ def main():
     parser.add_argument("scenario")
     parser.add_argument("--test", default="GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput")
     parser.add_argument("--candidate", type=Path, required=True)
+    add_prepared_arguments(parser)
     args = parser.parse_args()
+    prepared = prepared_arguments(args)
     if not re.fullmatch(r"[a-z0-9-]{1,40}", args.name):
         raise ValueError("Invalid scoped run name")
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", args.scenario):
@@ -98,6 +101,7 @@ def main():
             "/usr/bin/python3", str(root / "GuestRegressionProbe/run-guest.py"),
             "--scenario", args.scenario, "--test", args.test,
             "--candidate", str(candidate), "--xctestrun", str(manifests[0]), "--output", str(output),
+            *prepared,
         ],
         "EnvironmentVariables": {
             "DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer", "PYTHONUNBUFFERED": "1",

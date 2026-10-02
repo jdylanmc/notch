@@ -38,6 +38,15 @@ Follow [the approved intent](intent.md), root `AGENTS.md`,
 7. Install complete licensed Xcode and the explicitly approved Notch artifact.
    Finish Xcode's first launch. Use immutable archives when transferring bundles;
    verify candidate identity and signatures after guest-local extraction.
+   For panel/ScreenCapture-dependent regressions, follow the
+   [runner owner contract](../../../experiments/tart-regression/RUNNER.md):
+   the parent signs the standalone harness outside the guest with the existing
+   approved certificate, transfers the entire Products tree with framework
+   symlinks, and supplies the exact source/manifest hash. No private keys enter
+   the guest. Verify hash, source and normal designated requirements before
+   human-only consent for the actual responsible runner. Record its stable
+   ignored work path; do not overwrite an existing owner-granted runner.
+   Signature readiness is not permission readiness or guaranteed TCC reuse.
 8. Verify headless boot, graphical login, SSH access and effective idle settings.
    Keep readiness separate from application test results. Do not invoke the
    regression suite as an implicit setup step; return readiness to its caller.
