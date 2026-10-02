@@ -239,7 +239,8 @@ commands. The parent reconciles the actual diff before executing any gates.
 Require the human-supplied full existing **Developer ID Application** certificate
 name, explicit ten-character team ID and a new canonical absolute build
 directory beneath this checkout's existing `.build/`. Do not inspect Keychain,
-read/copy `local.env`, import/export certificates or embed personal selectors.
+read/copy `local.env`, import/export Keychain certificates or private keys, or
+embed personal selectors.
 No path reuse, overwriting, input-app mutation, installation or app launch:
 
 ```bash
@@ -248,6 +249,34 @@ python3 -B scripts/distribution.py \
   --team 'YOURTEAMID' \
   --build-dir "$PWD/.build/np9-signing-001"
 ```
+
+The canonical command retains existing full-name selection without an extra
+flag. **Optional variant for duplicate certificate names:**
+
+```bash
+python3 -B scripts/distribution.py \
+  --identity 'Developer ID Application: YOUR CERTIFICATE NAME (YOURTEAMID)' \
+  --team 'YOURTEAMID' \
+  --certificate-sha1 'PUBLIC_CERTIFICATE_SHA1_40_HEX_CHARACTERS' \
+  --build-dir "$PWD/.build/np9-signing-sha1-001"
+```
+
+`--certificate-sha1` belongs to **`scripts/distribution.py` only**.
+`scripts/notarize.py` DMG signing and the hosted release pipeline remain
+name-selected and unchanged; neither accepts or forwards this option.
+The optional public leaf fingerprint uses exactly 40 hexadecimal characters
+(either case, no separators or prefix). Name and team remain mandatory.
+Use a human-provided known certificate fingerprint, or the
+[README's artifact-only extraction example](README.md#local-developer-id-candidate-9-bounded-slice)
+with an explicit already-approved signed artifact:
+`codesign --extract-certificates` into a new task-owned temporary directory, then
+`openssl x509` for the public leaf's SHA-1 fingerprint. This is public artifact
+metadata only, not permission for Keychain inspection/enumeration, access
+changes, private-key export or artifact mutation. Extraction is not signature
+verification or proof that the signing identity is usable. The fingerprint
+selects Xcode/resource/outer-app signing and constrains every final bundle/Mach-O
+verification on all architectures; chain, name/team and all other signature
+checks remain required. No fallback to the common name on failure.
 
 The parent creates the `.build/` parent if needed and substitutes the approved
 selector/team; placeholders are not configured values. The command discovers
