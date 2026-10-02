@@ -264,13 +264,10 @@ extension Defaults.Keys {
     )
     static let playerColorTinting = Key<Bool>("playerColorTinting", default: true)
     
-    // MARK: Gestures
-    // Off by default in this fork: the notch opens on hover and closes on
-    // hover-out, so the gesture layer is a second way to do what pointing
-    // already does.
-    static let enableGestures = Key<Bool>("enableGestures", default: false)
+    // MARK: Media gestures
+    // Keep the former master key so removing panel swipes cannot re-enable media gestures.
+    static let enableMediaGestures = Key<Bool>("enableGestures", default: false)
     static let enableHorizontalMediaGestures = Key<Bool>("enableHorizontalMediaGestures", default: false)
-    static let closeGestureEnabled = Key<Bool>("closeGestureEnabled", default: false)
     static let gestureSensitivity = Key<CGFloat>("gestureSensitivity", default: 200.0)
     
     // MARK: Media playback
@@ -311,10 +308,6 @@ extension Defaults.Keys {
     static let inlineOSD = Key<Bool>("inlineOSD", default: false)
 
     // MARK: Layout
-    /// Swaps the opened notch for a smaller, player-only layout: no tab
-    /// bar, calendar or mirror. Off by default so existing users keep the
-    /// layout they already have.
-    static let compactMode = Key<Bool>("compactMode", default: false)
     static let dashboardConfigurationData = Key<Data?>("dashboardConfigurationData", default: nil)
 
     // MARK: Notifications

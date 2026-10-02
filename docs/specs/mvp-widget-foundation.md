@@ -57,7 +57,7 @@ Configurable panel width/height remains required for #33, but is a **dependent s
 |---|---|
 | `notchPocket/enums/generic.swift` | Add `.dashboard`; keep `.home` and `.shelf`. |
 | `notchPocket/components/Tabs/TabSelectionView.swift` | Render Dashboard/Home/Shelf using the existing coordinator-owned selection. Stable enum identity replaces per-render random tab UUID identity. |
-| `notchPocket/ContentView.swift` | Route `.dashboard` to `DashboardView` using existing coordinator selection; keep compact mode, expanded notifications, closed-state activities, hover-close, sharing guards, and existing Home/Shelf rendering unchanged. |
+| `notchPocket/ContentView.swift` | Route `.dashboard` to `DashboardView` using existing coordinator selection; keep expanded notifications, closed-state activities, hover-close, sharing guards, and existing Home/Shelf rendering unchanged. The separate owner-selected [compact-mode removal](../../experiments/tart-regression/scenarios/general-compact-mode-removed.md) retires the player-only bypass. |
 | `notchPocket/models/DropInteractionState.swift` | Add source-scoped Dashboard-widget targeting to the existing aggregate drop-target state so overlapping widgets and teardown do not clear unrelated Shelf/general targets or bypass the existing close debounce. |
 | `notchPocket/managers/NotchWindowManager.swift` | **Dependent panel-limit slice only:** resize/recenter each owned window when effective panel limits change, preserving its top edge, level, collection behavior, sharing type, observation source, and nonactivating focus policy. Update drag/hover geometry from the same resolved size. |
 | `notchPocket/models/NotchPocketViewModel.swift` | **Dependent panel-limit slice only:** expose resolved open panel size from shared limits and current screen. Do not relocate `currentView`. |
@@ -117,7 +117,7 @@ Configurable panel width/height remains required for #33, but is a **dependent s
 10. **Panel resize — dependent slice:** Changing limits updates all live panel windows from the shared setting while each remains top-centered, non-main, nonactivating outside text input, at the existing level, and with existing screen-sharing behavior.
 11. **Close/reopen:** Existing `openShelfByDefault` and “Remember last tab” behavior remains unchanged. Dashboard persistence does not synchronize or restore open/closed or tab state.
 12. **Corrupt/future data:** Malformed, duplicate-identity, unsupported-number, or future-version data preserves original bytes, surfaces recovery-required state, and cannot be overwritten by ordinary editing. Unknown widget payloads containing supported exact values survive supported-schema round trips. No older schema exists yet.
-13. **Compact/notification precedence:** Compact mode still bypasses tabs for its existing player-only surface. Expanded notifications still take precedence over tabs and Dashboard.
+13. **Full-panel/notification precedence:** The separate compact-mode removal retires the player-only bypass; stored legacy `compactMode` values are ignored without migration. Expanded notifications still take precedence over tabs and Dashboard.
 14. **Accessibility:** Dashboard controls have stable labels/values; edit handles expose move/resize meaning and keyboard alternatives. No interaction requires the panel to become the main window.
 
 ## Test-first implementation sequence

@@ -30,7 +30,7 @@ struct ContentView: View {
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
 
-    @State private var gestureProgress: CGFloat = .zero
+    @State private var mediaGestureProgress: CGFloat = .zero
     @State private var horizontalMediaGestureTriggered = false
     @State private var horizontalMediaGestureFeedback: CGFloat = .zero
     @State private var isHoveringMusicArea = false
@@ -52,16 +52,10 @@ struct ContentView: View {
         return effectiveHeight / 38.0
     }
     
-    /// Compact mode gets a rounder opened shape (35 vs 19) — at its smaller
-    /// size the standard radius reads square rather than pill-like.
-    private var openedInsets: (top: CGFloat, bottom: CGFloat) {
-        Defaults[.compactMode] ? compactCornerRadiusInsets.opened : cornerRadiusInsets.opened
-    }
-
     private var topCornerRadius: CGFloat {
         // If the notch is open, return the opened radius.
         if vm.notchState == .open {
-            return openedInsets.top
+            return cornerRadiusInsets.opened.top
         }
 
         // For the closed notch, scale if enabled
@@ -78,7 +72,7 @@ struct ContentView: View {
         let bottomCorner: CGFloat
 
         if vm.notchState == .open {
-            bottomCorner = openedInsets.bottom
+            bottomCorner = cornerRadiusInsets.opened.bottom
         } else if let scaleFactor = cornerRadiusScaleFactor {
             bottomCorner = max(0, baseClosedBottom * scaleFactor)
         } else {
@@ -115,27 +109,14 @@ struct ContentView: View {
     /// A notification is a glance, not a workspace — it doesn't need the full
     /// height the home/shelf tabs are sized for, and stretching to fill it
     /// just surrounds two lines of text with empty black.
-    /// nil means "size to content".
-    ///
-    /// Compact mode must use nil: this frame bounds hit-testing as well as
-    /// layout, so any value shorter than the content leaves the transport
-    /// row outside the hover region — moving toward the buttons registered
-    /// as a hover-exit and closed the notch. The compact panel's height is
-    /// controlled by its own internal padding instead, which is the honest
-    /// lever anyway.
-    private var openNotchHeight: CGFloat? {
+    private var openNotchHeight: CGFloat {
         if notificationManager.activeNotification != nil { return 132 }
-        return Defaults[.compactMode] ? nil : vm.notchSize.height
+        return vm.notchSize.height
     }
 
-    /// Compact mode drops the tab bar along with the tabs it switches
-    /// between — there's only the player to show, so a switcher would have
-    /// nothing to switch to. Also what keeps the panel narrow, since the
-    /// header spans the full notch width.
     private var showsHeader: Bool {
         vm.notchState == .open
             && notificationManager.activeNotification == nil
-            && !Defaults[.compactMode]
     }
 
     /// The activity currently on top of the stack — what the chin has to be
@@ -207,12 +188,7 @@ struct ContentView: View {
     var body: some View {
         @Bindable var dropInteraction = vm.dropInteraction
 
-        // Calculate scale based on gesture progress only
-        let gestureScale: CGFloat = {
-            guard gestureProgress != 0 else { return 1.0 }
-            let scaleFactor = 1.0 + gestureProgress * 0.01
-            return max(0.6, scaleFactor)
-        }()
+        let mediaGestureScale = 1.0 + mediaGestureProgress * 0.01
         
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
@@ -220,7 +196,7 @@ struct ContentView: View {
                     .frame(alignment: .top)
                     .padding(
                         .horizontal,
-                        vm.notchState == .open ? openedInsets.top : cornerRadiusInsets.closed.bottom
+                        vm.notchState == .open ? cornerRadiusInsets.opened.top : cornerRadiusInsets.closed.bottom
                     )
                     .padding([.horizontal, .bottom], vm.notchState == .open ? 12 : 0)
                     .background(.black)
@@ -251,7 +227,7 @@ struct ContentView: View {
                     .conditionalModifier(true) { view in
                         return view
                             .animation(vm.notchState == .open ? StandardAnimations.open : StandardAnimations.close, value: vm.notchState)
-                            .animation(.smooth, value: gestureProgress)
+                            .animation(.smooth, value: mediaGestureProgress)
                     }
                     .contentShape(Rectangle())
                     .onHover { hovering in
@@ -262,19 +238,7 @@ struct ContentView: View {
                             doOpen()
                         }
                     }
-                    .conditionalModifier(Defaults[.enableGestures] && !shouldDisplayNowPlayingFallbackNotice) { view in
-                        view
-                            .panGesture(direction: .down) { translation, phase in
-                                handleDownGesture(translation: translation, phase: phase)
-                            }
-                    }
-                    .conditionalModifier(Defaults[.closeGestureEnabled] && Defaults[.enableGestures] && !shouldDisplayNowPlayingFallbackNotice) { view in
-                        view
-                            .panGesture(direction: .up) { translation, phase in
-                                handleUpGesture(translation: translation, phase: phase)
-                            }
-                    }
-                    .conditionalModifier(Defaults[.enableHorizontalMediaGestures] && Defaults[.enableGestures] && !shouldDisplayNowPlayingFallbackNotice) { view in
+                    .conditionalModifier(Defaults[.enableHorizontalMediaGestures] && Defaults[.enableMediaGestures] && !shouldDisplayNowPlayingFallbackNotice) { view in
                         view
                             .panGesture(direction: .left) { translation, phase in
                                 handleNextTrackGesture(translation: translation, phase: phase)
@@ -371,11 +335,11 @@ struct ContentView: View {
         .ignoresSafeArea(.all)
         .compositingGroup()
         .scaleEffect(
-            x: gestureScale,
-            y: gestureScale,
+            x: mediaGestureScale,
+            y: mediaGestureScale,
             anchor: .top
         )
-        .animation(.smooth, value: gestureProgress)
+        .animation(.smooth, value: mediaGestureProgress)
         .background(dragDetector)
         .preferredColorScheme(.dark)
         .environmentObject(vm)
@@ -464,7 +428,7 @@ struct ContentView: View {
                               icon: coordinator.binding(for: vm.screenUUID).icon,
                               accent: coordinator.binding(for: vm.screenUUID).accent,
                               hoverAnimation: $isHovering,
-                              gestureProgress: $gestureProgress
+                              mediaGestureProgress: $mediaGestureProgress
                           )
                               .transition(.opacity)
                       } else if !liveActivities.isEmpty && vm.notchState == .closed && !vm.hideOnClosed {
@@ -485,7 +449,7 @@ struct ContentView: View {
                            // out around a short message.
                            NotchPocketHeader()
                                .frame(height: max(24, displayClosedNotchHeight))
-                               .opacity(gestureProgress != 0 ? 1.0 - min(abs(gestureProgress) * 0.1, 0.3) : 1.0)
+                               .opacity(mediaGestureProgress != 0 ? 1.0 - min(abs(mediaGestureProgress) * 0.1, 0.3) : 1.0)
                        }
                         // New case to enable compact notch on external displays
                         else if !vm.hasNotch {
@@ -543,15 +507,6 @@ struct ContentView: View {
                     // reply UI — the usual tabs can wait until it's dismissed.
                     if let notification = notificationManager.activeNotification {
                         NotificationExpandedView(notification: notification)
-                    } else if Defaults[.compactMode] {
-                        // Player only — no tab switching, so currentView is
-                        // ignored here rather than offering a shelf the
-                        // compact layout has no room (or tab bar) for.
-                        // 336 = Atoll's 420 base less 20%, which also lands
-                        // within a few points of their Dynamic Island width
-                        // (340) — the tighter of their two compact sizes.
-                        CompactHomeView(albumArtNamespace: albumArtNamespace)
-                            .frame(width: 336)
                     } else {
                         switch coordinator.currentView {
                         case .dashboard:
@@ -580,7 +535,7 @@ struct ContentView: View {
                 )
                 .zIndex(1)
                 .allowsHitTesting(vm.notchState == .open)
-                .opacity(gestureProgress != 0 ? 1.0 - min(abs(gestureProgress) * 0.1, 0.3) : 1.0)
+                .opacity(mediaGestureProgress != 0 ? 1.0 - min(abs(mediaGestureProgress) * 0.1, 0.3) : 1.0)
             }
         }
         .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], delegate: GeneralDropTargetDelegate(isTargeted: $dropInteraction.generalDropTargeting))
@@ -748,7 +703,7 @@ struct ContentView: View {
                 width: max(
                     0,
                     displayClosedNotchHeight - 12
-                        + gestureProgress / 2
+                        + mediaGestureProgress / 2
                 ),
                 height: max(
                     0,
@@ -849,51 +804,7 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Gesture Handling
-
-    private func handleDownGesture(translation: CGFloat, phase: NSEvent.Phase) {
-        guard vm.notchState == .closed else { return }
-
-        if phase == .ended {
-            withAnimation(animationSpring) { gestureProgress = .zero }
-            return
-        }
-
-        withAnimation(animationSpring) {
-            gestureProgress = (translation / Defaults[.gestureSensitivity]) * 20
-        }
-
-        if translation > Defaults[.gestureSensitivity] {
-            withAnimation(animationSpring) {
-                gestureProgress = .zero
-            }
-            doOpen()
-        }
-    }
-
-    private func handleUpGesture(translation: CGFloat, phase: NSEvent.Phase) {
-        guard vm.notchState == .open && !vm.isHoveringCalendar else { return }
-
-        withAnimation(animationSpring) {
-            gestureProgress = (translation / Defaults[.gestureSensitivity]) * -20
-        }
-
-        if phase == .ended {
-            withAnimation(animationSpring) {
-                gestureProgress = .zero
-            }
-        }
-
-        if translation > Defaults[.gestureSensitivity] {
-            withAnimation(animationSpring) {
-                isHovering = false
-            }
-            if !SharingStateManager.shared.preventNotchClose { 
-                gestureProgress = .zero
-                vm.close()
-            }
-        }
-    }
+    // MARK: - Media Gesture Handling
 
     private func handleNextTrackGesture(translation: CGFloat, phase: NSEvent.Phase) {
         handleHorizontalMediaGesture(translation: translation, phase: phase, feedback: -1) {
@@ -937,7 +848,7 @@ struct ContentView: View {
         withAnimation(.interactiveSpring(response: 0.18, dampingFraction: 0.62)) {
             horizontalMediaGestureFeedback = feedback
             if vm.notchState == .closed {
-                gestureProgress = 2
+                mediaGestureProgress = 2
             }
         }
 
@@ -945,9 +856,7 @@ struct ContentView: View {
             try? await Task.sleep(for: .milliseconds(140))
             withAnimation(animationSpring) {
                 horizontalMediaGestureFeedback = .zero
-                if vm.notchState == .closed {
-                    gestureProgress = .zero
-                }
+                mediaGestureProgress = .zero
             }
         }
     }
