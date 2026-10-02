@@ -15,7 +15,7 @@ import uuid
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from capture_contract import settings_captures, SCENARIOS, VERSION_KEYS
+from capture_contract import settings_captures, SCENARIOS, VERSION_KEYS, idle_music_assertions, IDLE_MUSIC_SCENARIOS
 
 ID = re.compile(r"[a-z][a-z0-9-]{0,63}")
 TEST = re.compile(r"GuestRegressionProbe/[A-Za-z_][A-Za-z0-9_]*/test[A-Za-z0-9_]+")
@@ -117,6 +117,11 @@ def evaluate(case, receipt, framework, command_exit, candidate_hash):
             settings_captures(receipt)
         except (ValueError, TypeError, KeyError):
             return "BLOCKED", SCENARIOS[case["scenario"]]["pane"].lower() + "_assertions_unverified"
+    if case["scenario"] in IDLE_MUSIC_SCENARIOS and raw in {"PASS", "FAIL"}:
+        try:
+            idle_music_assertions(receipt)
+        except (ValueError, TypeError, KeyError):
+            return "BLOCKED", "music_assertions_unverified"
     if case["kind"] == "regression":
         if raw == "PASS" and receipt.get("reason") != case["expectedReason"]:
             return "BLOCKED", "success_assertion_not_reached"
@@ -181,6 +186,22 @@ def export_capture(run, destination, receipt):
             raise ValueError("Unexpected capture artifact")
         if hashlib.sha256(image.read_bytes()).hexdigest() != expected:
             raise ValueError("Exported capture digest mismatch")
+        if receipt.get("scenario") in IDLE_MUSIC_SCENARIOS:
+            idle_music_assertions(receipt)
+            manifest = json.loads((destination / "manifest.json").read_text())
+            test = IDLE_MUSIC_SCENARIOS[receipt["scenario"]][1]
+            if (not isinstance(manifest, list) or len(manifest) != 1
+                    or not isinstance(manifest[0], dict)
+                    or manifest[0].get("testIdentifier") != "GuestRegressionProbe/" + test + "()"):
+                raise ValueError("Unexpected music capture test")
+            attachments = manifest[0].get("attachments")
+            if (not isinstance(attachments, list) or len(attachments) != 1
+                    or not isinstance(attachments[0], dict)
+                    or attachments[0].get("exportedFileName") != image.name
+                    or not isinstance(attachments[0].get("suggestedHumanReadableName"), str)
+                    or not attachments[0].get("suggestedHumanReadableName", "").startswith(
+                        "guest-public-music-" + receipt["runID"] + "_")):
+                raise ValueError("Unbound music capture attachment")
         return str(image)
     return None
 

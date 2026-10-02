@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		530000072026100200000001 /* MusicSliderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 530000082026100200000001 /* MusicSliderView.swift */; };
+		530000052026100200000001 /* MusicLaunchTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 530000062026100200000001 /* MusicLaunchTransaction.swift */; };
+		530000012026091500000001 /* MusicAppLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 530000022026091500000001 /* MusicAppLauncher.swift */; };
+		530000032026091500000001 /* MusicSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 530000042026091500000001 /* MusicSectionView.swift */; };
 		CAC000062026091200000001 /* GraphCalendarPayloadDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000072026091200000001 /* GraphCalendarPayloadDecoder.swift */; };
 		CAC000042026091200000001 /* GraphCalendarCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000052026091200000001 /* GraphCalendarCore.swift */; };
 		CAC000012026091200000001 /* CalendarCoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000022026091200000001 /* CalendarCoreModels.swift */; };
@@ -160,7 +164,7 @@
 		AA02NSV12E7A0001 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02NSV22E7A0001 /* NotificationSettingsView.swift */; };
 		AA03OTP12E7A0001 /* OTPDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA03OTP22E7A0001 /* OTPDetector.swift */; };
 		AA04LAS12E7A0001 /* LiveActivityStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA04LAS22E7A0001 /* LiveActivityStack.swift */; };
-		AA06CHV12E7A0001 /* CompactHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA06CHV22E7A0001 /* CompactHomeView.swift */; };
+		AA06CHV12E7A0001 /* MediaOutputSlotButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA06CHV22E7A0001 /* MediaOutputSlotButton.swift */; };
 		AA07ARM12E7A0001 /* AudioRouteManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA07ARM22E7A0001 /* AudioRouteManager.swift */; };
 		AFA82F21304B406590337862 /* ShelfContextMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = E49B58CAC648403F864E6D78 /* ShelfContextMenu.swift */; };
 		B10348D92C74E56000475897 /* ConditionalModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10348D82C74E56000475897 /* ConditionalModifier.swift */; };
@@ -233,6 +237,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		530000082026100200000001 /* MusicSliderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSliderView.swift; sourceTree = "<group>"; };
+		530000062026100200000001 /* MusicLaunchTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLaunchTransaction.swift; sourceTree = "<group>"; };
+		530000022026091500000001 /* MusicAppLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAppLauncher.swift; sourceTree = "<group>"; };
+		530000042026091500000001 /* MusicSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSectionView.swift; sourceTree = "<group>"; };
 		CAC000072026091200000001 /* GraphCalendarPayloadDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphCalendarPayloadDecoder.swift; sourceTree = "<group>"; };
 		CAC000052026091200000001 /* GraphCalendarCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphCalendarCore.swift; sourceTree = "<group>"; };
 		CAC000022026091200000001 /* CalendarCoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarCoreModels.swift; sourceTree = "<group>"; };
@@ -380,7 +388,7 @@
 		AA02NSV22E7A0001 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 		AA03OTP22E7A0001 /* OTPDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OTPDetector.swift; sourceTree = "<group>"; };
 		AA04LAS22E7A0001 /* LiveActivityStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityStack.swift; sourceTree = "<group>"; };
-		AA06CHV22E7A0001 /* CompactHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactHomeView.swift; sourceTree = "<group>"; };
+		AA06CHV22E7A0001 /* MediaOutputSlotButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaOutputSlotButton.swift; sourceTree = "<group>"; };
 		AA07ARM22E7A0001 /* AudioRouteManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRouteManager.swift; sourceTree = "<group>"; };
 		AFAD1670A870402D88BFFE47 /* AudioOutputRouteResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioOutputRouteResolver.swift; sourceTree = "<group>"; };
 		B0C26F24108F414781F79D4F /* AppleScriptControllerSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleScriptControllerSupport.swift; sourceTree = "<group>"; };
@@ -567,6 +575,8 @@
 				1153BD8D2D986B1F00979FB0 /* MediaControllerProtocol.swift */,
 				1153BD922D986E4300979FB0 /* AppleMusicController.swift */,
 				61F20E44C65E4DA1945BFF5C /* MediaAppBundleID.swift */,
+				530000022026091500000001 /* MusicAppLauncher.swift */,
+				530000062026100200000001 /* MusicLaunchTransaction.swift */,
 				B0C26F24108F414781F79D4F /* AppleScriptControllerSupport.swift */,
 				1153BD992D98824300979FB0 /* SpotifyController.swift */,
 				1153BD9B2D98853B00979FB0 /* NowPlayingController.swift */,
@@ -926,6 +936,8 @@
 		B186542E2C6F453B000B926A /* Music */ = {
 			isa = PBXGroup;
 			children = (
+				530000042026091500000001 /* MusicSectionView.swift */,
+				530000082026100200000001 /* MusicSliderView.swift */,
 				147163972C5D35B70068B555 /* MusicVisualizer.swift */,
 			);
 			path = Music;
@@ -935,7 +947,7 @@
 			isa = PBXGroup;
 			children = (
 				AA01NLA22E7A0001 /* NotificationLiveActivity.swift */,
-				AA06CHV22E7A0001 /* CompactHomeView.swift */,
+				AA06CHV22E7A0001 /* MediaOutputSlotButton.swift */,
 				AA04LAS22E7A0001 /* LiveActivityStack.swift */,
 				1194E8862EA6DDA7009C82D6 /* NotchPocketSkyLightWindow.swift */,
 				1160F8D72DD98230006FBB94 /* NotchShape.swift */,
@@ -1226,11 +1238,15 @@
 				AA01SNM12E7A0001 /* SystemNotificationManager.swift in Sources */,
 				AA01NDW12E7A0001 /* NotificationDebugWindow.swift in Sources */,
 				AA01NLA12E7A0001 /* NotificationLiveActivity.swift in Sources */,
-				AA06CHV12E7A0001 /* CompactHomeView.swift in Sources */,
+				AA06CHV12E7A0001 /* MediaOutputSlotButton.swift in Sources */,
 				AA04LAS12E7A0001 /* LiveActivityStack.swift in Sources */,
 				AA02CAM12E7A0001 /* ContactAvatarManager.swift in Sources */,
 				AA03OTP12E7A0001 /* OTPDetector.swift in Sources */,
 				1471639A2C5D35FF0068B555 /* MusicManager.swift in Sources */,
+				530000012026091500000001 /* MusicAppLauncher.swift in Sources */,
+				530000052026100200000001 /* MusicLaunchTransaction.swift in Sources */,
+				530000032026091500000001 /* MusicSectionView.swift in Sources */,
+				530000072026100200000001 /* MusicSliderView.swift in Sources */,
 				AA07ARM12E7A0001 /* AudioRouteManager.swift in Sources */,
 				F1F2A0A100000000000000F1 /* AudioCaptureManager.swift in Sources */,
 				B1B112932C6A577E00093D8F /* MouseTracker.swift in Sources */,

@@ -81,6 +81,42 @@
       "expectedVerdict": "PASS",
       "expectedReason": "rendered_output_verified",
       "notes": "scenarios/general-haptics-removed.md"
+    },
+    {
+      "id": "general-panel-swipes-removed",
+      "kind": "regression",
+      "scenario": "general-panel-swipes-removed",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledGeneralWithoutPanelSwipes",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/general-panel-swipes-removed.md"
+    },
+    {
+      "id": "general-compact-mode-removed",
+      "kind": "regression",
+      "scenario": "general-compact-mode-removed",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledGeneralWithoutCompactMode",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/general-compact-mode-removed.md"
+    },
+    {
+      "id": "music-idle-no-target",
+      "kind": "regression",
+      "scenario": "music-idle-no-target",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledIdleMusicWithoutTarget",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/music-idle-launcher.md"
+    },
+    {
+      "id": "music-idle-unavailable",
+      "kind": "regression",
+      "scenario": "music-idle-unavailable",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledIdleMusicUnavailableTarget",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/music-idle-launcher.md"
     }
   ]
 }

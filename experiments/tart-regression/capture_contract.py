@@ -1,10 +1,16 @@
-"""Two fixed scrollable Settings removal cases; legacy single captures stay unchanged."""
+"""Fixed scrollable Settings removal cases; legacy single captures stay unchanged."""
 
 import math
 import re
 import uuid
 
 
+GENERAL_LABELS = {
+    "Show menu bar icon", "Launch at login", "Language", "Show on all displays",
+    "Preferred display", "Automatically switch displays",
+    "Notch height on notch displays", "Notch height on non-notch displays",
+    "Open notch on hover", "Remember last tab", "Notch animation", "Enable media gestures",
+}
 SCENARIOS = {
     "notifications-ai-replies-removed": {
         "pane": "Notifications", "test": "testInstalledNotificationsWithoutAIReplies",
@@ -12,12 +18,15 @@ SCENARIOS = {
     },
     "general-haptics-removed": {
         "pane": "General", "test": "testInstalledGeneralWithoutHaptics",
-        "labels": {
-            "Show menu bar icon", "Launch at login", "Language", "Show on all displays",
-            "Preferred display", "Automatically switch displays",
-            "Notch height on notch displays", "Notch height on non-notch displays",
-            "Open notch on hover", "Remember last tab", "Notch animation", "Compact mode", "Enable gestures",
-        }, "absence": "hapticControlAbsent",
+        "labels": GENERAL_LABELS, "absence": "hapticControlAbsent",
+    },
+    "general-panel-swipes-removed": {
+        "pane": "General", "test": "testInstalledGeneralWithoutPanelSwipes",
+        "labels": GENERAL_LABELS, "absence": "panelGestureControlsAbsent",
+    },
+    "general-compact-mode-removed": {
+        "pane": "General", "test": "testInstalledGeneralWithoutCompactMode",
+        "labels": GENERAL_LABELS, "absence": "compactModeControlAbsent",
     },
 }
 VERSION_KEYS = {"notificationsCaptureVersion", "generalCaptureVersion"}
@@ -27,6 +36,35 @@ FIELDS = {
     "contentFrames", "endpointFrames", "contentTypes", "labelFrames", "observedPublicText",
     "pixelWidth", "pixelHeight",
 }
+IDLE_MUSIC_SCENARIOS = {
+    "music-idle-no-target": ("Now Playing", "testInstalledIdleMusicWithoutTarget"),
+    "music-idle-unavailable": ("Spotify", "testInstalledIdleMusicUnavailableTarget"),
+}
+IDLE_MUSIC_ASSERTIONS = {
+    "selectedSourceVerified", "idleLauncherVisible", "transportAbsent", "headerPreserved",
+    "launchStatusVisible", "noFocusChangeOnFailedLaunch", "statusPixels", "statusDismissed", "launcherRestored",
+}
+
+
+def idle_music_assertions(receipt):
+    source, test = IDLE_MUSIC_SCENARIOS[receipt["scenario"]]
+    observed = booleans(receipt.get("observedPublicText"), IDLE_MUSIC_ASSERTIONS)
+    discovery = receipt.get("discovery")
+    require(isinstance(discovery, dict)
+            and discovery.get("musicSource") == source
+            and all(discovery.get(key) is True for key in
+                    ["musicSourceRestored", "musicPreferencesRestored", "musicPanelRestored"]))
+    for key in ["musicWindowID", "musicCandidatePID"]:
+        require(type(discovery.get(key)) is int and discovery[key] > 0)
+    require(discovery.get("musicWindowMarker")
+            == f'com.jdylanmc.notchpocket.notch.v1.window.{discovery["musicWindowID"]}')
+    require(discovery.get("musicCaptureRunID") == receipt.get("runID")
+            and isinstance(receipt.get("runID"), str)
+            and str(uuid.UUID(receipt["runID"])) == receipt["runID"]
+            and receipt.get("testIdentifier") == "GuestRegressionProbe/GuestRegressionProbe/" + test)
+    passes = all(observed.values())
+    require(receipt.get("verdict") == ("PASS" if passes else "FAIL")
+            and receipt.get("reason") == ("rendered_output_verified" if passes else "rendered_output_mismatch"))
 
 
 def require(condition):
@@ -125,7 +163,7 @@ def settings_captures(receipt):
             and number(discovery.get(prefix + "OverlapPoints"))
             and discovery[prefix + "ScrollOffsetPoints"] == offset
             and discovery[prefix + "OverlapPoints"] == overlap)
-    if scenario == "general-haptics-removed":
+    if pane == "General":
         require(discovery.get("generalNavigationObserved") is True
                 and receipt.get("originalPane") in {"closed", "General", "About"})
         if receipt["originalPane"] == "General":

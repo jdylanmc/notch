@@ -4,36 +4,67 @@ import Foundation
 enum SettingsRemovalScenario: String {
     case notifications = "notifications-ai-replies-removed"
     case general = "general-haptics-removed"
+    case panelSwipes = "general-panel-swipes-removed"
+    case compactMode = "general-compact-mode-removed"
 
     var pane: String { self == .notifications ? "Notifications" : "General" }
     var prefix: String { pane.lowercased() }
     var captureVersionKey: String { prefix + "CaptureVersion" }
     var testName: String {
-        self == .notifications ? "testInstalledNotificationsWithoutAIReplies" : "testInstalledGeneralWithoutHaptics"
+        switch self {
+        case .notifications: return "testInstalledNotificationsWithoutAIReplies"
+        case .general: return "testInstalledGeneralWithoutHaptics"
+        case .panelSwipes: return "testInstalledGeneralWithoutPanelSwipes"
+        case .compactMode: return "testInstalledGeneralWithoutCompactMode"
+        }
     }
     var retainedLabels: [String] {
         switch self {
         case .notifications: return ["Show notifications in the notch", "From all apps"]
-        case .general:
+        case .general, .panelSwipes, .compactMode:
             return [
                 "Show menu bar icon", "Launch at login", "Language", "Show on all displays",
                 "Preferred display", "Automatically switch displays",
                 "Notch height on notch displays", "Notch height on non-notch displays",
                 "Open notch on hover", "Remember last tab", "Notch animation",
-                "Compact mode", "Enable gestures"
+                "Enable media gestures"
             ]
         }
     }
-    var removedLabel: String {
-        self == .notifications ? "Suggest replies with Apple Intelligence" : "Enable haptic feedback"
+    var removedLabels: [String] {
+        switch self {
+        case .notifications: return ["Suggest replies with Apple Intelligence"]
+        case .general: return ["Enable haptic feedback"]
+        case .panelSwipes:
+            return [
+                "Enable gestures", "Close gesture",
+                "Two-finger swipe up on notch to close, two-finger swipe down on notch to open when Open notch on hover option is disabled"
+            ]
+        case .compactMode:
+            return [
+                "Compact mode",
+                "Shows a smaller opened notch with just the music player — no tabs, calendar or mirror."
+            ]
+        }
     }
-    var absenceKey: String { self == .notifications ? "suggestionControlAbsent" : "hapticControlAbsent" }
+    func removedLabelsAbsent(isPresent: (String) -> Bool) -> Bool {
+        removedLabels.allSatisfy { !isPresent($0) }
+    }
+    var absenceKey: String {
+        switch self {
+        case .notifications: return "suggestionControlAbsent"
+        case .general: return "hapticControlAbsent"
+        case .panelSwipes: return "panelGestureControlsAbsent"
+        case .compactMode: return "compactModeControlAbsent"
+        }
+    }
     var forbiddenText: [String] {
-        self == .notifications ? ["suggest replies", "apple intelligence"] : ["haptic"]
-    }
-    var leadingOCRPaddingPixels: [String: Int] {
-        // Guest Vision boxes begin four pixels before these verified static-text AXValue frames.
-        self == .general ? ["Launch at login": 4, "Remember last tab": 4] : [:]
+        switch self {
+        case .notifications: return ["suggest replies", "apple intelligence"]
+        case .general: return ["haptic"]
+        case .panelSwipes: return ["enable gestures", "close gesture", "two-finger swipe up", "two-finger swipe down"]
+        case .compactMode: return ["compact mode", "shows a smaller opened notch", "no tabs, calendar or mirror"]
+        }
     }
 }
 
@@ -44,7 +75,8 @@ struct SettingsRemovalOutputOracle {
         contentFrame: CGRect,
         controls: [String: Bool],
         labelFrames: [String: CGRect],
-        pixelWidth: Int
+        pixelWidth: Int,
+        windowWidthPoints: CGFloat
     ) -> [String: Bool] {
         let content = observations.filter {
             !$0.frame.isEmpty && contentFrame.contains($0.frame)
@@ -58,15 +90,20 @@ struct SettingsRemovalOutputOracle {
             let aligned = content.filter {
                 let anchor = CGPoint(x: $0.frame.minX, y: $0.frame.midY)
                 let alignment = frame.insetBy(dx: -0.005, dy: -0.005)
-                if alignment.contains(anchor) { return true }
-                guard pixelWidth > 0, let padding = scenario.leadingOCRPaddingPixels[label],
-                      anchor.x < frame.minX, anchor.y >= alignment.minY, anchor.y <= alignment.maxY else {
-                    return false
+                if scenario.pane == "General", anchor.x < frame.minX {
+                    guard pixelWidth > 0, windowWidthPoints.isFinite, windowWidthPoints > 0,
+                          anchor.y >= alignment.minY, anchor.y <= alignment.maxY else {
+                        return false
+                    }
+                    let pixelsPerPoint = CGFloat(pixelWidth) / windowWidthPoints
+                    guard (1...4).contains(pixelsPerPoint) else { return false }
+                    // The recorded 1x overhang is four native points. Snap both distances in pixels,
+                    // not absolute edges, so fractional scale/edge phase cannot change the allowance.
+                    let leadingPixels = ((frame.minX - anchor.x) * CGFloat(pixelWidth)).rounded()
+                    let maximumLeadingPixels = (4 * pixelsPerPoint).rounded()
+                    return leadingPixels >= 0 && leadingPixels <= maximumLeadingPixels
                 }
-                // Vision's normalized coordinates have subpixel serialization noise; compare pixel edges.
-                let leadingPixels = (frame.minX * CGFloat(pixelWidth)).rounded()
-                    - (anchor.x * CGFloat(pixelWidth)).rounded()
-                return leadingPixels >= 0 && leadingPixels <= CGFloat(padding)
+                return alignment.contains(anchor)
             }
             return (label, aligned.contains {
                 let row = AboutOutputOracle.rowText(anchor: $0, observations: content)

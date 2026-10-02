@@ -10,7 +10,7 @@ import sys
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from capture_contract import settings_captures, SCENARIOS, VERSION_KEYS
+from capture_contract import settings_captures, SCENARIOS, VERSION_KEYS, idle_music_assertions, IDLE_MUSIC_SCENARIOS
 
 
 def blocked(reason, **details):
@@ -167,6 +167,11 @@ def main():
                 return blocked("required_evidence_or_cleanup_missing", runID=run_id)
             if not isinstance(receipt["screenshotSHA256"], str) or not re.fullmatch(r"[a-f0-9]{64}", receipt["screenshotSHA256"]):
                 return blocked("capture_digest_invalid", runID=run_id)
+            if args.scenario in IDLE_MUSIC_SCENARIOS:
+                try:
+                    idle_music_assertions(receipt)
+                except (ValueError, TypeError, KeyError):
+                    return blocked("music_assertions_unverified", runID=run_id)
     subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict",
                     "/Applications/notch-pocket.app"], check=True, capture_output=True, timeout=30)
     exits = {"PASS": 0, "FAIL": 10, "BLOCKED": 20}

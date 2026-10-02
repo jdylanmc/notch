@@ -12,6 +12,9 @@
       }
     },
     "%lld shelf items" : {},
+    "A music app open is still pending." : {},
+    "A previous music app open request is still pending. Check Applications before trying again." : {},
+    "Opens the current music app without starting playback." : {},
     "Add Shelf Summary" : {},
     "Close and reopen the panel after the configuration issue is resolved." : {},
     "Dashboard" : {},
@@ -202,6 +205,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@"
+          }
+        }
+      }
+    },
+    "%@ is not installed." : {
+      "comment" : "Concise music launcher failure. The placeholder is a human-readable music app name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ is not installed."
           }
         }
       }
@@ -5337,124 +5351,6 @@
         }
       }
     },
-    "Close gesture" : {
-      "localizations" : {
-        "cs" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gesto zavření"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schließgeste"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Close gesture"
-          }
-        },
-        "en-GB" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Close gesture"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gesto de cerrar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geste de fermeture"
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "מחווה לסגירה"
-          }
-        },
-        "hu" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bezárási gesztus"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gesto di chiusura"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "閉じるジェスチャー"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "닫기 제스처"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sluit gebaar"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gest zamknięcia"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gesto de fechar"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Жест закрытия"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El hareketlerini kapat"
-          }
-        },
-        "uk" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Жест вимкнення"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关闭手势"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "關閉手勢"
-          }
-        }
-      }
-    },
     "Close Notch" : {
       "comment" : "Accessibility action to collapse the notch, not close its window.",
       "localizations" : {
@@ -5937,7 +5833,6 @@
         }
       }
     },
-    "Compact mode" : {},
     "Continue" : {
       "localizations" : {
         "cs" : {
@@ -8256,120 +8151,121 @@
         }
       }
     },
-    "Enable gestures" : {
+    "Enable media gestures" : {
+      "comment" : "Master switch for media gestures only; not panel opening or closing.",
       "localizations" : {
         "cs" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Povolit gesta"
+            "value" : "Povolit gesta pro média"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gestensteuerung aktivieren"
+            "value" : "Mediengesten aktivieren"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Enable gestures"
+            "value" : "Enable media gestures"
           }
         },
         "en-GB" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Enable gestures"
+            "value" : "Enable media gestures"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Habilitar gestos"
+            "value" : "Habilitar gestos multimedia"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Activer les gestes"
+            "value" : "Activer les gestes multimédias"
           }
         },
         "he" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "אפשר מחוות"
+            "value" : "אפשר מחוות מדיה"
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gesztusok engedélyezése"
+            "value" : "Médiagesztusok engedélyezése"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Abilita gesti"
+            "value" : "Abilita gesti multimediali"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ジェスチャーを有効化"
+            "value" : "メディアジェスチャーを有効化"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "제스처 켜기"
+            "value" : "미디어 제스처 켜기"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gebaren inschakelen"
+            "value" : "Mediagebaren inschakelen"
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Włącz obsługę gestów"
+            "value" : "Włącz gesty multimedialne"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ativar gestos"
+            "value" : "Ativar gestos de mídia"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Включить жесты"
+            "value" : "Включить медиажесты"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El hareketlerini aktifleştir"
+            "value" : "Medya hareketlerini etkinleştir"
           }
         },
         "uk" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Увімкнути жести"
+            "value" : "Увімкнути медіажести"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "启用手势"
+            "value" : "启用媒体手势"
           }
         },
         "zh-Hant-HK" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "啟用手勢"
+            "value" : "啟用媒體手勢"
           }
         }
       }
@@ -14224,6 +14120,50 @@
         }
       }
     },
+    "Opening %@ was not confirmed. It may still open. Check Applications before trying again." : {
+      "comment" : "Music launcher failure. The placeholder is a human-readable music app name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opening %@ was not confirmed. It may still open. Check Applications before trying again."
+          }
+        }
+      }
+    },
+    "Music app %@ is not installed. Install it or choose a different Music Source in Settings." : {
+      "comment" : "Music launcher failure. The placeholder is a human-readable music app name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music app %@ is not installed. Install it or choose a different Music Source in Settings."
+          }
+        }
+      }
+    },
+    "Music app open was not confirmed." : {
+      "comment" : "Concise music launcher failure; the OS may still complete the open.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music app open was not confirmed."
+          }
+        }
+      }
+    },
+    "Music app is not installed." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music app is not installed."
+          }
+        }
+      }
+    },
+    "Music app open timed out." : {},
     "Music Source" : {
       "localizations" : {
         "cs" : {
@@ -15152,6 +15092,27 @@
         }
       }
     },
+    "No music app is selected. Choose a Music Source in Settings or play music once with Now Playing." : {
+      "comment" : "Music launcher guidance when Now Playing has no observed or remembered music app.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No music app is selected. Choose a Music Source in Settings or play music once with Now Playing."
+          }
+        }
+      }
+    },
+    "No music app selected." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No music app selected."
+          }
+        }
+      }
+    },
     "Normalize gesture direction" : {
       "localizations" : {
         "de" : {
@@ -16041,8 +16002,30 @@
         }
       }
     },
+    "OK" : {
+      "comment" : "Dismiss the inline music launcher failure feedback.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        }
+      }
+    },
     "Only these apps show a live activity in the notch. Turn on \"From all apps\" to mirror everything instead." : {},
     "Open" : {},
+    "Open %@" : {
+      "comment" : "Music launcher button label. The placeholder is the user's selected music app.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open %@"
+          }
+        }
+      }
+    },
     "Open Calendar Settings" : {
       "localizations" : {
         "cs" : {
@@ -16163,6 +16146,17 @@
     },
     "Open in %@" : {},
     "Open in Calendar" : {},
+    "Open music app" : {
+      "comment" : "Music launcher button label when no named player has been resolved.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open music app"
+          }
+        }
+      }
+    },
     "Open Notch" : {
       "localizations" : {
         "de" : {
@@ -16617,6 +16611,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Open System Settings"
+          }
+        }
+      }
+    },
+    "Opens your preferred music app without starting playback." : {
+      "comment" : "Accessibility hint for the idle music launcher button.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opens your preferred music app without starting playback."
           }
         }
       }
@@ -23124,7 +23129,6 @@
         }
       }
     },
-    "Shows a smaller opened notch with just the music player — no tabs, calendar or mirror." : {},
     "Slider color" : {
       "localizations" : {
         "cs" : {
@@ -24637,6 +24641,29 @@
     },
     "Tap to see the next of %lld waiting" : {},
     "The background helper crashed or was closed by macOS. It restarts automatically on the next OSD event." : {},
+    "The music app open request timed out. It may still open. Check Applications before trying again." : {},
+    "The music app open was not confirmed. It may still open. Check Applications before trying again." : {
+      "comment" : "Generic music launcher failure when the app has no known display name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The music app open was not confirmed. It may still open. Check Applications before trying again."
+          }
+        }
+      }
+    },
+    "The selected music app is not installed. Choose a different Music Source in Settings." : {
+      "comment" : "Generic unavailable music app guidance when the app has no known display name.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The selected music app is not installed. Choose a different Music Source in Settings."
+          }
+        }
+      }
+    },
     "Time to Full Charge: %@" : {
       "localizations" : {
         "de" : {
@@ -25193,124 +25220,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "觸發預覽："
-          }
-        }
-      }
-    },
-    "Two-finger swipe up on notch to close, two-finger swipe down on notch to open when **Open notch on hover** option is disabled" : {
-      "localizations" : {
-        "cs" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Posunutím dvěma prsty nahoru zavřete, dvojitým posunem dolů otevřete, když je zakázána možnost **Otevření výřezu při nápovědě**"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zwei-Finger Wischen nach oben zum Schließen der Notch, zwei-Finger wischen nach unten um die Notch zu öffnen, wenn die Option **Notch bei Mausberührung öffnen** deaktiviert ist"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Two-finger swipe up on notch to close, two-finger swipe down on notch to open when **Open notch on hover** option is disabled"
-          }
-        },
-        "en-GB" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Two-finger swipe up on notch to close, two-finger swipe down on notch to open when **Open notch on hover** option is disabled"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deslice con dos dedos hacia arriba para cerrar, deslice con dos dedos hacia abajo para abrir cuando la opción de **Abrir el notch al pasar el cursor** esté deshabilitada"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Glisser deux doigts vers le haut sur l'encoche pour fermer, glisser deux doigts vers le bas sur l'encoche pour l'ouvrir lorsque l'option **Ouvrir l'encoche au survolant** est désactivée"
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "החלק שתי אצבעות למעלה על המגרעת כדי לסגור, או למטה כדי לפתוח כאשר האפשרות **פתח מגרעת בריחוף** מושבתת"
-          }
-        },
-        "hu" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "„Kétujjas felfelé legyintés a notch-on a bezáráshoz, kétujjas lefelé legyintés a notch-on a megnyitáshoz, ha a **Notch megnyitása rámutatással** opció ki van kapcsolva.”"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scorri due dita verso l'alto sulla notch per chiudere, scorri due dita verso il basso sulla tacca per aprirla quando l'opzione **Apri notch all'hover ** è disabilitata"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "**ホバーでノッチを開く** オプションが無効の時は、2本指でノッチを上にスワイプして閉じ、下にスワイプして開きます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "노치에 가져다 대서 열기 옵션이 꺼져있을 때, 노치를 두 손가락을 위로 밀어서 닫고, 두 손가락을 아래로 내려서 열기"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Veeg met twee vingers omhoog over de inkeping om deze te sluiten, veeg met twee vingers omlaag over de inkeping om deze te openen als de optie **Inkeping openen bij aanwijzen** is uitgeschakeld"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Przesuń dwoma palcami w górę na notchu, aby zamknąć, przesuń dwoma palcami w dół na notchu, aby otworzyć, gdy opcja **Otwórz notch przy najechaniu palcem ** jest wyłączona"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Role para cima com dois dedos para no notch para fechar, role para baixo com dois dedos no notch para abrir quando a opção **Abrir notch ao passar o mouse por cima** estiver desativada"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Свайп двумя пальцами вверх по вырезу — закрыть, свайп двумя пальцами вниз — открыть, если опция **Открывать вырез при наведении** отключена"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "**Fareyi üzerine getirdiğinde aç** seçeneği devre dışı bırakıldığında, kapatmak için çentiği iki parmağınızla yukarı kaydırın, açmak için çentiği iki parmağınızla aşağı kaydırın."
-          }
-        },
-        "uk" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Проведіть двома пальцями вгору по чубчику, щоб закрити його, або двома пальцями вниз, щоб відкрити, якщо вимкнено опцію «Відкривати виріз під час наведення»"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在Notch里双指向上滑动以关闭。当**悬停在Notch时打开**选项禁用时，双指向下滑动即可打开"
-          }
-        },
-        "zh-Hant-HK" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "鼠標懸停在劉海上時，雙指上滑關閉劉海，下滑開啟劉海"
           }
         }
       }

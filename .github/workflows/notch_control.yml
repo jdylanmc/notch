@@ -29,3 +29,9 @@ jobs:
         run: bash scripts/notch-control/control.sh lint
       - name: Test regression pixel oracle
         run: bash experiments/tart-regression/test-oracle.sh "$PWD/.build/regression-oracle"
+      - name: Check media fixture
+        run: |
+          mkdir -p "$PWD/.build"
+          python3 -B experiments/tart-regression/MediaFixture/build.py check --output "$PWD/.build/mediafixture-ci"
+      - name: Test media fixture build recipe
+        run: python3 -B -m unittest discover -s experiments/tart-regression/MediaFixture/Tests -p 'test_build.py'

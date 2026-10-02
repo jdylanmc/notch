@@ -7,12 +7,12 @@ import Vision
 import XCTest
 
 final class GuestRegressionProbe: XCTestCase {
-    private enum Blocked: Error {
+    enum Blocked: Error {
         case reason(String)
     }
 
     @MainActor
-    private final class RunState {
+    final class RunState {
         var verdict = "BLOCKED"
         var reason = "preconditions_not_established"
         var cleanup = "not_needed"
@@ -35,14 +35,21 @@ final class GuestRegressionProbe: XCTestCase {
         var appearanceControls: [String: Bool] = [:]
         var settingsCaptures: [[String: Any]] = []
         var originalGeneralScroll: [CGRect]?
+        var originalMusicSource: String?
+        var musicSourceNeedsRestoration = false
+        var originalForeground: NSRunningApplication?
+        var originalPanelState: String?
+        var originalTab: String?
+        var musicPointerReturn: XCUICoordinate?
+        var originalMediaController: String?
     }
 
     private let candidate = URL(fileURLWithPath: "/Applications/notch-pocket.app")
-    private var expectedHash: String {
+    var expectedHash: String {
         ProcessInfo.processInfo.environment["NOTCH_VM_EXPECTED_SHA256"] ?? ""
     }
 
-    private func require(_ condition: Bool, _ reason: String) throws {
+    func require(_ condition: Bool, _ reason: String) throws {
         guard condition else { throw Blocked.reason(reason) }
     }
 
@@ -59,14 +66,14 @@ final class GuestRegressionProbe: XCTestCase {
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    private func currentCandidatePID() -> pid_t? {
+    func currentCandidatePID() -> pid_t? {
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: "com.jdylanmc.notchpocket")
         guard running.count == 1, running[0].bundleURL == candidate else { return nil }
         return running[0].processIdentifier
     }
 
     @MainActor
-    private func waitHittable(_ element: XCUIElement) -> Bool {
+    func waitHittable(_ element: XCUIElement) -> Bool {
         let ready = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "exists == true AND hittable == true"), object: element
         )
@@ -76,6 +83,14 @@ final class GuestRegressionProbe: XCTestCase {
     @MainActor
     private func restore(_ state: RunState) {
         state.cleanup = state.needsRestoration || state.attemptedSettingsOpen ? "pending" : "not_needed"
+        if state.musicSourceNeedsRestoration {
+            do {
+                try restoreMusicSource(state)
+            } catch {
+                state.cleanup = "blocked"
+                return
+            }
+        }
         state.pointerReturn?.hover()
         if state.needsRestoration, let settings = state.window {
             let targetPane = state.openedSettings ? "General" : state.originalPane
@@ -155,6 +170,13 @@ final class GuestRegressionProbe: XCTestCase {
                 }
                 state.cleanup = "restored_original_state"
             }
+            if state.originalPanelState != nil {
+                do {
+                    try restoreMusicPanel(state)
+                } catch {
+                    state.cleanup = "blocked"
+                }
+            }
         } else if state.attemptedSettingsOpen {
             state.cleanup = "blocked"
         }
@@ -233,6 +255,18 @@ final class GuestRegressionProbe: XCTestCase {
     }
 
     @MainActor
+    func testInstalledGeneralWithoutPanelSwipes() {
+        runInstalledSettingsOutput(testName: "testInstalledGeneralWithoutPanelSwipes",
+                                   modes: ["general-panel-swipes-removed"])
+    }
+
+    @MainActor
+    func testInstalledGeneralWithoutCompactMode() {
+        runInstalledSettingsOutput(testName: "testInstalledGeneralWithoutCompactMode",
+                                   modes: ["general-compact-mode-removed"])
+    }
+
+    @MainActor
     private func settingsForm(_ settings: XCUIElement, scenario: SettingsRemovalScenario) throws -> XCUIElement {
         let scrollViews = settings.scrollViews.allElementsBoundByIndex
         let sidebars = scrollViews.filter { $0.outlines.count == 1 }
@@ -249,7 +283,7 @@ final class GuestRegressionProbe: XCTestCase {
         _ settings: XCUIElement, scenario: SettingsRemovalScenario, state: RunState, runID: String
     ) throws {
         let prefix = scenario.prefix
-        if scenario == .general {
+        if scenario.pane == "General" {
             if state.originalPane == "General" {
                 let originalForm = try settingsForm(settings, scenario: .general)
                 let frames = try originalForm.snapshot().children
@@ -347,7 +381,7 @@ final class GuestRegressionProbe: XCTestCase {
                 controls[label] = visible
                 if visible { labelFrames[label] = normalized(matches.firstMatch.frame) }
             }
-            controls[scenario.absenceKey] = !form.staticTexts[scenario.removedLabel].exists
+            controls[scenario.absenceKey] = scenario.removedLabelsAbsent { form.staticTexts[$0].exists }
             let capture = settings.screenshot()
             try require(try windowID() == identifier, "\(prefix)_capture_identity_changed")
             let after = try content()
@@ -369,7 +403,8 @@ final class GuestRegressionProbe: XCTestCase {
             try require(!observations.isEmpty, "ocr_unavailable")
             let observed = SettingsRemovalOutputOracle.evaluate(
                 observations, scenario: scenario, contentFrame: normalized(formFrame),
-                controls: controls, labelFrames: labelFrames, pixelWidth: image.width
+                controls: controls, labelFrames: labelFrames, pixelWidth: image.width,
+                windowWidthPoints: windowFrame.width
             )
             let name = "guest-public-\(prefix)-\(runID)-\(role)"
             let hash = SHA256.hash(data: capture.pngRepresentation).map { String(format: "%02x", $0) }.joined()
@@ -467,7 +502,7 @@ final class GuestRegressionProbe: XCTestCase {
     }
 
     @MainActor
-    private func runInstalledSettingsOutput(testName: String, modes: [String]) {
+    func runInstalledSettingsOutput(testName: String, modes: [String]) {
         continueAfterFailure = false
         let state = RunState()
         let environment = ProcessInfo.processInfo.environment
@@ -508,9 +543,13 @@ final class GuestRegressionProbe: XCTestCase {
 
             let application = XCUIApplication(url: candidate)
             state.app = application
+            if IdleMusicScenario(rawValue: mode) != nil {
+                state.originalForeground = NSWorkspace.shared.frontmostApplication
+                try recordMusicPanelFixture(application, state: state)
+            }
             application.activate()
             let matches = application.descendants(matching: .any).matching(identifier: "NotchPocketSettingsWindow")
-            state.discovery = ["initialSettingsMarkerCount": matches.count]
+            state.discovery["initialSettingsMarkerCount"] = matches.count
             let settings = matches.firstMatch
             state.window = settings
             if !settings.exists {
@@ -565,7 +604,12 @@ final class GuestRegressionProbe: XCTestCase {
                 try require(XCTWaiter.wait(for: [selected], timeout: 5) == .completed, "general_selection_not_observed")
             }
             try require(generalRow.exists && generalRow.isSelected, "prepared_general_pane_required")
-            if mode == "appearance-idle-face-removed" {
+            if let scenario = IdleMusicScenario(rawValue: mode) {
+                try inspectIdleMusicLauncher(settings, scenario: scenario, state: state, runID: runID)
+                state.verdict = state.observed.values.allSatisfy { $0 } ? "PASS" : "FAIL"
+                state.reason = state.verdict == "PASS" ? "rendered_output_verified" : "rendered_output_mismatch"
+                return
+            } else if mode == "appearance-idle-face-removed" {
                 try inspectAppearance(settings, state: state)
             } else if let scenario = SettingsRemovalScenario(rawValue: mode) {
                 try inspectScrollableSettings(settings, scenario: scenario, state: state, runID: runID)
