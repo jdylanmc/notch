@@ -16,7 +16,7 @@ import uuid
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from capture_contract import settings_captures, SCENARIOS, VERSION_KEYS
-from build_runner import add_prepared_arguments, canonical, prepared_arguments
+from build_runner import add_prepared_arguments, prepared_arguments, prepared_output_path
 
 ID = re.compile(r"[a-z][a-z0-9-]{0,63}")
 TEST = re.compile(r"GuestRegressionProbe/[A-Za-z_][A-Za-z0-9_]*/test[A-Za-z0-9_]+")
@@ -192,12 +192,7 @@ def export_capture(run, destination, receipt):
 def run(args):
     prepared = prepared_arguments(args)
     if prepared:
-        output_path = canonical(args.output.absolute())
-        products = (ROOT / "Products").resolve()
-        if (output_path == products or products in output_path.parents
-                or output_path.parent.stat().st_uid != os.getuid()
-                or output_path.parent.stat().st_mode & 0o022):
-            raise ValueError("Prepared output must be owned and outside Products.")
+        prepared_output_path(args.output, (ROOT / "Products").resolve())
     if sys.platform != "darwin":
         raise ValueError("macOS guest required")
     model = subprocess.run(["/usr/sbin/sysctl", "-n", "hw.model"], capture_output=True,

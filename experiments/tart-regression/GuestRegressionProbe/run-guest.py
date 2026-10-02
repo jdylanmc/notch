@@ -12,7 +12,9 @@ from xml.parsers.expat import ExpatError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from capture_contract import settings_captures, SCENARIOS, VERSION_KEYS
-from build_runner import add_prepared_arguments, canonical, prepared_arguments, prepared_test_manifest, verify_prepared
+from build_runner import (
+    add_prepared_arguments, prepared_arguments, prepared_output_path, prepared_test_manifest, verify_prepared,
+)
 
 
 def blocked(reason, **details):
@@ -30,6 +32,12 @@ def main():
     add_prepared_arguments(parser)
     args = parser.parse_args()
     prepared = prepared_arguments(args)
+    if prepared:
+        try:
+            prepared_output_path(args.output, args.xctestrun.resolve(strict=True).parent)
+        except (OSError, ValueError) as error:
+            return blocked("prepared_output_must_be_owned_outside_products", uiTestsStarted=False,
+                           errorType=type(error).__name__, message=str(error))
 
     if sys.platform != "darwin":
         return blocked("macos_guest_required")
@@ -64,11 +72,6 @@ def main():
         manifest = prepared_test_manifest(source.parent, artifact)
         runner_identity = {"manifestSHA256": args.runner_manifest_sha256,
                            "source": artifact["source"]["sha256"], "roles": artifact["roles"]}
-        output_path = canonical(args.output.absolute())
-        if (output_path == source.parent or source.parent in output_path.parents
-                or output_path.parent.stat().st_uid != os.getuid()
-                or output_path.parent.stat().st_mode & 0o022):
-            return blocked("prepared_output_must_be_owned_outside_products", uiTestsStarted=False)
     else:
         with source.open("rb") as stream:
             manifest = plistlib.load(stream)

@@ -136,6 +136,23 @@ def canonical(path):
     return path
 
 
+def prepared_output_path(value, products):
+    path = canonical(Path(value).absolute())
+    products = canonical(products)
+    for ancestor in (path, *path.parents):
+        try:
+            ancestor.lstat()
+        except FileNotFoundError:
+            continue
+        # resolve() preserves case aliases; compare existing filesystem identities.
+        if ancestor.samefile(products):
+            raise RunnerError("Prepared output must be owned and outside Products.")
+    parent = path.parent.stat()
+    if parent.st_uid != os.getuid() or parent.st_mode & 0o022:
+        raise RunnerError("Prepared output must be owned and outside Products.")
+    return path
+
+
 def new_build_path(value):
     path = canonical(value)
     area = ROOT / ".local/vm-regression/work"

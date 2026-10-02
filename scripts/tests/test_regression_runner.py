@@ -582,11 +582,66 @@ class RunnerContracts(unittest.TestCase):
         self.assertEqual(configured, [])
         self.assertEqual(RUNNER.inventory(self.products), before)
 
-    def test_prepared_suite_unsafe_output_is_refused_before_any_side_effect(self):
+    def assert_prepared_output_refused(self, output, manifest, sha, *,
+                                       error="canonical absolute|owned.*outside Products"):
         suite = load_script("run-suite.py")
-        (self.source / "run-suite.py").write_bytes((SOURCE / "run-suite.py").read_bytes())
+        guest = load_script("GuestRegressionProbe/run-guest.py")
         candidate = self.root / "candidate.json"
         candidate.write_text(json.dumps({"executableSHA256": "a" * 64, "version": "1", "build": "1"}))
+        approved = RUNNER.verify_prepared(self.products, manifest, sha, source=self.source, run=self.native)
+        products_before = RUNNER.inventory(self.products)
+        source_before = RUNNER.inventory(self.source)
+        tree_before = sorted(self.root.rglob("*"))
+        args = argparse.Namespace(
+            registry=SOURCE / "suite.json", candidate=candidate, output=output, context="ad-hoc",
+            feature_ref=None, requester_id="parent", worker_id="worker", dispatch_ref="test-dispatch",
+            scenario=None, runner_manifest=manifest, runner_manifest_sha256=sha,
+        )
+        guest_args = [
+            "run-guest.py", "--scenario", "visual-pass", "--candidate", str(candidate),
+            "--xctestrun", str(self.xctestrun), "--output", str(output),
+            "--runner-manifest", str(manifest), "--runner-manifest-sha256", sha,
+            "--requires-prepared-runner",
+        ]
+        for entrypoint in ("suite", "guest"):
+            with self.subTest(entrypoint=entrypoint), contextlib.ExitStack() as stack:
+                stack.enter_context(patch.object(suite, "ROOT", self.root))
+                stack.enter_context(patch.object(Path, "home", return_value=self.root))
+                stack.enter_context(patch.object(sys, "argv", guest_args))
+                effects = [
+                    stack.enter_context(patch.object(target, name, side_effect=AssertionError(name)))
+                    for target, name in [
+                        (Path, "mkdir"), (Path, "write_text"), (Path, "write_bytes"),
+                        (os, "open"), (os, "write"), (suite.subprocess, "run"),
+                        (suite.subprocess, "Popen"), (suite, "export_capture"),
+                        (guest, "verify_prepared"), (guest, "prepared_test_manifest"),
+                    ]
+                ]
+                if entrypoint == "suite":
+                    with self.assertRaisesRegex((OSError, ValueError), error):
+                        suite.run(args)
+                else:
+                    stdout = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                    self.assertEqual(guest.main(), 20)
+                    result = json.loads(stdout.getvalue())
+                    self.assertEqual(result["verdict"], "BLOCKED")
+                    self.assertEqual(result["reason"], "prepared_output_must_be_owned_outside_products")
+                    self.assertFalse(result["uiTestsStarted"])
+                    self.assertRegex(result["message"], error)
+                for effect in effects:
+                    effect.assert_not_called()
+            self.assertFalse((self.root / ".notch-regression-suite.lock").exists())
+            self.assertEqual(RUNNER.inventory(self.products), products_before)
+            self.assertEqual(RUNNER.inventory(self.source), source_before)
+            self.assertEqual(sorted(self.root.rglob("*")), tree_before)
+            self.assertEqual(RUNNER.digest(manifest.read_bytes()), sha)
+            self.assertEqual(
+                RUNNER.verify_prepared(self.products, manifest, sha, source=self.source, run=self.native),
+                approved,
+            )
+
+    def test_prepared_unsafe_outputs_are_refused_before_any_side_effect(self):
+        (self.source / "run-suite.py").write_bytes((SOURCE / "run-suite.py").read_bytes())
         alias = self.root / "products-alias"
         alias.symlink_to(self.products, target_is_directory=True)
         root_alias = self.root / "root-alias"
@@ -595,13 +650,11 @@ class RunnerContracts(unittest.TestCase):
         writable.mkdir()
         writable.chmod(0o777)
         manifest, sha = self.artifact()
-        approved = RUNNER.verify_prepared(self.products, manifest, sha, source=self.source, run=self.native)
-        products_before = RUNNER.inventory(self.products)
-        source_before = RUNNER.inventory(self.source)
         uid = os.getuid()
         for output, owner in [
             (self.products / "unsafe-suite", uid),
             (self.products / "Debug/unsafe-suite", uid),
+            (self.products / "missing/unsafe-suite", uid),
             (self.products, uid),
             (alias / "unsafe-suite", uid),
             (alias, uid),
@@ -609,35 +662,79 @@ class RunnerContracts(unittest.TestCase):
             (writable / "unsafe-suite", uid),
             (self.root / "unowned-suite", uid + 1),
         ]:
-            with self.subTest(output=output, uid=owner):
-                args = argparse.Namespace(
-                    registry=SOURCE / "suite.json", candidate=candidate, output=output, context="ad-hoc",
-                    feature_ref=None, requester_id="parent", worker_id="worker", dispatch_ref="test-dispatch",
-                    scenario=None, runner_manifest=manifest, runner_manifest_sha256=sha,
-                )
-                with contextlib.ExitStack() as stack:
-                    stack.enter_context(patch.object(suite, "ROOT", self.root))
-                    stack.enter_context(patch.object(os, "getuid", return_value=owner))
-                    effects = [
-                        stack.enter_context(patch.object(target, name, side_effect=AssertionError(name)))
-                        for target, name in [
-                            (Path, "mkdir"), (Path, "write_text"), (Path, "write_bytes"),
-                            (os, "open"), (os, "write"), (suite.subprocess, "run"),
-                            (suite.subprocess, "Popen"), (suite, "export_capture"),
-                        ]
-                    ]
-                    with self.assertRaisesRegex(ValueError, "canonical absolute|owned.*outside Products"):
-                        suite.run(args)
-                    for effect in effects:
-                        effect.assert_not_called()
-                self.assertFalse((self.root / ".notch-regression-suite.lock").exists())
-                self.assertEqual(RUNNER.inventory(self.products), products_before)
-                self.assertEqual(RUNNER.inventory(self.source), source_before)
-                self.assertEqual(RUNNER.digest(manifest.read_bytes()), sha)
-                self.assertEqual(
-                    RUNNER.verify_prepared(self.products, manifest, sha, source=self.source, run=self.native),
-                    approved,
-                )
+            with self.subTest(output=output, uid=owner), patch.object(os, "getuid", return_value=owner):
+                self.assert_prepared_output_refused(output, manifest, sha)
+
+    def test_prepared_samefile_aliases_are_refused_on_every_platform(self):
+        alias = self.root / "identity-alias"
+        (alias / "existing").mkdir(parents=True)
+        manifest, sha = self.artifact()
+        samefile = Path.samefile
+
+        def identity(path, other):
+            self.assertTrue(path.exists(), "Only existing output ancestors may be compared")
+            if path == alias and other == self.products:
+                return True
+            return samefile(path, other)
+
+        for output in (alias, alias / "unsafe-suite", alias / "existing/unsafe-suite",
+                       alias / "missing/nested/unsafe-suite"):
+            with self.subTest(output=output), patch.object(Path, "samefile", autospec=True,
+                                                          side_effect=identity) as check:
+                self.assert_prepared_output_refused(output, manifest, sha)
+                self.assertIn(unittest.mock.call(alias, self.products), check.call_args_list)
+
+    @unittest.skipUnless(sys.platform == "darwin", "Real macOS case-insensitive filesystem probe")
+    def test_prepared_real_case_insensitive_aliases_are_refused(self):
+        alias = self.root / "products"
+        if not alias.exists() or not alias.samefile(self.products):
+            self.skipTest("Worktree filesystem is case-sensitive")
+        self.assertEqual(alias.resolve(), alias)
+        manifest, sha = self.artifact()
+        for output in (alias, alias / "unsafeSuite", alias / "debug/unsafeSuite",
+                       alias / "missing/nested/unsafeSuite"):
+            with self.subTest(output=output):
+                self.assert_prepared_output_refused(output, manifest, sha)
+
+    def test_prepared_samefile_errors_fail_closed_before_any_side_effect(self):
+        manifest, sha = self.artifact()
+        for failure in (PermissionError("identity denied"), OSError("identity unavailable"),
+                        FileNotFoundError("identity disappeared")):
+            with self.subTest(failure=failure), patch.object(Path, "samefile", side_effect=failure) as check:
+                self.assert_prepared_output_refused(self.root / "outside", manifest, sha, error=str(failure))
+                self.assertEqual(check.call_count, 2)
+
+    def test_prepared_ancestor_inspection_errors_fail_closed(self):
+        manifest, sha = self.artifact()
+        outside = self.root / "outside"
+        lstat = Path.lstat
+        for failure in (PermissionError("inspection denied"), OSError("inspection unavailable")):
+            def inspect(path):
+                if path == outside:
+                    raise failure
+                return lstat(path)
+
+            with self.subTest(failure=failure), patch.object(Path, "lstat", inspect):
+                self.assert_prepared_output_refused(outside, manifest, sha, error=str(failure))
+
+    def test_prepared_outside_guard_is_read_only_and_bounded(self):
+        outside = self.root / "Products-backup"
+        outside.mkdir()
+        before = RUNNER.inventory(self.root)
+        samefile = Path.samefile
+        for output in (outside, outside / "new-output"):
+            with self.subTest(output=output), patch.object(Path, "samefile", autospec=True,
+                                                          side_effect=samefile) as check:
+                self.assertEqual(RUNNER.prepared_output_path(output, self.products), output)
+                existing = [path for path in (output, *output.parents) if path.exists()]
+                self.assertEqual(check.call_args_list,
+                                 [unittest.mock.call(path, self.products) for path in existing])
+            self.assertEqual(RUNNER.inventory(self.root), before)
+
+    def test_prepared_missing_outside_parent_is_not_created(self):
+        manifest, sha = self.artifact()
+        self.assert_prepared_output_refused(self.root / "missing/outside", manifest, sha,
+                                            error="No such file or directory")
 
     def test_paired_prepared_flags_and_old_cli_defaults(self):
         parser = argparse.ArgumentParser()

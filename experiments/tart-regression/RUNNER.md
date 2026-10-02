@@ -165,10 +165,15 @@ overwritten or recursively cleaned.
    that manifest's runner, including nested environment/path arrays. Xcode's
    platform-specific placeholders remain intact.
    The mutable manifest lives only in the new owned output directory **outside
-   Products**. The suite rejects prepared `--output` equal to or beneath Products,
-   including symlink aliases, before any directory, report, lock or child dispatch.
-   It uses the shared canonical-path check and requires an existing user-owned
-   parent without group/world write. Unprepared output behavior is unchanged.
+   Products**. Both suite and guest reject prepared `--output` equal to or beneath
+   Products, including case-insensitive filesystem aliases and symlink aliases,
+   before any native command, directory, report, lock or child dispatch.
+   Their shared guard retains the canonical/no-symlink check and compares the
+   filesystem identity (`samefile`) of the output and each existing ancestor
+   against Products. Missing trailing components are inspected without creating
+   them; identity/inspection errors fail explicitly. An existing user-owned
+   immediate parent without group/world write is still required.
+   Unprepared output behavior is unchanged.
    Normal/exception cleanup removes only that invocation's file;
    an abrupt interruption can leave residue in its output, never a second
    Products manifest that blocks all later cases. Never delete a stale file
