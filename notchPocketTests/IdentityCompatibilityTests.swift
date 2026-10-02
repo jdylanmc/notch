@@ -14,6 +14,29 @@ import XCTest
 
 final class IdentityCompatibilityTests: XCTestCase {
     @MainActor
+    func testSettingsWindowExposesItsOwnedAccessibilityIdentifier() throws {
+        let controller = SettingsWindowController.shared
+        let window = try XCTUnwrap(controller.window)
+        XCTAssertEqual(window.identifier?.rawValue, "NotchPocketSettingsWindow")
+        // App-side marker wiring, not proof of cross-process Accessibility dispatch.
+        XCTAssertEqual(window.accessibilityIdentifier(), "NotchPocketSettingsWindow")
+        XCTAssertEqual(window.title, "Notch Pocket Settings")
+        XCTAssertTrue(window.styleMask.contains(.closable))
+        XCTAssertTrue(window.delegate === controller)
+    }
+
+    func testTabAccessibilityContractIsStableAndVersioned() {
+        XCTAssertEqual(NotchViews.dashboard.accessibilityIdentifier,
+                       "com.jdylanmc.notchpocket.notch.v1.tab.dashboard")
+        XCTAssertEqual(NotchViews.home.accessibilityIdentifier,
+                       "com.jdylanmc.notchpocket.notch.v1.tab.home")
+        XCTAssertEqual(NotchViews.shelf.accessibilityIdentifier,
+                       "com.jdylanmc.notchpocket.notch.v1.tab.shelf")
+        XCTAssertEqual(NotchViews.home.accessibilityValue(isSelected: true), "selected")
+        XCTAssertEqual(NotchViews.home.accessibilityValue(isSelected: false), "unselected")
+    }
+
+    @MainActor
     private final class ObservationSource: NotchObservationSource {
         var notchState: NotchState = .closed
         var openCalls = 0
@@ -260,7 +283,7 @@ final class IdentityCompatibilityTests: XCTestCase {
         XCTAssertEqual(app.bundleIdentifier, "com.jdylanmc.notchpocket")
         XCTAssertEqual(app.object(forInfoDictionaryKey: "CFBundleName") as? String, "Notch Pocket")
         XCTAssertEqual(app.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String, "Notch Pocket")
-        XCTAssertEqual(app.releaseVersionNumber, "0.1")
+        XCTAssertEqual(app.releaseVersionNumber, "0.1.0")
         XCTAssertEqual(app.executableURL?.lastPathComponent, "notch-pocket")
         XCTAssertEqual(app.bundleURL.lastPathComponent, "notch-pocket.app")
 

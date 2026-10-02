@@ -228,7 +228,6 @@ extension Defaults.Keys {
     static let minimumHoverDuration = Key<TimeInterval>("minimumHoverDuration", default: 0.3)
     static let enableOpeningAnimation = Key<Bool>("enableOpeningAnimation", default: true)
     static let animationSpeedMultiplier = Key<Double>("animationSpeedMultiplier", default: 1.0)
-    static let enableHaptics = Key<Bool>("enableHaptics", default: false)
     static let openNotchOnHover = Key<Bool>("openNotchOnHover", default: true)
     static let extendHoverArea = Key<Bool>("extendHoverArea", default: false)
     static let notchHeightMode = Key<WindowHeightMode>(
@@ -256,7 +255,6 @@ extension Defaults.Keys {
     static let enableShadow = Key<Bool>("enableShadow", default: true)
     static let cornerRadiusScaling = Key<Bool>("cornerRadiusScaling", default: true)
 
-    static let showNotHumanFace = Key<Bool>("showNotHumanFace", default: false)
     static let tileShowLabels = Key<Bool>("tileShowLabels", default: false)
     static let showCalendar = Key<Bool>("showCalendar", default: false)
     static let hideCompletedReminders = Key<Bool>("hideCompletedReminders", default: true)
@@ -266,13 +264,10 @@ extension Defaults.Keys {
     )
     static let playerColorTinting = Key<Bool>("playerColorTinting", default: true)
     
-    // MARK: Gestures
-    // Off by default in this fork: the notch opens on hover and closes on
-    // hover-out, so the gesture layer is a second way to do what pointing
-    // already does.
-    static let enableGestures = Key<Bool>("enableGestures", default: false)
+    // MARK: Media gestures
+    // Keep the former master key so removing panel swipes cannot re-enable media gestures.
+    static let enableMediaGestures = Key<Bool>("enableGestures", default: false)
     static let enableHorizontalMediaGestures = Key<Bool>("enableHorizontalMediaGestures", default: false)
-    static let closeGestureEnabled = Key<Bool>("closeGestureEnabled", default: false)
     static let gestureSensitivity = Key<CGFloat>("gestureSensitivity", default: 200.0)
     
     // MARK: Media playback
@@ -313,10 +308,6 @@ extension Defaults.Keys {
     static let inlineOSD = Key<Bool>("inlineOSD", default: false)
 
     // MARK: Layout
-    /// Swaps the opened notch for a smaller, player-only layout: no tab
-    /// bar, calendar or mirror. Off by default so existing users keep the
-    /// layout they already have.
-    static let compactMode = Key<Bool>("compactMode", default: false)
     static let dashboardConfigurationData = Key<Data?>("dashboardConfigurationData", default: nil)
 
     // MARK: Notifications
@@ -338,10 +329,6 @@ extension Defaults.Keys {
             "com.anthropic.claudefordesktop"
         ]
     )
-    /// Off by default: a new capability, even though it runs entirely
-    /// on-device with no network calls. Only takes effect on macOS 26+ with
-    /// Apple Intelligence enabled — see SmartReplyManager.
-    static let smartRepliesEnabled = Key<Bool>("smartRepliesEnabled", default: false)
 
     static let enableGradient = Key<Bool>("enableGradient", default: false)
     static let systemEventIndicatorShadow = Key<Bool>("systemEventIndicatorShadow", default: false)
@@ -383,6 +370,10 @@ extension Defaults.Keys {
     static let didMigrateMediaControllerChoice = Key<Bool>("didMigrateMediaControllerChoice", default: false)
     static let lastSupportedNowPlayingBundleIdentifier = Key<String?>(
         "lastSupportedNowPlayingBundleIdentifier",
+        default: nil
+    )
+    static let lastNowPlayingLauncherBundleIdentifier = Key<String?>(
+        "lastNowPlayingLauncherBundleIdentifier",
         default: nil
     )
     

@@ -1,0 +1,130 @@
+import CoreGraphics
+import Foundation
+
+enum SettingsRemovalScenario: String {
+    case notifications = "notifications-ai-replies-removed"
+    case general = "general-haptics-removed"
+    case panelSwipes = "general-panel-swipes-removed"
+    case compactMode = "general-compact-mode-removed"
+
+    var pane: String { self == .notifications ? "Notifications" : "General" }
+    var prefix: String { pane.lowercased() }
+    var captureVersionKey: String { prefix + "CaptureVersion" }
+    var testName: String {
+        switch self {
+        case .notifications: return "testInstalledNotificationsWithoutAIReplies"
+        case .general: return "testInstalledGeneralWithoutHaptics"
+        case .panelSwipes: return "testInstalledGeneralWithoutPanelSwipes"
+        case .compactMode: return "testInstalledGeneralWithoutCompactMode"
+        }
+    }
+    var retainedLabels: [String] {
+        switch self {
+        case .notifications: return ["Show notifications in the notch", "From all apps"]
+        case .general, .panelSwipes, .compactMode:
+            return [
+                "Show menu bar icon", "Launch at login", "Language", "Show on all displays",
+                "Preferred display", "Automatically switch displays",
+                "Notch height on notch displays", "Notch height on non-notch displays",
+                "Open notch on hover", "Remember last tab", "Notch animation",
+                "Enable media gestures"
+            ]
+        }
+    }
+    var removedLabels: [String] {
+        switch self {
+        case .notifications: return ["Suggest replies with Apple Intelligence"]
+        case .general: return ["Enable haptic feedback"]
+        case .panelSwipes:
+            return [
+                "Enable gestures", "Close gesture",
+                "Two-finger swipe up on notch to close, two-finger swipe down on notch to open when Open notch on hover option is disabled"
+            ]
+        case .compactMode:
+            return [
+                "Compact mode",
+                "Shows a smaller opened notch with just the music player — no tabs, calendar or mirror."
+            ]
+        }
+    }
+    func removedLabelsAbsent(isPresent: (String) -> Bool) -> Bool {
+        removedLabels.allSatisfy { !isPresent($0) }
+    }
+    var absenceKey: String {
+        switch self {
+        case .notifications: return "suggestionControlAbsent"
+        case .general: return "hapticControlAbsent"
+        case .panelSwipes: return "panelGestureControlsAbsent"
+        case .compactMode: return "compactModeControlAbsent"
+        }
+    }
+    var forbiddenText: [String] {
+        switch self {
+        case .notifications: return ["suggest replies", "apple intelligence"]
+        case .general: return ["haptic"]
+        case .panelSwipes: return ["enable gestures", "close gesture", "two-finger swipe up", "two-finger swipe down"]
+        case .compactMode: return ["compact mode", "shows a smaller opened notch", "no tabs, calendar or mirror"]
+        }
+    }
+}
+
+struct SettingsRemovalOutputOracle {
+    static func evaluate(
+        _ observations: [AboutOutputOracle.Observation],
+        scenario: SettingsRemovalScenario,
+        contentFrame: CGRect,
+        controls: [String: Bool],
+        labelFrames: [String: CGRect],
+        pixelWidth: Int,
+        windowWidthPoints: CGFloat
+    ) -> [String: Bool] {
+        let content = observations.filter {
+            !$0.frame.isEmpty && contentFrame.contains($0.frame)
+        }
+        let intersecting = observations.filter { !$0.frame.isEmpty && contentFrame.intersects($0.frame) }
+        let rows = intersecting.map { AboutOutputOracle.rowText(anchor: $0, observations: intersecting) }
+        var result = Dictionary(uniqueKeysWithValues: scenario.retainedLabels.map {
+            let label = $0
+            guard let frame = labelFrames[label], !frame.isEmpty, contentFrame.contains(frame),
+                  controls[label] == true else { return (label, false) }
+            let aligned = content.filter {
+                let anchor = CGPoint(x: $0.frame.minX, y: $0.frame.midY)
+                let alignment = frame.insetBy(dx: -0.005, dy: -0.005)
+                if scenario.pane == "General", anchor.x < frame.minX {
+                    guard pixelWidth > 0, windowWidthPoints.isFinite, windowWidthPoints > 0,
+                          anchor.y >= alignment.minY, anchor.y <= alignment.maxY else {
+                        return false
+                    }
+                    let pixelsPerPoint = CGFloat(pixelWidth) / windowWidthPoints
+                    guard (1...4).contains(pixelsPerPoint) else { return false }
+                    // The recorded 1x overhang is four native points. Snap both distances in pixels,
+                    // not absolute edges, so fractional scale/edge phase cannot change the allowance.
+                    let leadingPixels = ((frame.minX - anchor.x) * CGFloat(pixelWidth)).rounded()
+                    let maximumLeadingPixels = (4 * pixelsPerPoint).rounded()
+                    return leadingPixels >= 0 && leadingPixels <= maximumLeadingPixels
+                }
+                return alignment.contains(anchor)
+            }
+            return (label, aligned.contains {
+                let row = AboutOutputOracle.rowText(anchor: $0, observations: content)
+                return row == label || row.hasPrefix(label + " ")
+            })
+        })
+        let rendered = rows.joined(separator: " ").lowercased()
+        result[scenario.absenceKey] = !content.isEmpty && controls[scenario.absenceKey] == true
+            && !scenario.forbiddenText.contains { rendered.contains($0) }
+        return result
+    }
+
+    static func combine(_ captures: [[String: Bool]], scenario: SettingsRemovalScenario) -> [String: Bool] {
+        let keys = Set(scenario.retainedLabels + [scenario.absenceKey])
+        guard captures.count == 2 && captures.allSatisfy({ Set($0.keys) == keys }) else {
+            return Dictionary(uniqueKeysWithValues: keys.map { ($0, false) })
+        }
+        var result = Dictionary(uniqueKeysWithValues: scenario.retainedLabels.map { label in
+            (label, captures.contains { $0[label] == true })
+        })
+        result[scenario.absenceKey] = captures.allSatisfy { $0[scenario.absenceKey] == true }
+        return result
+    }
+}

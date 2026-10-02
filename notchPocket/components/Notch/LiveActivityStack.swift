@@ -11,7 +11,6 @@
 //  display for a beat and then hands it back on its own.
 //
 
-import Defaults
 import SwiftUI
 
 /// One entry in the closed-notch stack.
@@ -45,7 +44,6 @@ struct LiveActivityStack<Content: View>: View {
     @ViewBuilder let content: (LiveActivityItem) -> Content
 
     @State private var dragOffset: CGFloat = 0
-    @State private var haptics: Bool = false
 
     private var clampedIndex: Int { min(max(index, 0), max(items.count - 1, 0)) }
 
@@ -88,14 +86,12 @@ struct LiveActivityStack<Content: View>: View {
                     move(by: value.translation.width < 0 ? 1 : -1)
                 }
         )
-        .sensoryFeedback(.alignment, trigger: haptics)
     }
 
     private func move(by delta: Int) {
         let next = clampedIndex + delta
         guard items.indices.contains(next) else { return }
         withAnimation(.smooth(duration: 0.3)) { index = next }
-        if Defaults[.enableHaptics] { haptics.toggle() }
     }
 }
 

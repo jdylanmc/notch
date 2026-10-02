@@ -1,0 +1,570 @@
+# Notch Pocket releases
+
+The first notarized Homebrew release for [#9](https://github.com/jdylanmc/notch/issues/9)
+is published. The product tag is
+`notch-pocket-v0.1.0` and Homebrew cask version is `0.1.0`; inherited `v2.x`
+tags/casks identify another product.
+
+The user approved the hosted Actions notarized 0.1.0 public release and the
+owned public `jdylanmc/homebrew-notch` tap. The release owner still owns
+credential configuration, independent reviews, green-PR merges, tag creation,
+actual Actions execution/Apple submission/publication, and tap PR review/merge.
+Credential values are never committed. Portable tests alone are not proof of
+Apple acceptance, usable signing credentials, stapled tickets, runner
+availability, or installation. The specific native evidence below belongs to
+0.1.0; future releases need their own. The owner confirmed additional-Mac
+installation and accepted distribution **after publication**, closing #9.
+
+## Published 0.1.0
+
+- [Release](https://github.com/jdylanmc/notch/releases/tag/notch-pocket-v0.1.0):
+  stable, published 2026-09-28.
+- [Successful release run](https://github.com/jdylanmc/notch/actions/runs/36453653813):
+  all source, signing/notarization, publication and tap-PR jobs succeeded.
+- Source: `7e8bfd321d38761b70e88b33821099bad05ad60a`.
+- Download: `notch-pocket-0.1.0.dmg`, **16,844,187 bytes**.
+- SHA-256: `f7337a53af778840be6b42f977be1b5d5d5d651609dcd0061bfef5a355ee1f11`.
+- [Public manifest](https://github.com/jdylanmc/notch/releases/download/notch-pocket-v0.1.0/manifest.json)
+  records the source, version, final checksum and both Apple submission IDs.
+- [Homebrew cask PR](https://github.com/jdylanmc/homebrew-notch/pull/2) merged as
+  `ce7721b21bc1e7af1e4a83b2a7e02df752cc9e6d`, after
+  [actual download/hash and strict online audit](https://github.com/jdylanmc/homebrew-notch/actions/runs/36457019906).
+
+The public DMG was downloaded and independently verified against the manifest:
+valid staple, Developer ID signature, image checksum and Gatekeeper
+`Notarized Developer ID` acceptance. A read-only, non-browsing mount verified
+the contained app version 0.1.0/minimum macOS 14, six physical Mach-O files and
+thirteen architecture slices, its staple and Gatekeeper acceptance. The exact
+owned mount was detached and image bytes remained unchanged. This inspection
+did **not** install or launch the application.
+
+```bash
+brew install --cask jdylanmc/notch/notch-pocket
+```
+
+The owner confirmed installation on another Mac and accepted distribution on
+2026-09-28; see the [acceptance scope](#post-publication-acceptance).
+No quarantine stripping, forced
+replacement, privacy changes or data reset is part of installation. Existing
+development installs that conflict with the cask need explicit reconciliation,
+not an automatic force install. Broader agent-control/regression work is not
+closed by distribution.
+
+## Hosted Actions workflow
+
+Use only [Notch Pocket notarized release](../.github/workflows/pocket-native-release.yml).
+The inherited `release.yml`, `build_reusable.yml` and `manual_build.yml` are
+removed, along with their unused comment-version parser. Their `dev`/`main`,
+Apple Development, version-write and automatic-merge paths are no longer
+checked-in release entry points. Do not restore them or configure their
+`BUILD_CERTIFICATE_BASE64`, `P12_PASSWORD`, `KEYCHAIN_PASSWORD` or `RELEASE_TOKEN`
+secrets for this release. Repository contracts guard the retired files, calls
+to the retired builder, and known tag-push/create, release, comment and
+repository-dispatch routes. Future workflow changes still need independent
+review; this inventory is not a generic release-authorization engine.
+Historical workflow runs/tags are not
+deleted by source retirement. Crowdin is unchanged.
+The issue-form dropdown is now **manual dispatch only**, so a product tag or
+release cannot cause its unrelated default-branch commits.
+
+### Credential-free dependency preflight
+
+Run [Release dependency preflight](../.github/workflows/release-dependency-preflight.yml)
+manually from `pocket`, or inspect its result on a PR changing the workflow,
+DMG requirements or the hosted/native tool helpers it imports. It checks out the
+run's immutable `github.sha` in either mode and logs the Python interpreter.
+It uses the existing `pocket_sign.py tools`
+check, then downloads the exact hash-pinned wheels and proves an offline install
+and isolated `dmgbuild`/Quartz import on the hosted macOS 26 / Xcode 26.6 runner.
+Python isolation prevents a repository module or user-site package from
+masquerading as the installed dependency.
+
+Before dependencies, a native synthetic-image probe runs the production checksum
+verification boundary twice on that same hosted macOS version: first with a real
+checksum cache and then without one. Byte/identity/metadata checks must pass,
+and the absent-cache pass must preserve the entire strict fingerprint.
+The owned `.build/dmg-checksum-preflight` fixture is retained on the runner for
+diagnosis but never uploaded; it contains synthetic text only, not an application.
+
+It has read-only repository permission, no release environment or secret
+references, no app build/launch, no certificate import, no Apple submission,
+no explicit disk-image attach, app mount, or release/tag/tap writes. Native image
+creation may use hdiutil-managed temporary resources; no external device is
+selected or force-detached. Its only artifact,
+`notch-pocket-dmg-wheels`, contains public `.whl` files for seven days. The
+hidden-file opt-in is limited to that wheel-only path, not the private `.build`
+tree. A failing tool/download/hash/import step prevents artifact upload.
+
+If a developer's public package CDN is unreachable, those wheels can be
+downloaded from the **specific reviewed successful run** and installed into a
+fresh owned venv using the unchanged requirements:
+
+```bash
+# Use an already-installed Python 3.10+ (python3.14 here) and a new venv path.
+test ! -e .build/package-venv-offline
+python3.14 -I -m venv .build/package-venv-offline
+.build/package-venv-offline/bin/python3 -I -m pip install --no-index --find-links /absolute/downloaded/wheels \
+  --require-hashes --only-binary=:all: -r Configuration/dmg/requirements.txt
+```
+
+Use an already-installed Python 3.10+ and the isolated environment procedure
+in the README; do not install globally or replace a failed environment.
+Wheels are platform/interpreter-specific. Original hash enforcement remains
+mandatory after transfer; do not substitute versions or trust an artifact name
+alone. This auxiliary preflight is not one of the nine exact-commit release
+checks and does not replace the release job's own installation or native gates.
+It proves dependencies/tool availability for that run, not signing, notarization,
+Gatekeeper acceptance, an app artifact, or public distribution.
+
+### Owner configuration
+
+Create the following GitHub Actions environments in **`jdylanmc/notch`**.
+Prefer environment-scoped secrets, not repository-wide copies. Restrict
+deployments to `pocket` and approved `notch-pocket-v*` tags; configure any desired
+human environment approval before running. The workflow does not invent,
+discover, export or copy credentials from a developer machine.
+
+| Environment | Exact secret | Required value |
+| --- | --- | --- |
+| `notch-pocket-release` | `APPLE_CERTIFICATE_P12` | Base64 of an existing Developer ID Application PKCS12 certificate **including its private key**, supplied by the owner |
+| `notch-pocket-release` | `APPLE_CERTIFICATE_PASSWORD` | Nonempty password for that PKCS12 |
+| `notch-pocket-release` | `APPLE_NOTARY_KEY_P8` | Complete PEM private key for a **team** App Store Connect API key authorized for notarization; not an individual key or Apple ID password |
+| `notch-pocket-release` | `APPLE_NOTARY_KEY_ID` | That API key's ten-character key ID |
+| `notch-pocket-release` | `APPLE_NOTARY_ISSUER_ID` | That team API key's issuer UUID |
+| `notch-pocket-release` | `APPLE_TEAM_ID` | Matching ten-character Apple Developer team ID |
+| `notch-pocket-release` | `APPLE_SIGNING_IDENTITY` | Complete existing `Developer ID Application: CERTIFICATE NAME (TEAMID)` name matching that team and PKCS12 |
+| `notch-pocket-tap` | `HOMEBREW_TAP_TOKEN` | Fine-grained token, resource owner `jdylanmc`, **only** `jdylanmc/homebrew-notch`, Contents read/write and Pull requests read/write (implicit Metadata read) |
+
+The tap must be public with initialized default branch `main`. Give the token
+no access to `jdylanmc/notch` or other repositories and no broad classic-token
+fallback. The ordinary source-repository `GITHUB_TOKEN` is generated by Actions:
+read-only for the source gate/signing/tap jobs, contents-write only in the
+separate publisher. The tap token is present only in tap-readiness/PR steps;
+Apple secrets are present only in the signing job's configuration/signing steps.
+The source publisher needs Actions read permission to recheck exact-commit jobs.
+Tap readiness requires the repository metadata to report `permissions.push:
+true` for `HOMEBREW_TAP_TOKEN`. This is read-only metadata inspection, not a
+write probe: **Pull requests write permission cannot be proved by this check**.
+The owner must still configure that permission explicitly; later writes can fail.
+
+Empty/malformed configuration fails before credential import/build/submission
+with named `missing_config`/`invalid_config` errors; missing
+`HOMEBREW_TAP_TOKEN` blocks before signing. No token fallback, `local.env`,
+default-keychain changes, certificate discovery or personal certificate
+export is used. Never place keys, passwords or identities in workflow inputs.
+
+### Release sequence
+
+1. Merge reviewed release changes into `pocket`, then wait for **the tag commit's
+   own** successful `pocket` push runs. PR/merge-ref or older-head success is not
+   sufficient. Parent-owned CodeQL host changes and other pending PRs remain
+   separate; all existing app matrix legs and security scans must pass.
+2. The owner creates the existing product tag on that commit and pushes it,
+   or dispatches this workflow **from `pocket`** with input `tag:
+   notch-pocket-v0.1.0`. Dispatch never creates a tag. The workflow must also be
+   available under GitHub's default-branch dispatch rules; do not change branch
+   policy or restore inherited release automation to bypass that prerequisite.
+3. An Ubuntu gate checks strict product-tag syntax, exact equality with the
+   tagged `scripts/distribution.py`'s `VERSION`, remote tag identity, and commit
+   ancestry from freshly fetched `origin/pocket`. It reads the version as data,
+   not by executing tag-supplied code. Its only job outputs are validated full
+   source SHA and version; all later checkouts pin that SHA. Its read-only
+   release lookup rejects visible releases but **cannot prove absence of drafts**.
+   The publisher's contents-write token performs the authoritative no-clobber
+   check before creating a draft; no source write privilege is added to the gate
+   or tap token.
+4. For each product workflow, the gate queries that SHA's latest `pocket` push
+   run and its latest-attempt jobs. Both workflow and every named job must be
+   completed/successful, on the exact SHA/current attempt. Missing, duplicate,
+   queued, pending, failed, neutral or skipped jobs block; no waiting loop or
+   older successful-run fallback. The nine required names are:
+
+   ```text
+   Build Notch Pocket (~26.0 on macos-15)
+   Build Notch Pocket (^26 on macos-26)
+   Build Notch Pocket (^27 on xcode-27)
+   SwiftLint
+   Build, test, lint notch-control
+   Test product CI contracts
+   Analyze (actions)
+   Analyze (python)
+   Analyze (swift)
+   ```
+
+5. After tap readiness, a fresh hosted **`macos-26`** job selects and verifies
+   **`/Applications/Xcode_26.6.app/Contents/Developer`**. Full Xcode 26.6, Metal,
+   signing/notarization/image tools and an installed Python **3.10+** are
+   prerequisites, not silently installed substitutes. A new ignored venv
+   installs only the existing hash-pinned DMG requirements after its missing
+   import check, with `--require-hashes --only-binary=:all:`. No global installs
+   or pin changes; unavailable compatible wheels fail.
+6. A new private `RUNNER_TEMP/notch-pocket-credentials-RUN_ID-ATTEMPT` directory
+   contains `0600` PKCS12/PEM files, saved search list and an isolated temporary
+   keychain. Only the configured PKCS12 is imported. The keychain gets a random
+   in-memory password, noninteractive signing access and its own notarytool API
+   key profile. It is explicitly added to the user search list without changing
+   the default keychain. Selectors/passwords are argument data, never shell text.
+   Secret environment values are removed before calling the native scripts;
+   raw native output is neither printed nor uploaded.
+7. `distribution.build_distribution` builds the exact fresh Release
+   app in `.build/pocket-release-build`; its verified result path is passed to
+   `notarize.prepare` with new `.build/pocket-release-notarized` and keyword-only
+   `keychain` set to the **same** temporary `release.keychain-db` used by
+   `store-credentials`. This requires the separately integrated notarization
+   change forwarding explicit `--keychain` to both submit and wait; profile
+   name/search-list membership alone is not the credential lookup contract.
+   All native gates described below must pass. Cleanup restores/verifies the
+   original keychain search list and deletes only the owned keychain/profile,
+   key files and bookkeeping. A `finally` block plus an `always()` step handle
+   success/failure/cancellation. Cleanup failure blocks artifact upload; no
+   recursive directory deletion or unknown-path cleanup is attempted.
+8. Only after successful notarization **and credential cleanup**, the exact
+   final stapled DMG is copied byte-for-byte into `.build/pocket-release-assets`
+   with `manifest.json`. That public manifest contains schema, version, tag,
+   full source commit, filename, **final** SHA-256/size and both notarization
+   UUIDs. The only workflow artifact contains those two files, retained seven
+   days; no ZIP, app, raw log, key, scratch directory or private evidence dump.
+   This upload alone sets `include-hidden-files: true` because `.build` is a
+   hidden ancestor. Its allowlist remains the two exact validated public file
+   paths: no directory or glob is passed to the uploader, and private `.build`
+   trees are not traversed or uploaded. The exact-two-regular-file manifest
+   validation remains mandatory.
+9. The independent Ubuntu publisher verifies both transferred files and
+   rechecks tag/check status before creating a **new draft** for the existing
+   exact tag. Any existing release or draft blocks: no asset replacement,
+   clobber or deletion. Release creation supplies `tag_name`, without the
+   redundant `target_commitish`; existing/moved-tag guards remain in force.
+   It uploads exactly the two assets, checks GitHub's
+   SHA-256/size and downloads/hashes the remote bytes, then publishes with
+   explicit `make_latest: "true"` so inherited `v2.x` does not win.
+10. Only after publication, the tap job again verifies published bytes and
+    creates `release/notch-pocket-0.1.0` from tap `main`, changes only
+    `Casks/notch-pocket.rb`, and opens a **draft PR**. Existing branch/destination
+    conflicts stop instead of overwriting. Before creating a branch, any
+    existing cask must decode to the exact managed template with its own strict
+    numeric version and SHA-256. Human edits, malformed content, downgrades and
+    equal-version hash changes require explicit reconciliation. An already
+    matching version/hash also stops without creating another PR.
+    The cask uses the final digest,
+    product-qualified versioned download URL, macOS Sonoma minimum and
+    `notch-pocket.app`; no quarantine stripping, `auto_updates`, privileged or
+    forced installation, `zap`, or data removal. **Unattended means PR creation,
+    not automatic merge.** The parent reviews/merges after green tap CI.
+
+Runs serialize without canceling an active signing job. Jobs, steps, Git/API
+requests and native subprocesses have time bounds. The workflow does not merge
+source or tap PRs and never installs/launches an app. Final download/Gatekeeper
+and second-Mac behavior require actual hosted/publication evidence and user
+acceptance, respectively; source-level checks alone establish neither.
+
+### Hosted failure recovery: no blind retry
+
+An ordinary failure blocks every later job. Apple may nevertheless continue a
+submission after a timeout; preserve the safe printed submission IDs/stage and
+reconcile with Apple as described below. A secondary cleanup failure preserves
+available native failure IDs or the validated successful notarization status
+and both submission UUIDs in its diagnostic, plus safe primary-error context
+when applicable. The CLI retains this whitelisted recovery context through
+**cancellation during cleanup and every later asset-staging, hash or manifest
+export failure**, not only ordinary cleanup errors. Cancellation remains an
+explicit `interrupted` error; it is never converted to success or ignored.
+Every error reports `ok: false` and `public_artifact_ready: false`, without
+credentials or raw native output.
+
+Interrupted cleanup may leave the temporary keychain/files unresolved; the
+workflow's `always()` cleanup step must still restore/remove those owned
+resources. No asset export starts unless cleanup completes successfully.
+A later export failure may leave partial `.build/pocket-release-assets` files,
+but the failed step prevents their upload; existence is not readiness or
+permission to publish. Unknown/competing paths are not deleted.
+Run-owned build/notary residue is not uploaded and disappears with the
+ephemeral hosted runner; raw logs stay private. Catastrophic runner termination
+can prevent any cleanup handler from running: Actions must discard that runner,
+and the owner must investigate and
+rotate credentials if exposure is suspected. Portable tests cannot prove that
+platform guarantee.
+
+Never select **Re-run all jobs** to repair a partially published release.
+**The operator must check for drafts before any rerun**: the initial read-only
+gate cannot guarantee their visibility, and its success is not absence proof.
+If a draft/upload exists, inspect its exact tag/commit/assets and Apple IDs;
+the owner must explicitly decide how to reconcile it before another attempt.
+There is no automated resume, release deletion, asset replacement or resubmission.
+Asset digest availability and latest-release verification fail closed; a failure
+after publication does not unpublish or recreate the release.
+Remote byte verification permits one HTTPS redirect only to
+`release-assets.githubusercontent.com` or `objects.githubusercontent.com`,
+without forwarding the source token. Foreign hosts and further redirects fail
+closed; inspect the download path and reconcile the draft explicitly rather
+than widening hosts, retrying uploads, or bypassing final digest verification.
+
+A failed tap PR does not roll back the already public release. Reconcile its
+owned branch/partial cask commit/PR first, then the owner may rerun only that
+failed tap job while the original seven-day artifact remains available. If the
+artifact expired, use owner-reviewed manual recovery against the published
+manifest and exact downloaded bytes, not a rebuilt DMG's checksum. Existing tap
+code is preserved; no parent tap checkout is involved in this workflow.
+
+## Explicit inputs and prerequisites
+
+`scripts/notarize.py` is Python **3.9+**, standard library only. It consumes the
+**exact successful signed app** from the separate
+[Developer ID preparation](../README.md#local-developer-id-candidate-9-bounded-slice).
+It never searches for a newest build, builds an app, signs the source app, or
+repairs invalid signatures. The caller retains the originating build's evidence:
+bundle metadata alone cannot prove a Release configuration or source revision.
+
+Only the release owner should execute the following after the required reviews
+and gates, using real approved inputs rather than these placeholders:
+
+```bash
+# Run from the repository root.
+mkdir -p .build
+python3 -B scripts/notarize.py \
+  --app '/exact/signed/notch-pocket.app' \
+  --identity 'Developer ID Application: YOUR CERTIFICATE NAME (YOURTEAMID)' \
+  --team 'YOURTEAMID' \
+  --keychain-profile 'YOUR-PREEXISTING-NOTARY-PROFILE' \
+  --output-dir "$PWD/.build/notarized-0.1.0-001"
+```
+
+Native execution **uploads to Apple**. It requires macOS 15.6+ with Xcode 26+'s
+`notarytool`/`stapler` available through `xcrun`, plus `codesign`, `lipo`, `ditto`,
+`spctl` and `hdiutil`. Gatekeeper is at `/usr/sbin/spctl`.
+The signing helper's full-Xcode discovery is reused: an explicit
+`DEVELOPER_DIR` must name a full Xcode, including valid Xcode aliases; invalid
+explicit selections fail rather than silently falling back. The resolved
+developer directory is recorded in final evidence. Both Xcode utilities and
+the existing packager's dependencies are checked before output creation or upload.
+The unchanged packager additionally needs its existing `python3`/`dmgbuild`
+dependencies on the caller's `PATH`. Follow the
+[isolated missing-dependency recovery](../README.md#local-dmg-preparation)
+only after a missing-dependency failure; no dependency installation or repair is
+performed here. Resolve any post-submission failure before starting another fresh
+attempt; preflight cannot guarantee a dependency remains available later.
+
+The certificate and notarytool keychain profile are **caller-configured**.
+The complete Developer ID Application name and matching ten-character team ID
+are required; no ad-hoc, development or partial-name fallback. The profile
+must already exist and be usable by the caller's Apple tools. The command does
+not discover/enumerate credentials, create profiles, unlock Keychains, import or
+export certificates/secrets, or read `local.env`. It passes only the explicit
+profile name to notarytool; do not supply a password/API key as that name.
+For a profile stored in a custom keychain, also pass
+`--keychain '/absolute/path/release.keychain-db'`. The same explicit keychain is
+used for both ZIP/DMG submissions and waits; adding it to the signing search
+list is not a substitute for selecting it for notarytool. Only path and ownership
+metadata are validated; the file's credential contents are never read or exported.
+Without this option, notarytool uses its default keychain lookup.
+Native verification/notary commands use the existing distribution helper's
+restricted environment, not inherited signing overrides or `DYLD_*` settings.
+The packager retains its separate existing environment and dependency `PATH`.
+
+Paths must be canonical absolute paths without symlink components, `..`, `.`
+aliases or redundant separators. The source must be an owned
+`notch-pocket.app` with an owned, non-shared-write parent; its entries must be
+owned, without shared-write files/directories or hard-linked regular files.
+Legitimate internal framework symlinks are preserved, not followed outside the
+bundle. The output must be a **new** directory beneath this checkout's existing
+`.build/`, with existing owned parents without group/world write through the
+checkout root. Source/output overlap, existing files/directories/links and
+competing output claims are rejected. The command creates a private `0700`
+directory; it never overwrites or reuses another attempt.
+
+## Gates and retained artifacts
+
+The command reuses `distribution.py`'s layout, entitlement, Developer ID
+requirement and per-architecture signature verification. Both app/helper must
+be version `0.1.0` with the existing identities. Every discovered Mach-O slice
+must have the requested signer/team, Apple Developer ID chain, secure timestamp,
+hardened runtime and exact allowed entitlements. The bundled
+`MediaRemoteAdapterTestClient` is **already signed**: its signed identifier and
+empty entitlements are checked, but the unsigned vendor-input pin/signing
+procedure is not applied again. There is no `sign_resource` call or app re-sign.
+
+Preparation runs in this order:
+
+1. Snapshot and strictly verify the source. Copy with `ditto --rsrc --extattr
+   --acl`; compare the full inventory (bytes, modes, symlinks and extended
+   attributes) using `package.snapshot`, and verify the copy's signatures.
+2. ZIP the copy with `ditto -c -k --sequesterRsrc --keepParent`. Submit the ZIP
+   with `notarytool submit --no-wait --output-format json`. Validate and
+   durably record its UUID **before** `wait UUID --timeout 20m --output-format
+   json`. Only the same UUID with exact status `Accepted` passes.
+3. Staple and validate the app ticket. Require the original Mach-O inventory,
+   hashes and modes, reverify all signatures strictly, and assess the app with
+   Gatekeeper's `execute` policy.
+4. Call unchanged `package.package` on **that stapled app**. The packager owns
+   staging, read-only mounts, exact mounted-content verification and detach.
+   Only its exact verified artifact with successful cleanup proceeds.
+5. Sign the new DMG with the given Developer ID Application identity and secure
+   timestamp; verify its container signature/identity/team. Submit it once,
+   record its own UUID, and require the matching `Accepted` response.
+6. Staple/validate the DMG, strictly reverify its signature, run `hdiutil verify -nocache`,
+   and require Gatekeeper's `open` assessment with
+   `--context context:primary-signature`. Check final bytes remain unchanged
+   through those gates and the source/stapled app snapshots remain unchanged.
+
+`hdiutil verify` normally rewrites the `com.apple.diskimages.recentcksum`
+extended attribute, changing the file's change-time without changing its bytes.
+Even `-nocache` removes an existing checksum-cache attribute on its first run.
+The `dmg_checksum` boundary requires **exactly that attribute removal when
+present and permits only its associated change-time update**: SHA-256, size, device/inode, mode, modification time,
+link count and every other extended attribute must remain unchanged.
+Change-time drift without the removed cache is rejected. The resulting strict
+fingerprint is then used unchanged through Gatekeeper and final integrity checks.
+No quarantine/provenance attribute is removed by this code or exempted from
+comparison, and no signature, notarization or Gatekeeper gate is skipped.
+
+Gatekeeper must report **assessments enabled**, both before and after each
+assessment. Its raw property list must have a true verdict and the authority
+`Notarized Developer ID`, without a disabled-assessment override, weak signature
+or assessment error. Exit zero, a cached/local rule, generic `Developer ID`, or
+success-shaped globally disabled assessments do not pass. Assessments use
+`--ignore-cache --no-cache`; no rules are added or disabled.
+
+**Never strip quarantine or bypass Gatekeeper.** Historical upstream
+quarantine-stripping installation instructions are rejected for this product.
+Quarantine and other source extended attributes are retained through staging;
+a failing assessment is a blocker, not permission to remove them.
+
+All native subprocesses have deadlines and use the shared distribution runner.
+Post-spawn pipe errors stop and reap the owned child before propagating; if
+termination cannot be established, cleanup uncertainty preserves the packager's
+staging and child identity. Submit has a 10-minute local bound; wait has
+notarytool's 20-minute bound and a 21-minute outer bound. Copy/ZIP/staple are
+bounded at 5 minutes; signature/image/assessment/ticket checks at 2 minutes
+or less. The unchanged package builder/mount/cleanup deadlines remain in force.
+There are no automatic upload retries, detach guesses or force-detaches.
+
+The owned directory is retained on success and failure. Its normal contents:
+
+| Path | Meaning |
+| --- | --- |
+| `notch-pocket.app` | Owned copied app; only stapling may modify this app |
+| `notch-pocket-0.1.0.zip` | Pre-staple app submission ZIP; not the public download |
+| `app-submission.json` | ZIP submission UUID and exact artifact path, mode `0600` |
+| `notch-pocket-0.1.0.dmg` | Final download candidate, **only after all gates pass** |
+| `dmg-submission.json` | DMG submission UUID and exact artifact path, mode `0600` |
+| `evidence.json` | Final structured evidence, mode `0600` |
+| `scratch/` | Private native-tool scratch space |
+
+Success is exit zero and one JSON line on stdout: `ok: true`,
+`status: "notarized"`, `public_artifact_ready: true`, `publication: "not-published"`,
+exact source/app/ZIP/DMG/evidence paths, version/team/resolved developer directory, both submission IDs, final
+DMG `sha256`/`size_bytes`, per-code/per-architecture evidence, unchanged-source
+proof and exact retained top-level `residue` paths. The final evidence file
+contains the same result. The **published checksum is computed after the final
+DMG staple**, not taken from the unsigned packager result or pre-staple upload.
+Preserve that exact final DMG; changing it invalidates the evidence/checksum.
+Do not advertise the ZIP as a stapled downloadable artifact.
+
+There are no GitHub, Homebrew, installation, application-launch, privacy,
+preferences or user-data side effects. A successful command does not approve
+publication, create a release/tag, upload a GitHub asset, or change a cask.
+
+## Failure and manual recovery
+
+Failure is a nonzero exit and one JSON line on stderr with `ok: false`,
+`public_artifact_ready: false`, `error`, `stage`, known `submissions`, and
+`uploads_may_be_processing`. Image-verification mismatches also include a bounded
+`artifact_check` category, retained by hosted failure reporting without paths or
+attribute values. Confirmed failure to spawn the upload process does not
+claim an uncertain upload; a failed command after launch remains conservative.
+Known rejection/pending responses include `notary_status`; unknown values are not
+echoed as trusted diagnostics. **No public artifact is ready on error.** Native
+diagnostics, credentials and the certificate/profile selectors are not echoed
+or persisted as logs. Original native `tool_exit`, timeout/owned-child details
+and any package cleanup residue are retained in the structured error.
+
+After output ownership, `retained_output_dir` and `residue` name retained
+top-level paths; if listing fails, `residue_inventory_unavailable` is explicit.
+Before ownership, an existing competing directory is not claimed as this run's
+residue. `source_unchanged` reports the post-error snapshot check; `null` with
+`source_check_failed` means that check could not be completed. A secondary
+source/cleanup problem does not turn the original native failure into success.
+
+The packager's `staging`, `mount`, `device`, `ownership`, and `published_output`
+details propagate unchanged when present. Here `published_output` means only a
+local partial packager promotion, **not publication or a distributable DMG**.
+If several native package operations fail, `native_failures` retains their
+structured statuses, primary `tool_exit` preserves the first known native
+failure, and `cleanup_tool_exit` distinguishes a later cleanup exit.
+Never recursively delete a reported package stage or guess/force a detach;
+the release owner must resolve the exact reported mount/child/residue first.
+
+| Exit | Meaning |
+| --- | --- |
+| `2` / `3` / `4` | Invalid CLI / invalid input / missing tool or unsupported host |
+| `5` / `6` / `7` | Signature / packaging / verification or changed-source failure |
+| `8` / `9` / `10` | Cleanup unresolved / output conflict or promotion / filesystem failure |
+| `11` / `12` / `13` / `14` | Notary response or operation / stapling / Gatekeeper / artifact drift |
+| `130` | Interrupted |
+
+Apple may continue processing after a timeout, cancellation or failed upload
+response. **Do not automatically resubmit**, even when no UUID could be parsed.
+When known, inspect the recorded UUID manually using the same approved profile,
+for example `xcrun notarytool info UUID --keychain-profile PROFILE
+--output-format json`, or wait on that UUID with `--timeout 20m`. Those are
+operator actions requiring the same release authorization. For a rejected submission,
+retrieve its diagnostics without re-uploading:
+
+```bash
+xcrun notarytool log UUID --keychain-profile PROFILE
+```
+
+Keep that raw log private; it may include source paths and other build details.
+A response with a
+different ID or malformed/unrecognized status is not acceptance.
+
+There is deliberately no automated resume/repair mode. Resolve uncertain
+submissions with Apple and preserve the evidence; the release owner decides
+whether to finish the remaining gates manually or authorize a fresh attempt.
+Never re-run this script over retained output, use a failed attempt's checksum,
+or infer readiness from a submission record/partially written evidence file.
+Use successful exit plus complete final evidence, not a leftover filename.
+
+## Portable evidence and remaining release gates
+
+```bash
+python3 -B -m unittest discover -s scripts/tests -p 'test_notarize.py'
+python3 -B -m unittest discover -s scripts/tests -p 'test_pocket_release.py'
+npm test --prefix .github/scripts/ci-contract
+```
+
+The tests use disposable ignored `.build/` fixtures, synthetic signed Mach-O
+bytes/metadata, and mocked native tools. They exercise inventories and byte
+invariants, bad signers/versions/entitlements, path ownership/no-clobber,
+submission persistence and malformed/nonaccepted responses, timeouts,
+staple/Gatekeeper failures, final drift, source changes and package residue.
+No native build, signing, packaging, Keychain or Apple network operation occurs.
+The hosted-release suite additionally mocks credential import/search-list
+restoration/deletion, native result handoff, and GitHub run/job, release/asset
+and tap boundaries. It covers missing configuration, exact-commit/current-attempt
+gates, final-byte checks, no-clobber and PR-only updates. YAML mutation contracts
+cover triggers, pinned refs/actions, permissions/secrets, gate ordering,
+timeouts, explicit Xcode, hash pins, always-cleanup and failure propagation.
+These are portable contracts, not native or hosted proof.
+
+Before publication, the release owner still needs green
+repository gates, independent review, an authorized fresh Developer ID candidate
+with originating-build provenance, live ZIP/DMG `Accepted` records, staple and
+strict signature proof, native metadata/mount/detach evidence, enabled
+Gatekeeper acceptance.
+The workflow and Homebrew URL/version/final-SHA256 wiring above implement the
+automation, but actual credential configuration, hosted execution,
+tag/release-asset publication and tap PR review/merge remain release-owner
+operations. None is established by source version alignment or portable tests.
+
+### Post-publication acceptance
+
+On 2026-09-28, **after publication**, the owner reported:
+
+> brew install worked on another mac. distribution is successful
+
+Issue [#9](https://github.com/jdylanmc/notch/issues/9) is closed on that explicit
+distribution acceptance. The report establishes successful Homebrew installation
+on another Mac; it does not separately itemize launch, permission-prompt or
+upstream-coexistence results. Do not turn owner acceptance into claims of
+exhaustive runtime or compatibility coverage. Broader foundation and
+agent-control/regression work remains separate and parked.

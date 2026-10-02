@@ -81,6 +81,32 @@ final class MusicLaunchTargetResolverTests: XCTestCase {
         XCTAssertNil(resolved)
     }
 
+    func testNowPlayingPreservesAnExternalPlayersBundleIdentifier() {
+        XCTAssertEqual(resolve(.nowPlaying, current: "org.example.external-player"), "org.example.external-player")
+        XCTAssertEqual(resolve(.nowPlaying, remembered: "org.example.remembered-player"), "org.example.remembered-player")
+    }
+
+    func testRememberedLauncherTargetSurvivesClearedAndBlankNowPlayingUpdates() {
+        var remembered: String?
+        for observed in [" org.example.external-player ", "", " \n"] {
+            remembered = MusicLaunchTargetResolver.rememberedBundleIdentifier(observed: observed, previous: remembered)
+            XCTAssertEqual(remembered, "org.example.external-player")
+        }
+        XCTAssertEqual(
+            MusicLaunchTargetResolver.rememberedBundleIdentifier(observed: nil, previous: remembered),
+            "org.example.external-player"
+        )
+    }
+
+    func testNewNowPlayingSourceReplacesRememberedLauncherTarget() {
+        XCTAssertEqual(
+            MusicLaunchTargetResolver.rememberedBundleIdentifier(
+                observed: "org.example.new-player", previous: MediaAppBundleID.spotify
+            ),
+            "org.example.new-player"
+        )
+    }
+
     func testNowPlayingTrimsResolvedBundleIdentifier() {
         XCTAssertEqual(
             resolve(.nowPlaying, current: "  \(MediaAppBundleID.spotify) \n", remembered: nil),

@@ -27,7 +27,8 @@ struct MusicLaunchFeedbackHoverPreferenceKey: PreferenceKey {
 @MainActor
 struct MusicSectionView<PlayingContent: View>: View {
     @ObservedObject private var musicManager = MusicManager.shared
-    @Default(.lastSupportedNowPlayingBundleIdentifier) private var rememberedBundleIdentifier
+    @Default(.lastNowPlayingLauncherBundleIdentifier) private var rememberedBundleIdentifier
+    @Default(.lastSupportedNowPlayingBundleIdentifier) private var legacyRememberedBundleIdentifier
     @State private var launchFailure: MusicAppLaunchOutcome?
     @State private var launchTask: Task<Void, Never>?
     @State private var isHoveringFeedback = false
@@ -55,6 +56,7 @@ struct MusicSectionView<PlayingContent: View>: View {
                 .disabled(launchTask != nil)
                 .accessibilityLabel(Text(launcherLabel))
                 .accessibilityHint("Opens your preferred music app without starting playback.")
+                .accessibilityIdentifier("com.jdylanmc.notchpocket.music.v1.idle-launcher")
                 .help(Text(launcherLabel))
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -75,6 +77,12 @@ struct MusicSectionView<PlayingContent: View>: View {
             key: MusicLaunchFeedbackHoverPreferenceKey.self,
             value: launchFailure != nil && isHoveringFeedback
         )
+        .onChange(of: musicManager.isPlaying) { _, isPlaying in
+            if isPlaying {
+                launchFailure = nil
+                isHoveringFeedback = false
+            }
+        }
         .onDisappear {
             launchTask?.cancel()
             launchTask = nil
@@ -86,8 +94,8 @@ struct MusicSectionView<PlayingContent: View>: View {
     private var launchTarget: String? {
         MusicLaunchTargetResolver.bundleIdentifier(
             preferred: musicManager.preferredMediaController,
-            currentBundleIdentifier: musicManager.bundleIdentifier,
-            rememberedNowPlayingBundleIdentifier: rememberedBundleIdentifier
+            currentBundleIdentifier: musicManager.effectiveMediaController == .nowPlaying ? musicManager.bundleIdentifier : nil,
+            rememberedNowPlayingBundleIdentifier: rememberedBundleIdentifier ?? legacyRememberedBundleIdentifier
         )
     }
 
@@ -145,6 +153,7 @@ struct MusicSectionView<PlayingContent: View>: View {
                 Text(message)
                     .font(.caption.weight(.semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("com.jdylanmc.notchpocket.music.v1.launch-status")
 
                 Button("OK") {
                     launchFailure = nil

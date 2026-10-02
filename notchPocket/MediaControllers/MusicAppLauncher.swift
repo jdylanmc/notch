@@ -35,9 +35,15 @@ enum MusicLaunchTargetResolver {
         case .youtubeMusic:
             MediaAppBundleID.youTubeMusic
         case .nowPlaying:
-            nonemptyBundleIdentifier(currentBundleIdentifier)
-                ?? nonemptyBundleIdentifier(rememberedNowPlayingBundleIdentifier)
+            rememberedBundleIdentifier(
+                observed: currentBundleIdentifier,
+                previous: rememberedNowPlayingBundleIdentifier
+            )
         }
+    }
+
+    static func rememberedBundleIdentifier(observed: String?, previous: String?) -> String? {
+        nonemptyBundleIdentifier(observed) ?? nonemptyBundleIdentifier(previous)
     }
 }
 

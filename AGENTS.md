@@ -25,6 +25,22 @@ Known traps: [inherited branch/CI policy](#branch-topology),
 [update isolation](#update-isolation).
 These are constraints to inspect, not claims that setup or runtime is solved.
 
+For the optional machine-local Tart regression experiment, read
+[the reconstruction guide](docs/agents/vm-regression.md). If
+`.local/vm-regression/AGENTS.md` exists, read it before operating that environment.
+The local directory contains ignored VM disks, runtime credentials, tools and
+evidence; never force-add it. A cloned repository does not contain a prepared VM.
+
+For app-behavior changes, use the owned
+[`regression-test`](.github/skills/regression-test/SKILL.md) contribution workflow
+and [`regression-suite`](.github/skills/regression-suite/SKILL.md) independent
+verification alongside the existing unit/build/lint gates. Missing required
+regression evidence is a readiness gap, not a pass. VM preparation uses the
+user-only [`setup-regression-suite`](.github/skills/setup-regression-suite/SKILL.md).
+These repository rules reinforce delivery without editing imported Ship, Patch
+or Refactor packages. A full suite covers its registered scenarios, not all app
+features; do not demand unrelated retrospective backfill.
+
 ## What this repository is
 
 **Notch Pocket** is an independent macOS app. Historical source and artwork
@@ -65,7 +81,7 @@ that request. Do not mix it with fork-local work.
 validation, contract tests, and Dependabot target `pocket`. The existing PR
 policy check identities remain unchanged. See the source-linked
 [CI and packaging inventory](CONTRIBUTING.md#ci-and-packaging-inventory) for
-deferred manual build, release, translation, and issue-form automation.
+owned release gates, retired legacy release routes, and separate translation/issue-form automation.
 Report conflicts rather than retargeting a fork-local PR or weakening checks.
 
 ## Build, test, lint
@@ -102,7 +118,7 @@ an authoring-only phase.
 After reconciliation, helper checks are
 `bash scripts/notch-control/control.sh build` and
 `bash scripts/notch-control/control.sh test`, in addition to the app gates.
-Use `bash scripts/notch-control/control.sh lint` for the package's nine Swift
+Use `bash scripts/notch-control/control.sh lint` for the package's ten Swift
 files: it supplies script-input files to the root config, avoiding an app scan.
 The package test command builds the helper for a permission-free invalid-input
 subprocess contract check; it does not launch the app.
@@ -223,7 +239,8 @@ commands. The parent reconciles the actual diff before executing any gates.
 Require the human-supplied full existing **Developer ID Application** certificate
 name, explicit ten-character team ID and a new canonical absolute build
 directory beneath this checkout's existing `.build/`. Do not inspect Keychain,
-read/copy `local.env`, import/export certificates or embed personal selectors.
+read/copy `local.env`, import/export Keychain certificates or private keys, or
+embed personal selectors.
 No path reuse, overwriting, input-app mutation, installation or app launch:
 
 ```bash
@@ -232,6 +249,34 @@ python3 -B scripts/distribution.py \
   --team 'YOURTEAMID' \
   --build-dir "$PWD/.build/np9-signing-001"
 ```
+
+The canonical command retains existing full-name selection without an extra
+flag. **Optional variant for duplicate certificate names:**
+
+```bash
+python3 -B scripts/distribution.py \
+  --identity 'Developer ID Application: YOUR CERTIFICATE NAME (YOURTEAMID)' \
+  --team 'YOURTEAMID' \
+  --certificate-sha1 'PUBLIC_CERTIFICATE_SHA1_40_HEX_CHARACTERS' \
+  --build-dir "$PWD/.build/np9-signing-sha1-001"
+```
+
+`--certificate-sha1` belongs to **`scripts/distribution.py` only**.
+`scripts/notarize.py` DMG signing and the hosted release pipeline remain
+name-selected and unchanged; neither accepts or forwards this option.
+The optional public leaf fingerprint uses exactly 40 hexadecimal characters
+(either case, no separators or prefix). Name and team remain mandatory.
+Use a human-provided known certificate fingerprint, or the
+[README's artifact-only extraction example](README.md#local-developer-id-candidate-9-bounded-slice)
+with an explicit already-approved signed artifact:
+`codesign --extract-certificates` into a new task-owned temporary directory, then
+`openssl x509` for the public leaf's SHA-1 fingerprint. This is public artifact
+metadata only, not permission for Keychain inspection/enumeration, access
+changes, private-key export or artifact mutation. Extraction is not signature
+verification or proof that the signing identity is usable. The fingerprint
+selects Xcode/resource/outer-app signing and constrains every final bundle/Mach-O
+verification on all architectures; chain, name/team and all other signature
+checks remain required. No fallback to the common name on failure.
 
 The parent creates the `.build/` parent if needed and substitutes the approved
 selector/team; placeholders are not configured values. The command discovers
@@ -276,7 +321,7 @@ Only successful JSON identifies the exact
 ```bash
 python3 -B scripts/package.py \
   --app "$PWD/.build/np9-signing-001/Products/Release/notch-pocket.app" \
-  --output "$PWD/.build/packages/notch-pocket-0.1-NOT-YET-NOTARIZED-001.dmg"
+  --output "$PWD/.build/packages/notch-pocket-0.1.0-NOT-YET-NOTARIZED-001.dmg"
 python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'
 ```
 
@@ -303,8 +348,8 @@ plus the canonical new Python command, fresh native signing and exact-app DMG
 evidence, independent review and the `pocket` PR/hosted checks. See the complete
 command list in CONTRIBUTING. Mock contracts do not prove native signing,
 packaging or runtime behavior. Human alone merges/releases; tagged notarized
-downloads, Homebrew version/checksum automation and second-Mac
-installation/coexistence remain separate work.
+downloads, Homebrew version/checksum automation and additional-Mac acceptance
+require separate evidence; see the [0.1.0 record](docs/releases.md#published-010).
 
 The lint script and `pocket` push/PR SwiftLint workflow use `.swiftlint.yml`.
 Install SwiftLint with `brew install swiftlint` if missing. Preserve the
@@ -325,7 +370,7 @@ The isolated package parses real YAML and tests structural drift without
 executing workflow shell blocks. Its package-local `.gitignore` excludes only
 generated `/node_modules/`; use ordinary npm installation and imports. The existing
 policy suite uses mocked APIs; neither suite requires live repository writes.
-Hosted helper checks run canonical build/test/nine-file lint without app
+Hosted helper checks run canonical build/test/ten-file lint without app
 launch, screenshots, or privacy grants. Swift CodeQL extraction must retain
 the app build and a separate helper build after initialization.
 Static contracts are not proof of runner availability, passing hosted checks,
@@ -360,14 +405,13 @@ an unset identity leaves them unchanged. The hardened-runtime override applies
 only to the valid local-identity path, not unconditionally.
 
 Recheck Accessibility and other required permissions after changing identity.
-These scripts configure no release credentials. The inherited
-`.github/workflows/build_reusable.yml` instead imports a certificate, archives,
-and exports using the `development` method (default identity:
-`Apple Development`), then creates and uploads artifacts. That is not a
-notarized-distribution setup or permission to run it. Distribution signing,
-hardened-runtime requirements, and notarization are not supplied by these local
-test scripts. The separately approved [local Developer ID slice](#local-developer-id-preparation-9-bounded-slice)
-does not authorize that inherited workflow or notarization.
+These scripts configure no release credentials. The inherited manual,
+reusable and comment-triggered release workflows are removed; their Apple
+Development/Xcode 16.4 and automatic-merge paths are not fallback mechanisms.
+Distribution signing, hardened-runtime requirements and notarization are not
+supplied by these local test scripts. Use the separately approved
+[owned release workflow and credential gates](docs/releases.md), without
+restoring a retired route or treating local signing as notarization.
 
 ## Agent skills
 
@@ -550,12 +594,15 @@ and migration requirements:
   and placeholders. Historical credit translations are retained in the license
   notices, not the runtime catalog. Crowdin is not an independent translation
   path for `pocket`.
-- **Unfinished distribution work:** release scripts consume
-  `notch-pocket.app`/`.dmg`, but no independent binaries are published or
-  implied. The isolated local Developer ID command is not a notarized release
-  pipeline. Release branch/merge policy, notarization/publication and future
-  owned update infrastructure still require separate work. Do not run public
-  release automation as part of naming or local setup.
+- **Distribution status:** the independent signed/notarized/stapled 0.1.0
+  release and owned Homebrew cask are published; see the exact
+  [release evidence](docs/releases.md#published-010). The owner confirmed
+  installation on another Mac and accepted distribution on 2026-09-28, closing
+  #9; preserve the [acceptance scope](docs/releases.md#post-publication-acceptance).
+  The isolated
+  local Developer ID command is still not proof of notarization. Future releases
+  require fresh approval and artifact evidence; an in-app updater remains absent.
+  Do not run publication as a side effect of naming or local setup.
 
 ### Test what is testable, and say what is not
 

@@ -42,6 +42,10 @@ struct TabSelectionView: View {
                     .accessibilityAddTraits(
                         tab.view == coordinator.currentView ? .isSelected : []
                     )
+                    .accessibilityIdentifier(tab.view.accessibilityIdentifier)
+                    .accessibilityValue(Text(verbatim: tab.view.accessibilityValue(
+                        isSelected: tab.view == coordinator.currentView
+                    )))
                     .frame(height: 26)
                     .foregroundStyle(tab.view == coordinator.currentView ? .white : .gray)
                     .background {

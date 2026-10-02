@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import signal
 import subprocess
 import tempfile
@@ -20,6 +21,8 @@ distribution = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(distribution)
 IDENTITY = "Developer ID Application: Contract Fixture (ABCDE12345)"
 TEAM = "ABCDE12345"
+CERTIFICATE_SHA1 = "0123456789ABCDEF0123456789ABCDEF01234567"
+OTHER_CERTIFICATE_SHA1 = "89ABCDEF0123456789ABCDEF0123456789ABCDEF"
 TOOLS = {"xcodebuild": "/fixture/Xcode.app/Contents/Developer/usr/bin/xcodebuild",
          "codesign": "/usr/bin/codesign", "lipo": "/usr/bin/lipo"}
 APP_BINARY = Path("Contents/MacOS/notch-pocket")
@@ -68,7 +71,7 @@ class FixtureTests(unittest.TestCase):
             (contents / "MacOS").mkdir(parents=True)
             (contents / "Info.plist").write_bytes(plistlib.dumps({
                 "CFBundleIdentifier": identifier, "CFBundleExecutable": executable,
-                "CFBundlePackageType": kind, "CFBundleShortVersionString": "0.1",
+                "CFBundlePackageType": kind, "CFBundleShortVersionString": "0.1.0",
             }))
         for relative in (APP_BINARY, HELPER_BINARY, FRAMEWORK_BINARY, distribution.RESOURCE_CODE):
             path = self.app / relative
@@ -86,9 +89,48 @@ class FixtureTests(unittest.TestCase):
 
 
 class InputTests(FixtureTests):
+    def test_release_rejects_legacy_or_mismatched_app_and_helper_versions(self):
+        self.create_app()
+        code = distribution.code_inventory(self.app)
+        distribution.bundle_layout(self.app, code)
+        for relative in (Path(), distribution.HELPER):
+            info_path = self.app / relative / "Contents/Info.plist"
+            original = info_path.read_bytes()
+            for version in ("0.1", "0.1.1", "2.7.3"):
+                with self.subTest(bundle=relative, version=version):
+                    info = plistlib.loads(original)
+                    info["CFBundleShortVersionString"] = version
+                    info_path.write_bytes(plistlib.dumps(info))
+                    self.assert_error("invalid_output", distribution.bundle_layout, self.app, code)
+            info_path.write_bytes(original)
+
     def test_explicit_identity_team_and_fresh_owned_build_path(self):
         self.assertEqual(distribution.validate_inputs(IDENTITY, TEAM, str(self.build)), self.build)
         self.assertFalse(self.build.exists())
+
+    def test_optional_certificate_sha1_accepts_exact_hex_in_either_case(self):
+        for certificate_sha1 in (None, CERTIFICATE_SHA1, CERTIFICATE_SHA1.lower()):
+            with self.subTest(certificate_sha1=certificate_sha1):
+                self.assertEqual(distribution.validate_inputs(
+                    IDENTITY, TEAM, str(self.build), certificate_sha1=certificate_sha1), self.build)
+        self.assertFalse(self.build.exists())
+
+    def test_invalid_certificate_sha1_fails_before_tools_or_build_directory_creation(self):
+        for certificate_sha1 in (
+            "", "-", "0" * 39, "0" * 41, "G" * 40, "0x" + CERTIFICATE_SHA1,
+            " " + CERTIFICATE_SHA1, CERTIFICATE_SHA1 + "\n",
+            ":".join(["01"] * 20), "０" * 40, '0" and anchor trusted',
+        ):
+            with self.subTest(certificate_sha1=certificate_sha1), \
+                    mock.patch.object(distribution, "find_tools") as tools:
+                run = mock.Mock()
+                error = self.assert_error(
+                    "invalid_input", distribution.build_distribution, IDENTITY, TEAM, str(self.build),
+                    run=run, certificate_sha1=certificate_sha1)
+                self.assertIn("--certificate-sha1", str(error))
+                tools.assert_not_called()
+                run.assert_not_called()
+                self.assertFalse(self.build.exists())
 
     def test_missing_adhoc_development_partial_and_mismatched_identity_rejected(self):
         for identity, team in (
@@ -97,8 +139,21 @@ class InputTests(FixtureTests):
             (IDENTITY, ""), (IDENTITY, "wrong"), (IDENTITY, "ZZZZZ12345"),
             ("Developer ID Application: Fixture\n (ABCDE12345)", TEAM),
         ):
-            with self.subTest(identity=identity, team=team):
-                self.assert_error("invalid_input", distribution.validate_inputs, identity, team, str(self.build))
+            for certificate_sha1 in (None, CERTIFICATE_SHA1):
+                with self.subTest(identity=identity, team=team, certificate_sha1=certificate_sha1):
+                    self.assert_error("invalid_input", distribution.validate_inputs, identity, team, str(self.build),
+                                      certificate_sha1=certificate_sha1)
+
+    def test_certificate_requirement_extends_chain_team_and_identifier_without_replacing_them(self):
+        base = ('=anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists'
+                ' and certificate leaf[field.1.2.840.113635.100.6.1.13] exists'
+                ' and certificate leaf[subject.OU] = "' + TEAM + '"')
+        for identifier in (None, distribution.APP_ID, distribution.HELPER_ID, distribution.RESOURCE_IDENTIFIER):
+            with self.subTest(identifier=identifier):
+                expected = base + (' and identifier "' + identifier + '"' if identifier is not None else "")
+                self.assertEqual(distribution.requirement(TEAM, identifier), expected)
+                self.assertEqual(distribution.requirement(TEAM, identifier, certificate_sha1=CERTIFICATE_SHA1),
+                                 expected + ' and certificate leaf = H"' + CERTIFICATE_SHA1 + '"')
 
     def test_existing_paths_are_not_overwritten(self):
         for directory in (False, True):
@@ -236,6 +291,8 @@ class SigningTests(FixtureTests):
         self.resource_architectures = b"x86_64 arm64\n"
         self.invalid_final_resource_architectures = set()
         self.changes = {}
+        self.certificate_changes = {}
+        self.final_certificate_changes = {}
         self.entitlement_changes = {}
         self.fail = None
         self.build_mutation = None
@@ -268,6 +325,13 @@ class SigningTests(FixtureTests):
             if resource_input and (arch != "arm64" or "--all-architectures" in command):
                 raise distribution.DistributionError("signature_failed", "Unsigned x86_64 slice.", tool_exit=1)
             verified_architectures = {arch} if arch and "--all-architectures" not in command else {"x86_64", "arm64"}
+            if "-R" in command:
+                inline = command[command.index("-R") + 1]
+                requested = re.search(r' and certificate leaf = H"([0-9A-F]{40})"', inline)
+                certificates = self.final_certificate_changes if self.resource_signed else self.certificate_changes
+                if requested and any(certificates.get((relative, item), CERTIFICATE_SHA1) != requested.group(1)
+                                     for item in verified_architectures):
+                    raise distribution.DistributionError("signature_failed", "Certificate leaf mismatch.", tool_exit=29)
             if (relative == distribution.RESOURCE_CODE and self.resource_signed
                     and verified_architectures & self.invalid_final_resource_architectures):
                 raise distribution.DistributionError("signature_failed", "Invalid final resource signature.", tool_exit=17)
@@ -310,8 +374,9 @@ class SigningTests(FixtureTests):
             fields.update(self.changes.get((relative, arch), {}))
         return b"", "\n".join(key + "=" + value for key, value in fields.items() if value is not None).encode()
 
-    def build_candidate(self):
-        return distribution.build_distribution(IDENTITY, TEAM, str(self.build), run=self.fake_run)
+    def build_candidate(self, certificate_sha1=None):
+        return distribution.build_distribution(
+            IDENTITY, TEAM, str(self.build), run=self.fake_run, certificate_sha1=certificate_sha1)
 
     def test_complete_nested_multiarchitecture_build_then_planned_resource_sign_and_outer_seal(self):
         source_bytes = self.resource_source.read_bytes()
@@ -321,7 +386,8 @@ class SigningTests(FixtureTests):
         self.assertFalse(result["gatekeeper_assessed"])
         self.assertEqual(result["app"], str(self.app))
         self.assertEqual(result["configuration"], "Release")
-        self.assertEqual(result["version"], "0.1")
+        self.assertEqual(result["version"], "0.1.0")
+        self.assertNotIn("certificate_sha1", result)
         self.assertEqual(len(result["code"]), 4)
         self.assertEqual({item["path"] for item in result["code"]},
                          {str(path) for path in (APP_BINARY, HELPER_BINARY, FRAMEWORK_BINARY, distribution.RESOURCE_CODE)})
@@ -365,7 +431,79 @@ class SigningTests(FixtureTests):
                 self.assertIn("1.2.840.113635.100.6.1.13", inline)
                 self.assertIn(TEAM, inline)
                 self.assertIn("--all-architectures", command)
+                self.assertNotIn("certificate leaf = H", inline)
         self.assert_error("output_exists", self.build_candidate)
+
+    def test_explicit_certificate_reaches_xcode_both_signs_and_all_verification_requirements(self):
+        result = self.build_candidate(CERTIFICATE_SHA1.lower())
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["certificate_sha1"], CERTIFICATE_SHA1)
+        self.assertEqual(result["team"], TEAM)
+        self.assertEqual(result["notarization"], "NOT YET NOTARIZED")
+        commands = [call[0] for call in self.calls]
+        build = commands[0]
+        self.assertEqual([part for part in build if part.startswith("CODE_SIGN_IDENTITY")],
+                         ["CODE_SIGN_IDENTITY=" + CERTIFICATE_SHA1])
+        self.assertIn("DEVELOPMENT_TEAM=" + TEAM, build)
+        signs = [command for command in commands if "--sign" in command]
+        self.assertEqual([command[-1] for command in signs], [str(self.app / distribution.RESOURCE_CODE), str(self.app)])
+        for command in signs:
+            self.assertEqual(command[command.index("--sign") + 1], CERTIFICATE_SHA1)
+            self.assertIn("--timestamp", command)
+            self.assertIn("runtime", command)
+            self.assertNotIn("--deep", command)
+        checks = [command for command in commands if "-R" in command]
+        self.assertEqual(len(checks), 11)
+        self.assertEqual({command[-1] for command in checks}, {
+            str(self.app / path) for path in
+            (Path(), distribution.HELPER, APP_BINARY, HELPER_BINARY, FRAMEWORK_BINARY, distribution.RESOURCE_CODE)
+        })
+        for command in checks:
+            self.assertIn(' and certificate leaf = H"' + CERTIFICATE_SHA1 + '"', command[command.index("-R") + 1])
+            self.assertIn("--all-architectures", command)
+            self.assertIn("--strict", command)
+
+    def test_wrong_xcode_certificate_with_matching_name_and_team_blocks_resource_signing(self):
+        self.certificate_changes[(FRAMEWORK_BINARY, "arm64")] = OTHER_CERTIFICATE_SHA1
+        error = self.assert_error("signature_failed", self.build_candidate, CERTIFICATE_SHA1)
+        self.assertEqual(error.details["tool_exit"], 29)
+        self.assertEqual(error.details["retained_build_dir"], str(self.build))
+        self.assertFalse(any("--sign" in call[0] for call in self.calls))
+
+    def test_wrong_final_certificate_on_any_bundle_binary_or_slice_refuses_success_without_retry(self):
+        for index, path in enumerate((
+            Path(), distribution.HELPER, APP_BINARY, HELPER_BINARY, FRAMEWORK_BINARY, distribution.RESOURCE_CODE,
+        )):
+            for arch in ("x86_64", "arm64"):
+                with self.subTest(path=path, arch=arch):
+                    self.build = self.root / ".build" / ("final-certificate-" + str(index) + "-" + arch)
+                    self.app = self.build / "Products/Release/notch-pocket.app"
+                    self.calls.clear()
+                    self.resource_signed = False
+                    self.final_certificate_changes = {(path, arch): OTHER_CERTIFICATE_SHA1}
+                    error = self.assert_error("signature_failed", self.build_candidate, CERTIFICATE_SHA1)
+                    self.assertEqual(error.details["tool_exit"], 29)
+                    self.assertEqual(error.details["retained_build_dir"], str(self.build))
+                    self.assertEqual(len([call for call in self.calls if "--sign" in call[0]]), 2)
+                    self.assertEqual(self.calls[-1][0][-1], str(self.app / path))
+                    self.assertIn("--all-architectures", self.calls[-1][0])
+
+    def test_matching_leaf_does_not_replace_final_name_team_or_entitlement_checks(self):
+        for index, (fields, entitlements) in enumerate((
+            ({"Authority": "Developer ID Application: Another Fixture (ABCDE12345)"}, {}),
+            ({"TeamIdentifier": "ZZZZZ12345"}, {}),
+            ({}, {"get-task-allow": False}),
+        )):
+            with self.subTest(fields=fields, entitlements=entitlements):
+                self.build = self.root / ".build" / ("matching-leaf-" + str(index))
+                self.app = self.build / "Products/Release/notch-pocket.app"
+                self.calls.clear()
+                self.resource_signed = False
+                self.changes = {(distribution.RESOURCE_CODE, "arm64"): fields}
+                self.entitlement_changes = {(distribution.RESOURCE_CODE, "arm64"): entitlements}
+                error = self.assert_error("signature_failed", self.build_candidate, CERTIFICATE_SHA1)
+                self.assertEqual(error.details["retained_build_dir"], str(self.build))
+                self.assertEqual(len([call for call in self.calls if "--sign" in call[0]]), 2)
 
     def test_ad_hoc_wrong_signer_team_flags_or_missing_timestamp_on_any_slice_fails(self):
         bad_fields = [
@@ -373,13 +511,14 @@ class SigningTests(FixtureTests):
             {"TeamIdentifier": "ZZZZZ12345"}, {"Timestamp": None}, {"Timestamp": "none"},
             {"CodeDirectory v": "20500 flags=0x0(none)"}, {"Identifier": "wrong"},
         ]
-        for index, fields in enumerate(bad_fields):
-            with self.subTest(fields=fields):
-                self.build = self.root / ".build" / ("negative-" + str(index))
-                self.app = self.build / "Products/Release/notch-pocket.app"
-                self.changes = {(HELPER_BINARY, "x86_64"): fields}
-                self.assert_error("signature_failed", self.build_candidate)
-                self.assertFalse(self.resource_signed)
+        for certificate_sha1 in (None, CERTIFICATE_SHA1):
+            for index, fields in enumerate(bad_fields):
+                with self.subTest(fields=fields, certificate_sha1=certificate_sha1):
+                    self.build = self.root / ".build" / ("negative-" + str(certificate_sha1) + "-" + str(index))
+                    self.app = self.build / "Products/Release/notch-pocket.app"
+                    self.changes = {(HELPER_BINARY, "x86_64"): fields}
+                    self.assert_error("signature_failed", self.build_candidate, certificate_sha1)
+                    self.assertFalse(self.resource_signed)
 
     def test_exact_entitlements_and_no_debug_including_false(self):
         for actual in ({"get-task-allow": False}, {"com.apple.security.get-task-allow": True},
@@ -529,6 +668,15 @@ class SigningTests(FixtureTests):
         self.assertEqual(error.details["retained_build_dir"], str(self.build))
         self.assertTrue(self.build.is_dir())
 
+    def test_unavailable_explicit_certificate_build_failure_never_falls_back_to_name(self):
+        self.fail = lambda command: self.raise_build_failure()
+        error = self.assert_error("build_failed", self.build_candidate, CERTIFICATE_SHA1)
+        self.assertEqual(error.details["tool_exit"], 65)
+        self.assertEqual(error.details["retained_build_dir"], str(self.build))
+        self.assertEqual(len(self.calls), 1)
+        self.assertIn("CODE_SIGN_IDENTITY=" + CERTIFICATE_SHA1, self.calls[0][0])
+        self.assertNotIn("CODE_SIGN_IDENTITY=" + IDENTITY, self.calls[0][0])
+
     @staticmethod
     def raise_build_failure():
         raise distribution.DistributionError("build_failed", "xcodebuild failed.", tool_exit=65)
@@ -642,7 +790,13 @@ class SigningTests(FixtureTests):
         self.assertNotIn(IDENTITY, errors.getvalue())
 
     def test_required_cli_inputs_and_unknown_flags_never_execute(self):
-        for args in ([], ["--identity", IDENTITY], ["--private-token", "do-not-echo"]):
+        required = ["--identity", IDENTITY, "--team", TEAM, "--build-dir", str(self.build)]
+        for args in (
+            [], ["--identity", IDENTITY], ["--private-token", "do-not-echo"],
+            required + ["--certificate-sha1"],
+            ["--certificate-sha1", CERTIFICATE_SHA1, "--team", TEAM, "--build-dir", str(self.build)],
+            ["--certificate-sha1", CERTIFICATE_SHA1, "--identity", IDENTITY, "--build-dir", str(self.build)],
+        ):
             output, errors = io.StringIO(), io.StringIO()
             with self.subTest(args=args), mock.patch.object(distribution, "build_distribution") as build, \
                     contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
@@ -651,8 +805,66 @@ class SigningTests(FixtureTests):
             self.assertEqual(output.getvalue(), "")
             self.assertNotIn("do-not-echo", errors.getvalue())
 
+    def test_cli_forwards_optional_certificate_and_keeps_full_name_compatibility(self):
+        for certificate_sha1 in (None, CERTIFICATE_SHA1.lower()):
+            args = ["--identity", IDENTITY, "--team", TEAM, "--build-dir", str(self.build)]
+            if certificate_sha1 is not None:
+                args += ["--certificate-sha1", certificate_sha1]
+            output, errors = io.StringIO(), io.StringIO()
+            with self.subTest(certificate_sha1=certificate_sha1), \
+                    mock.patch.object(distribution, "build_distribution", return_value={"ok": True}) as build, \
+                    contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                self.assertEqual(distribution.main(args), 0)
+            build.assert_called_once_with(IDENTITY, TEAM, str(self.build), certificate_sha1=certificate_sha1)
+            self.assertTrue(json.loads(output.getvalue())["ok"])
+            self.assertEqual(errors.getvalue(), "")
+
+    def test_cli_invalid_certificate_reports_input_error_without_echo_or_native_calls(self):
+        output, errors = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            status = distribution.main([
+                "--identity", IDENTITY, "--team", TEAM, "--build-dir", str(self.build),
+                "--certificate-sha1", "do-not-echo",
+            ])
+        self.assertEqual(status, 3)
+        self.assertEqual(json.loads(errors.getvalue())["error"], "invalid_input")
+        self.assertIn("--certificate-sha1", json.loads(errors.getvalue())["message"])
+        self.assertNotIn("do-not-echo", errors.getvalue())
+        self.assertNotIn(IDENTITY, errors.getvalue())
+        self.assertEqual(output.getvalue(), "")
+        self.assertEqual(self.calls, [])
+        self.assertFalse(self.build.exists())
+
 
 class SubprocessTests(unittest.TestCase):
+    def test_pipe_error_stops_and_reaps_owned_child_before_propagating(self):
+        process = mock.Mock(pid=4321)
+        failure = OSError("fixture pipe error")
+        process.communicate.side_effect = [failure, (b"", b"")]
+        with mock.patch.object(distribution.subprocess, "Popen", return_value=process), \
+                mock.patch.object(distribution.os, "killpg") as kill:
+            with self.assertRaises(OSError) as raised:
+                distribution.run_command(["fixture"], env={}, phase="build_failed", timeout=3)
+        self.assertIs(raised.exception, failure)
+        kill.assert_called_once_with(4321, signal.SIGKILL)
+        self.assertEqual(process.communicate.call_count, 2)
+
+    def test_reap_pipe_error_reports_uncertain_child(self):
+        process = mock.Mock(pid=4321)
+        process.communicate.side_effect = OSError("fixture pipe error")
+        with mock.patch.object(distribution.subprocess, "Popen", return_value=process), \
+                mock.patch.object(distribution.os, "killpg"):
+            with self.assertRaises(distribution.DistributionError) as raised:
+                distribution.run_command(["fixture"], env={}, phase="build_failed", timeout=3)
+        self.assertEqual(raised.exception.code, "cleanup_failed")
+        self.assertEqual(raised.exception.details["pid"], 4321)
+
+    def test_failed_spawn_is_distinct_from_uncertain_execution(self):
+        with mock.patch.object(distribution.subprocess, "Popen", side_effect=FileNotFoundError):
+            with self.assertRaises(distribution.DistributionError) as raised:
+                distribution.run_command(["fixture"], env={}, phase="build_failed", timeout=3)
+        self.assertIs(raised.exception.details["process_started"], False)
+
     def test_native_error_status_and_output_redaction(self):
         process = mock.Mock(returncode=65)
         process.communicate.return_value = (b"private build output", b"private diagnostic")

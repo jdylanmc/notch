@@ -28,7 +28,7 @@ struct GeneralSettings: View {
     @Default(.notchHeightMode) var notchHeightMode
     @Default(.showOnAllDisplays) var showOnAllDisplays
     @Default(.automaticallySwitchDisplay) var automaticallySwitchDisplay
-    @Default(.enableGestures) var enableGestures
+    @Default(.enableMediaGestures) var enableMediaGestures
     @Default(.openNotchOnHover) var openNotchOnHover
     @Default(.enableOpeningAnimation) var enableOpeningAnimation
     @Default(.animationSpeedMultiplier) var animationSpeedMultiplier
@@ -170,7 +170,7 @@ struct GeneralSettings: View {
 
             NotchBehaviour()
 
-            gestureControls()
+            mediaGestureControls()
         }
         .toolbar {
             Button("Quit app") {
@@ -180,11 +180,6 @@ struct GeneralSettings: View {
         }
         .accentColor(.effectiveAccent)
         .navigationTitle("General")
-        .onChange(of: openNotchOnHover) {
-            if !openNotchOnHover {
-                enableGestures = true
-            }
-        }
         .alert("Restart to apply language", isPresented: $showLanguageRestartAlert) {
             Button("Later", role: .cancel) {}
             Button("Restart Now") {
@@ -196,18 +191,14 @@ struct GeneralSettings: View {
     }
 
     @ViewBuilder
-    func gestureControls() -> some View {
+    func mediaGestureControls() -> some View {
         Section {
-            Defaults.Toggle(key: .enableGestures) {
-                Text("Enable gestures")
+            Defaults.Toggle(key: .enableMediaGestures) {
+                Text("Enable media gestures")
             }
-                .disabled(!openNotchOnHover)
-            if enableGestures {
+            if enableMediaGestures {
                 Defaults.Toggle(key: .enableHorizontalMediaGestures) {
                     Text("Change media with horizontal gestures")
-                }
-                Defaults.Toggle(key: .closeGestureEnabled) {
-                    Text("Close gesture")
                 }
                 Slider(value: $gestureSensitivity, in: 100...300, step: 100) {
                     HStack {
@@ -226,13 +217,6 @@ struct GeneralSettings: View {
                 Text("Gesture control")
                 customBadge(text: "Beta")
             }
-        } footer: {
-            Text(
-                "Two-finger swipe up on notch to close, two-finger swipe down on notch to open when **Open notch on hover** option is disabled"
-            )
-            .multilineTextAlignment(.trailing)
-            .foregroundStyle(.secondary)
-            .font(.caption)
         }
     }
 
@@ -241,9 +225,6 @@ struct GeneralSettings: View {
         Section {
             Defaults.Toggle(key: .openNotchOnHover) {
                 Text("Open notch on hover")
-            }
-            Defaults.Toggle(key: .enableHaptics) {
-                    Text("Enable haptic feedback")
             }
             Toggle("Remember last tab", isOn: $coordinator.openLastTabByDefault)
             if openNotchOnHover {
@@ -288,16 +269,6 @@ struct GeneralSettings: View {
             }
         } header: {
             Text("Notch behavior")
-        }
-
-        Section {
-            Defaults.Toggle(key: .compactMode) {
-                Text("Compact mode")
-            }
-        } footer: {
-            Text("Shows a smaller opened notch with just the music player — no tabs, calendar or mirror.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 }

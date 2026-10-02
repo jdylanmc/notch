@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "about-version",
+      "kind": "regression",
+      "scenario": "visual-pass",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/about-version.md"
+    },
+    {
+      "id": "about-wrong-output",
+      "kind": "control",
+      "scenario": "visual-fail",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+      "expectedVerdict": "FAIL",
+      "expectedReason": "rendered_output_mismatch",
+      "notes": "scenarios/about-version.md"
+    },
+    {
+      "id": "about-stale-evidence",
+      "kind": "control",
+      "scenario": "stale-evidence",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+      "expectedVerdict": "BLOCKED",
+      "expectedReason": "capture_identity_mismatch",
+      "notes": "scenarios/about-version.md"
+    },
+    {
+      "id": "about-missing-reveal",
+      "kind": "control",
+      "scenario": "visual-no-reveal",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+      "expectedVerdict": "FAIL",
+      "expectedReason": "rendered_output_mismatch",
+      "notes": "scenarios/about-version.md"
+    },
+    {
+      "id": "abort-after-settings-open",
+      "kind": "control",
+      "scenario": "native-abort-after-open",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+      "expectedVerdict": "BLOCKED",
+      "expectedReason": "native_interaction_aborted",
+      "notes": "scenarios/about-version.md"
+    },
+    {
+      "id": "abort-after-about-selection",
+      "kind": "control",
+      "scenario": "native-abort-after-about",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput",
+      "expectedVerdict": "BLOCKED",
+      "expectedReason": "native_interaction_aborted",
+      "notes": "scenarios/about-version.md"
+    },
+    {
+      "id": "appearance-idle-face-removed",
+      "kind": "regression",
+      "scenario": "appearance-idle-face-removed",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledAppearanceWithoutIdleFace",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/appearance-idle-face-removed.md"
+    },
+    {
+      "id": "notifications-ai-replies-removed",
+      "kind": "regression",
+      "scenario": "notifications-ai-replies-removed",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledNotificationsWithoutAIReplies",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/notifications-ai-replies-removed.md"
+    },
+    {
+      "id": "general-haptics-removed",
+      "kind": "regression",
+      "scenario": "general-haptics-removed",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledGeneralWithoutHaptics",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/general-haptics-removed.md"
+    },
+    {
+      "id": "general-panel-swipes-removed",
+      "kind": "regression",
+      "scenario": "general-panel-swipes-removed",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledGeneralWithoutPanelSwipes",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/general-panel-swipes-removed.md"
+    },
+    {
+      "id": "general-compact-mode-removed",
+      "kind": "regression",
+      "scenario": "general-compact-mode-removed",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledGeneralWithoutCompactMode",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/general-compact-mode-removed.md"
+    },
+    {
+      "id": "music-idle-no-target",
+      "kind": "regression",
+      "scenario": "music-idle-no-target",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledIdleMusicWithoutTarget",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/music-idle-launcher.md"
+    },
+    {
+      "id": "music-idle-unavailable",
+      "kind": "regression",
+      "scenario": "music-idle-unavailable",
+      "test": "GuestRegressionProbe/GuestRegressionProbe/testInstalledIdleMusicUnavailableTarget",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/music-idle-launcher.md"
+    }
+  ]
+}

@@ -7,12 +7,18 @@ import Defaults
 import Foundation
 
 struct DefaultsDashboardConfigurationDataStore: DashboardConfigurationDataStore {
+    private let key: Defaults.Key<Data?>
+
+    init(key: Defaults.Key<Data?> = .dashboardConfigurationData) {
+        self.key = key
+    }
+
     func read() throws -> Data? {
-        Defaults[.dashboardConfigurationData]
+        Defaults[key]
     }
 
     func write(_ data: Data) throws {
-        Defaults[.dashboardConfigurationData] = data
+        Defaults[key] = data
     }
 }
 

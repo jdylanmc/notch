@@ -1,13 +1,14 @@
-# Local app control — issue #18, bounded notch actions and Settings slice
+# Local app control — bounded notch, tab, Settings, and capture slice
 
 Small Apple-toolchain-only Swift package. No daemon, network service,
 synthetic keyboard input, or dependencies. The app supplies minimal read-only
-panel Accessibility metadata and explicit native open/close actions. Requires macOS 14+
-APIs; use the repository's macOS 15.6+/Xcode 26+ build host.
+panel/tab Accessibility metadata and explicit native panel/tab actions. Requires
+macOS 14+ APIs; use the repository's macOS 15.6+/Xcode 26+ build host.
 
-This slice covers discovery, read-only notch state, per-panel notch open/close,
-Settings → General/About, and a selected app-owned window screenshot.
-It does **not** complete issue #18 or establish full notch control.
+This slice covers discovery, read-only notch/tab state, per-panel notch
+open/close, exact Home/Dashboard/Shelf tab selection, Settings →
+General/About, closing one explicitly selected Settings window, and a selected app-owned window screenshot.
+It does **not** complete issue #18 or #75 or establish full notch control.
 Runtime behavior must be verified against the exact newly built app.
 
 ## Build and deterministic checks
@@ -62,7 +63,7 @@ bash scripts/notch-control/control.sh lint
 ```
 
 `lint` enumerates only `Package.swift` and Swift files under this package's
-`Sources` and `Tests` (nine files currently), excluding `.build`. It sets
+`Sources` and `Tests` (ten files currently), excluding `.build`. It sets
 `SCRIPT_INPUT_FILE_COUNT` and `SCRIPT_INPUT_FILE_0` through the final index, then
 runs `swiftlint lint --config .swiftlint.yml --no-cache --use-script-input-files`
 with the repository-root config path. No duplicate config or app-source scan.
@@ -82,8 +83,14 @@ tests in `Tests/ControlCoreTests/NotchActionTests.swift` add exact command/name
 contracts, invalid selectors, selected-panel routing,
 explicit no-op, unsupported discovery, pre/post-action stale/foreign/refused
 paths, one-attempt semantics, late discovery/dispatch/observation deadlines and
-bounded polling/output (41 tests total across both test source files). The existing
-subprocess test also covers invalid notch verbs and IDs before discovery. All original cases remain.
+bounded polling/output. Tab-selection cases add exact identifier/parser
+contracts, one-press observation, already-selected no-op, stale mapping,
+disabled/unavailable Shelf, native failure and timeout coverage. Eleven Settings-close
+cases add explicit selectors, one native press, identity changes, unsupported
+actions, permission loss and late/failed/refused completion. Three pane-wait
+cases cover selection, replacement, timeout and error propagation (69 tests total
+across three test source files). The existing subprocess test also covers invalid
+notch verbs and IDs before discovery. All original cases remain.
 They do **not** exercise Accessibility, ScreenCaptureKit, permissions, Settings UI, or the
 actual app. Permission denial and native API failures need the runtime matrix
 below; tests are not evidence that those integrations work.
@@ -99,10 +106,20 @@ bash scripts/notch-control/control.sh run settings general \
   --app-path /Applications/notch-pocket.app
 bash scripts/notch-control/control.sh run settings about \
   --app-path /Applications/notch-pocket.app
+# Substitute a freshly observed settings.windowID; this never opens Settings:
+bash scripts/notch-control/control.sh run settings close --window WINDOW_ID \
+  --app-path /Applications/notch-pocket.app
 # Substitute a freshly observed notch.panels[].windowID:
 bash scripts/notch-control/control.sh run notch open --window WINDOW_ID \
   --app-path /Applications/notch-pocket.app
 bash scripts/notch-control/control.sh run notch close --window WINDOW_ID \
+  --app-path /Applications/notch-pocket.app
+# Use the same freshly observed marked panel ID:
+bash scripts/notch-control/control.sh run select-tab dashboard --window WINDOW_ID \
+  --app-path /Applications/notch-pocket.app
+bash scripts/notch-control/control.sh run select-tab home --window WINDOW_ID \
+  --app-path /Applications/notch-pocket.app
+bash scripts/notch-control/control.sh run select-tab shelf --window WINDOW_ID \
   --app-path /Applications/notch-pocket.app
 # Substitute a freshly observed windows[].id or settings.windowID, not a saved ID:
 bash scripts/notch-control/control.sh run capture --window WINDOW_ID \
@@ -113,9 +130,10 @@ bash scripts/notch-control/control.sh run capture --window WINDOW_ID \
 Use `--app-path` pointing to the **actual built product**, not this installed-app
 example, for build verification. Paths must be absolute and normalized, without
 dot components, duplicate separators, or control characters. Flags cannot
-repeat. Capture IDs must be positive UInt32 decimal values. Notch IDs additionally
-require canonical decimal spelling (no leading zeros, signs or whitespace);
-`--window` is mandatory and `--output` is invalid for notch actions. Commands accept
+repeat. Capture IDs must be positive UInt32 decimal values. Notch, tab and Settings-close IDs
+additionally require canonical decimal spelling (no leading zeros, signs or
+whitespace); `--window` is mandatory and `--output` is invalid for notch/tab/Settings-close
+actions. Commands accept
 `--timeout 0.5` through `--timeout 15` seconds (default 5); this is a shared
 observation/API budget, not a hard OS process-kill timer or disk-write deadline.
 
@@ -136,6 +154,52 @@ absence means unknown/another pane, not General by default.
 `settings.windowID` is returned only when the identified Settings Accessibility
 window's geometry matches one on-screen window owned by that app. Missing
 mapping is **not** permission to guess an ID.
+Pane selection can settle before window geometry does. If `windowID` is absent,
+inspect fresh read-only state before capture/close; do not replay navigation or
+reuse an earlier ID to bypass a missing mapping.
+
+When supported, `inspect` also reports `tabSelection.panels[]` for marked notch
+panels whose implemented tab controls are currently exposed. Each entry includes
+the exact panel `windowID` and allowlisted tab state. The full tab bar exposes
+Home, Dashboard, and Shelf when Shelf is enabled. Compact navigation exposes
+only the real unselected Home or Dashboard destination shortcut; the helper
+derives the selected opposite tab from that exact supported shape. Missing
+markers yield `{"status":"unsupported"}`; missing Accessibility yields
+`{"status":"accessibility_unavailable"}`. Never infer a selection for an
+unsupported panel or reuse a saved ID after window recreation.
+
+### Explicit Settings close
+
+`settings close --window ID` never opens Settings or changes its pane. It
+requires the unique app-owned `NotchPocketSettingsWindow`, freshly mapped to the
+requested native window ID. Missing, replaced, ambiguous or unmappable windows
+fail explicitly; an already-closed window is not a successful no-op.
+
+The app sets that marker explicitly with `setAccessibilityIdentifier`; setting
+only `NSWindow.identifier` is not equivalent. Older builds lacking the AX marker
+are unsupported rather than matched by title. The app-side marker XCTest does
+not establish cross-process behavior by itself. Pane completion uses observed
+selected rows in the same AX window, not a title assumption that SwiftUI may
+change during presentation.
+
+The helper resolves that window's native `AXCloseButton`, checks its button
+role, close-button subrole, enabled state, containing window and advertised
+`AXPress`, then rechecks the same window/control and dispatches once. After dispatch,
+a still-exposed AX window that temporarily loses its on-screen geometry mapping
+keeps polling; it is not treated as a completed close. Both the Settings AX window
+must disappear and the selected native ID must no longer be on-screen within
+the existing shared deadline before
+returning `settingsClose: {windowID: ID, outcome: "closed"}` and
+`settings: {status: "closed"}`. Replacement, permission loss, native failure or
+timeout never becomes success or an automatic retry. A failure, including a late
+final response read, does not prove no action occurred; inspect fresh state
+before restoration rather than repeating the close. No global keyboard input,
+arbitrary selector, preference write, permission prompt, launch or quit is used.
+
+Use this to restore Settings to closed only when this task opened it and a
+fresh inspection supplies the exact Settings window ID. Do not close another
+person's pre-existing Settings session. This restores observed window visibility, not
+every aspect of OS focus, geometry or internal pane state.
 
 ### Read-only notch observation
 
@@ -251,6 +315,53 @@ the requested action caused a concurrent state change. Normal interactions can
 change it immediately. Off-screen/sharing-excluded panels can be controlled but
 this never grants capture permission or relaxes sharing policy.
 
+### Exact native tab selection
+
+The implemented SwiftUI tab buttons expose these stable identifiers and literal
+Accessibility values:
+
+- `com.jdylanmc.notchpocket.notch.v1.tab.dashboard`
+- `com.jdylanmc.notchpocket.notch.v1.tab.home`
+- `com.jdylanmc.notchpocket.notch.v1.tab.shelf`
+- `AXValue = selected|unselected`
+
+The selected button also retains the native selected trait. Shelf is absent
+when its existing setting disables it; the helper never changes that setting.
+A present but disabled Shelf control is also refused.
+
+When compact navigation replaces the tab bar, its one real Home or Dashboard
+destination button exposes the same versioned identifier and literal
+`unselected` value. The helper accepts only that exact single-shortcut shape
+and derives the selected opposite tab; it does not render or search for hidden
+controls. If Shelf remains selected while becoming empty or disabled, the real
+Dashboard shortcut remains usable but withholds the helper marker until the app
+returns to Home or Dashboard. Inspection is unsupported in that transient state
+and selection never falsely reports Home.
+
+`select-tab dashboard|home|shelf --window ID` requires one exact, freshly
+observed app-owned versioned panel. The helper searches only that marked
+panel's descendants, with the existing 600-element/depth-24 bounds, and accepts
+only the exact identifiers on native Accessibility buttons. It pins the panel
+and target control through pre-dispatch validation, requires exactly one
+advertised `AXPress`, and performs at most one native press. It does not execute
+generic selectors or arbitrary actions.
+
+Dispatch acceptance is not success. The helper polls fresh Accessibility state
+within the original deadline and succeeds only after the requested tab is
+observed as selected:
+
+```json
+{"tabSelectionAction":{"windowID":123,"tab":"dashboard","state":"selected","outcome":"changed"}}
+```
+
+`outcome: already_selected` is an explicit no-op after the exact marked-panel
+tab state is revalidated; no action discovery or press is attempted. Missing/disabled Shelf,
+unsupported or malformed markers, stale mapping, permission loss, native press
+failure and timeout are nonzero failures. A failed/timed-out press may have
+been delivered; inspect again before restoration and never retry blindly. Tab
+selection does not open/close or lock the notch, change focus/sharing policy,
+control media/notifications, or alter Shelf settings/data.
+
 | Error code | Exit |
 | --- | --- |
 | `invalid_input` | 2 |
@@ -278,12 +389,12 @@ deduplicates identical roots, and searches at most 600 nodes across those roots,
 with depth at most 24. It never searches window descendants for menu commands.
 Exactly one distinct English Settings item is required before pressing; it then
 verifies `NotchPocketSettingsWindow`; navigation requires one matching row and observes
-both selected row and window title. Localized or changed structures can fail
+its selection in the same Settings window. Localized or changed structures can fail
 explicitly; there is no guessed fallback or global command-comma.
 
 ## Privacy and human permissions
 
-Settings and notch actions require **Accessibility**. Capture requires **Screen Recording**
+Settings, notch actions and tab selection require **Accessibility**. Capture requires **Screen Recording**
 (named **Screen & System Audio Recording** on some macOS versions).
 `inspect` reports current preflight results without prompting. A human may grant
 the relevant terminal/agent host or helper in System Settings → Privacy &
@@ -312,8 +423,9 @@ After semantic reconciliation and build/test/lint review:
 
 1. Preserve app identity, permissions, preferences, container and shelf. Follow
    the repository's existing data compatibility guidance. Record the current
-   app path and lifecycle, Settings visibility/pane and per-panel notch state; do not read or dump
-   private preference/shelf contents through this tool.
+   app path and lifecycle, Settings visibility/pane, per-panel notch state and
+   each supported panel's selected tab; do not read or dump private
+   preference/shelf contents through this tool.
 2. Parent/human launches the exact built `notch-pocket.app`, ensuring there is
    exactly one instance. This tool neither installs nor launches it. Run
    `inspect --app-path /absolute/built/notch-pocket.app`; verify path, process,
@@ -330,8 +442,12 @@ After semantic reconciliation and build/test/lint review:
    and **view it**. Verify the reversible General → About action in both pixels
    and observed state. Reinspect rather than reusing stale IDs.
 5. Restore the original General/About selection with this tool. If it was a
-   different pane, a human restores that pane; if Settings was originally
-   closed, a human closes only Settings. No preference toggles are needed.
+   different pane, a human restores that pane. If this task opened originally
+   closed Settings, inspect again and use `settings close --window ID` with the
+   fresh `settings.windowID`; verify closed visibility. Do not close a
+   pre-existing human Settings session. No preference toggles are needed.
+   If close fails, report blocked restoration and inspect without retrying the
+   action or guessing an ID; a human restores unsupported window state.
    Parent restores the original app lifecycle if it changed. Verify shelf,
    preferences and permissions remain intact without dumping their contents.
 6. Report live denial/missing-app/duplicate-instance/stale-window/unsupported
@@ -347,7 +463,11 @@ After semantic reconciliation and build/test/lint review:
    originally open), Settings and app lifecycle. Normal hover may change state;
    a refused restoration or recreated panel is a reported blocker, not permission
    to bypass guards or use stale IDs.
-8. Retain/delete only the agreed local images; list ignored residue. No commits,
+8. While that exact panel is open, verify Home → Dashboard → Shelf only when
+   Shelf is enabled. Observe each selected state and restore the original tab
+   before restoring panel/app state. Missing or disabled Shelf must be reported
+   without changing its setting.
+9. Retain/delete only the agreed local images; list ignored residue. No commits,
    remote publication, issue closure, or release is implied by these checks.
 
 Existing notch windows may be captured **only if** discoverable, selected and

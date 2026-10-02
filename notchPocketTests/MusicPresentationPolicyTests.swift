@@ -23,4 +23,13 @@ final class MusicPresentationPolicyTests: XCTestCase {
         XCTAssertFalse(presentation.showsPlaybackControls)
         XCTAssertTrue(presentation.showsLauncherIcon)
     }
+
+    func testPauseStopAndResumeDoNotLatchLauncherPresentation() {
+        let states = [false, true, false, false, true]
+
+        XCTAssertEqual(
+            states.map { MusicPresentationPolicy.presentation(isPlaying: $0) },
+            [.launcher, .player, .launcher, .launcher, .player]
+        )
+    }
 }

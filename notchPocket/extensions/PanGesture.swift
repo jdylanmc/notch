@@ -10,13 +10,12 @@ import SwiftUI
 import Defaults
 
 enum PanDirection {
-    case left, right, up, down
+    case left, right
 
-    var isHorizontal: Bool { self == .left || self == .right }
-    var sign: CGFloat { (self == .right || self == .down) ? 1 : -1 }
+    var sign: CGFloat { self == .right ? 1 : -1 }
 
-    func signed(from translation: CGSize) -> CGFloat { (isHorizontal ? translation.width : translation.height) * sign }
-    func signed(deltaX: CGFloat, deltaY: CGFloat) -> CGFloat { (isHorizontal ? deltaX : deltaY) * sign }
+    func signed(from translation: CGSize) -> CGFloat { translation.width * sign }
+    func signed(deltaX: CGFloat) -> CGFloat { deltaX * sign }
 }
 
 extension View {
@@ -120,12 +119,12 @@ private struct ScrollMonitor: NSViewRepresentable {
                 return
             }
 
-            // Only consider scroll events that are primarily along the configured axis.
+            // Only consider scroll events that are primarily horizontal.
             let absDX = abs(event.scrollingDeltaX)
             let absDY = abs(event.scrollingDeltaY)
             // Require the movement along the gesture axis to be at least 1.5x the orthogonal axis.
             let axisDominanceFactor: CGFloat = 1.5
-            let isAxisDominant: Bool = direction.isHorizontal ? (absDX >= axisDominanceFactor * absDY) : (absDY >= axisDominanceFactor * absDX)
+            let isAxisDominant: Bool = absDX >= axisDominanceFactor * absDY
             guard isAxisDominant else { return }
 
             // Determine whether to normalize system deltas to device (physical) direction.
@@ -134,8 +133,7 @@ private struct ScrollMonitor: NSViewRepresentable {
             // Scale non-precise (mouse wheel) scrolling deltas so they feel similar to
             // trackpad gestures.
             let rawDelta = direction.signed(
-                deltaX: event.scrollingDeltaX * deviceDirectionMultiplier,
-                deltaY: event.scrollingDeltaY * deviceDirectionMultiplier
+                deltaX: event.scrollingDeltaX * deviceDirectionMultiplier
             )
             let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 8
             let delta = rawDelta * scale

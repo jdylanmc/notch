@@ -4,14 +4,41 @@ An independent macOS notch app maintained at
 [jdylanmc/notch](https://github.com/jdylanmc/notch).
 Historical source and artwork attribution: [Third-party notices](THIRD_PARTY_LICENSES).
 
-The independent development version is **0.1**. Settings and the macOS app menu
+The first independent release is **0.1.0**. Settings and the macOS app menu
 use **Notch Pocket**; the existing bundle identities, build counter, and
 `notch-pocket.app` filename are unchanged.
+
+The release uses tag **`notch-pocket-v0.1.0`** and
+Homebrew cask version **`0.1.0`**. App and embedded helper versions match.
+Historical upstream `v2.x` tags do not identify Notch Pocket releases.
+The [published release and verification record](docs/releases.md#published-010)
+bind the notarized download to its exact source and checksum.
+
+See [notarized releases](docs/releases.md) for the scoped hosted Actions workflow,
+manual credential configuration, exact-commit gates, final-DMG publication,
+Homebrew update PRs, and native recovery. Workflow source is not publication
+evidence; Apple credentials must be supplied by the owner.
 
 The foundation milestone preserves existing media features, shared media code,
 and the file shelf. **Spotify is the only committed player support.** Other
 inherited integrations remain in the source; their presence is not a broader
 support commitment or a roadmap for new features.
+
+**Idle appearance:** the decorative face and its Appearance setting are removed
+([#50](https://github.com/jdylanmc/notch/issues/50)). A previously stored
+`showNotHumanFace=true` is ignored, not migrated or deleted. Media, Shelf, the
+full panel and retained appearance customization are unchanged. Historical
+translations for the removed control remain in the owned string catalog;
+they do not enable a runtime feature.
+
+**Notification replies:** AI-generated reply suggestions and their Settings
+control are removed. Notifications and manual replies remain, including drafts,
+focus/compose holds, timeout errors and existing delivery/app/clipboard fallbacks.
+The separate `canReply` eligibility behavior is unchanged. A stored
+`smartRepliesEnabled=true` is ignored, not migrated or deleted; historical
+translations remain in the catalog. The
+[installed-app regression](experiments/tart-regression/scenarios/notifications-ai-replies-removed.md)
+checks Settings output, not live banner capture or message delivery.
 
 <p align="center">
   <img src="notchPocket/Assets.xcassets/logo2.imageset/NotchPocket%20icon.png" alt="Notch Pocket utility pocket icon" width="150" />
@@ -25,10 +52,21 @@ symbol is separate and unchanged.
 
 ## Availability
 
-**No independent Notch Pocket binary releases are available yet.** Build locally
-from `pocket`. Upstream downloads and Homebrew casks install a different product;
-they are not Notch Pocket installation options. There is no independent download
-site, tap, sponsorship destination, or notarized release to advertise.
+**Notch Pocket 0.1.0 is available through the owned Homebrew tap:**
+
+```bash
+brew install --cask jdylanmc/notch/notch-pocket
+```
+
+Or download the [signed, notarized and stapled DMG](https://github.com/jdylanmc/notch/releases/tag/notch-pocket-v0.1.0).
+The cask verifies the final download's SHA-256 and installs `notch-pocket.app`;
+it does not strip quarantine or bypass Gatekeeper. Upstream downloads/casks
+install a different product and are not Notch Pocket installation options.
+
+On 2026-09-28, the owner confirmed Homebrew installation on another Mac and
+accepted distribution, closing [#9](https://github.com/jdylanmc/notch/issues/9).
+See the [acceptance scope](docs/releases.md#post-publication-acceptance);
+broader application regression work is not closed by distribution.
 
 The deployment target is macOS **14 Sonoma** or later, on Apple Silicon or Intel.
 The build-host requirements below are separate.
@@ -36,7 +74,9 @@ The build-host requirements below are separate.
 **No in-app updater:** automatic/manual update checks and their dependency,
 feed/key, onboarding, and settings have been removed. The historical feed
 deployment and upstream tap publishing have also been removed. Future owned
-updates require separate implementation; rebuild locally for now.
+updates require separate implementation. Homebrew users can obtain future
+published cask versions with `brew upgrade --cask jdylanmc/notch/notch-pocket`;
+local development builds still require a rebuild.
 
 ## Building from Source
 
@@ -72,8 +112,9 @@ An explicit `DEVELOPER_DIR` is respected. Optional stable local signing uses
 Local signing is not notarization or distribution signing.
 
 `CONFIGURATION=Release scripts/build.sh` builds locally in Release configuration.
-Do not run the inherited public-release workflows as part of local setup:
-they perform remote writes/uploads and do not establish distribution readiness.
+The inherited manual/reusable/comment-triggered release workflows have been
+removed. Use only the [owned release workflow](docs/releases.md) for separately
+approved distribution; a local build is not publication.
 Only the user approves merges and releases.
 
 ### Local DMG preparation
@@ -172,8 +213,9 @@ separate parent-owned native proof after author reconciliation.
 It does not complete #9/#54, provide a downloadable release or Homebrew tap,
 establish Gatekeeper acceptance, or authorize installation, app launch, Apple
 uploads or publication. Only the user approves merges/releases. Tagged
-downloads, notarization, automated Homebrew version/checksum updates, and a
-second-Mac clean installation/coexistence check remain separate work.
+downloads, notarization, automated Homebrew version/checksum updates and
+additional-Mac acceptance are established separately in the
+[0.1.0 release record](docs/releases.md#published-010), not by this local command.
 
 After author/parent reconciliation and the declared validation gates, use the
 separate Python **3.9+**, standard-library command. Supply the **full existing
@@ -193,6 +235,60 @@ python3 -B scripts/distribution.py \
   --team 'YOURTEAMID' \
   --build-dir "$PWD/.build/np9-signing-001"
 ```
+
+The canonical command above retains full-name selection without an extra flag.
+**Optional variant for duplicate certificate names:** when multiple certificates
+share the same common name, use `--certificate-sha1` with a new build directory:
+
+```bash
+python3 -B scripts/distribution.py \
+  --identity 'Developer ID Application: YOUR CERTIFICATE NAME (YOURTEAMID)' \
+  --team 'YOURTEAMID' \
+  --certificate-sha1 'PUBLIC_CERTIFICATE_SHA1_40_HEX_CHARACTERS' \
+  --build-dir "$PWD/.build/np9-signing-sha1-001"
+```
+
+This option belongs to **`scripts/distribution.py` only**.
+`scripts/notarize.py` DMG signing and the hosted release pipeline remain
+name-selected and unchanged; neither accepts or forwards this option.
+Supply the approved **public leaf certificate's SHA-1 fingerprint**, exactly
+40 hexadecimal characters, without spaces, colons or a `0x` prefix (either case
+is accepted).
+The full `--identity` and `--team` remain mandatory and are independently checked.
+The fingerprint selects the certificate for Xcode, the approved built resource
+and the outer app seal; every final bundle/Mach-O verification also requires
+that exact leaf on all architectures. It is not a private key or a replacement for the
+Developer ID chain, name/team, timestamp, runtime or entitlement checks.
+The command does not discover certificates or change Keychain access; an
+unavailable selector or mismatched signer fails without falling back to the name.
+
+Use a **human-provided known certificate fingerprint**, or derive it from the
+embedded **public certificate of an already-approved signed artifact** at an
+explicit approved path. Do not enumerate or inspect Keychain, export private
+keys, or search for another artifact. For the artifact-only method, the following
+creates a **new task-owned temporary directory** and reads the embedded public
+certificate chain without changing or signing the artifact:
+
+```bash
+(
+  umask 077 &&
+  certificate_dir="$(mktemp -d "${TMPDIR:-/tmp}/notch-public-certificate.XXXXXX")" &&
+  printf 'Public certificate scratch directory: %s\n' "$certificate_dir" &&
+  codesign --display --extract-certificates="$certificate_dir/cert-" \
+    '/absolute/path/to/already-approved/notch-pocket.app' &&
+  openssl x509 -inform DER -in "$certificate_dir/cert-0" \
+    -noout -fingerprint -sha1
+)
+```
+
+`cert-0` is the public leaf certificate. Remove only the displayed fingerprint's
+label and colon separators to obtain the required 40 hexadecimal characters.
+Extraction is not signature verification, approval of a new signer, or proof
+that the signing identity is usable. Stop on any failure; do not fall back to
+Keychain inspection. Retain the reported scratch path until its files are
+accounted for; clean up only this invocation's extracted public certificate files
+and then its empty directory. All signing and verification gates below remain
+required.
 
 Choose a **new** build directory beneath this checkout's `.build/`; its parent
 must already exist, be user-owned and not group/world-writable. Paths must be
@@ -249,6 +345,8 @@ Only a zero exit with `ok: true, status: "signed"` identifies the successful
 candidate. Its JSON includes the exact `app`, build directory, identities,
 version, developer directory and per-code/per-architecture signing evidence,
 with `notarization: "NOT YET NOTARIZED"` and `gatekeeper_assessed: false`.
+When supplied and successfully verified, `certificate_sha1` records the public
+fingerprint in uppercase; the field is absent for full-name-only selection.
 Native diagnostic logs and the supplied certificate name are not echoed.
 See the [failure/evidence contract](CONTRIBUTING.md#local-distribution-signing-outcome-and-evidence).
 
@@ -258,7 +356,7 @@ Consume **that exact successful app** with the unchanged packager:
 mkdir -p .build/packages
 python3 -B scripts/package.py \
   --app "$PWD/.build/np9-signing-001/Products/Release/notch-pocket.app" \
-  --output "$PWD/.build/packages/notch-pocket-0.1-NOT-YET-NOTARIZED-001.dmg"
+  --output "$PWD/.build/packages/notch-pocket-0.1.0-NOT-YET-NOTARIZED-001.dmg"
 ```
 
 Use the `app` path actually returned above and a new DMG path; do not package a
@@ -285,27 +383,33 @@ belongs in an authoring-only phase.
 
 App build/test, SwiftLint, CodeQL, native-helper validation, and CI contract
 tests run for pushes to `pocket` and PRs targeting `pocket`. The app retains its
-three-leg Xcode matrix. Helper CI runs its canonical build, all 41 package tests,
-and nine-file lint without launching the app or requesting privacy grants.
+three-leg Xcode matrix. Helper CI runs its canonical build, all 69 package tests,
+and ten-file lint without launching the app or requesting privacy grants.
 Contract checks use Node.js 22+ with an isolated, pinned YAML parser and also run
-the existing 22 PR-policy tests plus the portable local-packaging and distribution-
-signing unittest commands. CI does not use a signing identity, build a distribution
+the existing 22 PR-policy tests plus the portable local-packaging, distribution-
+signing and notarization-preparation unittest commands. CI does not use a signing identity, build a distribution
 candidate, or build/upload a DMG.
 
 See the [CI and packaging inventory](CONTRIBUTING.md#ci-and-packaging-inventory)
 for source evidence, safe commands, generated dependency handling, and deferred
 workflows. `notchPocket` is the project/scheme; packaging consumes
 `notch-pocket.app` and `notch-pocket.dmg`. Static agreement on those names is
-not distribution proof: inherited manual/release Xcode 16.4 defaults,
-`dev` → `main` release merges, signing/publication, and Crowdin ownership remain
-outside product-CI validation. Do not activate those workflows.
+not distribution proof. The former Xcode 16.4 / `dev` → `main` release paths are
+retired; signing/notarization/publication still require the owned workflow's
+credential and exact-artifact gates. Crowdin ownership remains separate.
 
 ## Local UI debugging
+
+The [regression coverage and isolation inventory](docs/regression-coverage.md)
+maps current application journeys and every Settings pane to existing tests,
+missing automation and genuine external gates. Dashboard fixtures use isolated
+preferences suites and Shelf persistence fixtures use owned temporary
+directories; they are not a whole-app isolation or native regression pass.
 
 The repository-local [notch skill](.github/skills/notch/SKILL.md) uses a small
 native [control helper](scripts/notch-control/README.md) for running-app
 discovery, read-only per-panel notch state, explicit notch open/close,
-Settings → General/About, and local capture of one selected app-owned window.
+Settings → General/About, explicit selected-Settings-window close, and local capture of one selected app-owned window.
 This is a bounded slice of #18, not full notch control or issue completion.
 
 ```bash

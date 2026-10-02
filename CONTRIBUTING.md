@@ -9,8 +9,12 @@ You can contribute through code, documentation, or reports at [jdylanmc/notch](h
 Current work is the buildable, agent-operable foundation. Preserve existing media
 features, shared code, and the shelf. Spotify is the only committed player
 support; discuss scope before adding features or removing inherited integrations.
-There are no independent binary releases yet. Use local builds, not upstream
-downloads, and do not run publication workflows without explicit release approval.
+The independent 0.1.0 notarized release and owned Homebrew cask are published;
+see [installation and artifact evidence](docs/releases.md#published-010).
+Do not use upstream downloads or run publication workflows without explicit
+release approval. The owner confirmed installation on another Mac and accepted
+distribution on 2026-09-28, closing #9; see the
+[acceptance scope](docs/releases.md#post-publication-acceptance).
 
 ## Table of Contents
 
@@ -112,6 +116,14 @@ rather than assuming external changes reach this product.
 
 ## CI and Packaging Inventory
 
+The [credential-free release dependency preflight](.github/workflows/release-dependency-preflight.yml)
+runs manually from `pocket` and on scoped dependency/tooling PR changes. It
+verifies the actual hosted tools, synthetic DMG checksum-cache behavior, and
+hash-pinned wheels including an offline install; it retains only public wheels.
+The synthetic image is not an application or release and is not uploaded.
+It does not replace the unfiltered
+product checks or access signing credentials. See [usage and limits](docs/releases.md#credential-free-dependency-preflight).
+
 This inventories the bounded product-CI and local-packaging slices of
 [#51](https://github.com/jdylanmc/notch/issues/51) and local-signing slice
 NP-9-local-signing-v1 of [#9](https://github.com/jdylanmc/notch/issues/9) under
@@ -123,19 +135,19 @@ hosted run or distribution succeeded.
 | --- | --- |
 | [App build/test](.github/workflows/cicd.yml) | Pushes to `pocket` and PRs **targeting** `pocket`. Retains all three matrix legs: `macos-15` / `~26.0`, `macos-26` / `^26`, `xcode-27` / `^27`; scheme `notchPocket`, Release build and Debug tests. Each leg first runs the build-wrapper contracts using system `/bin/bash`. App tests start the normal app test host on CI. Runner/Xcode availability still needs hosted confirmation. |
 | [SwiftLint](.github/workflows/swiftlint.yml) | `pocket` push/PR, unchanged `SwiftLint` check name and root `.swiftlint.yml`. Non-strict inherited app baseline; do not add strict mode, suppress warnings, or clean up unrelated source to make CI appear clean. |
-| [CodeQL Advanced](.github/workflows/codeql.yml) | `pocket` push/PR; retains Actions, Python, and manual Swift scans, existing permissions, and Monday `31 15 * * 1` UTC schedule. Scheduled runs use GitHub's default-branch semantics, not the push branch filter. Swift still builds the app without signing; a **separate** canonical helper build follows initialization and app extraction, before analysis. |
-| [Native helper](.github/workflows/notch_control.yml) | Unfiltered `pocket` push/PR on `macos-26`, read-only contents, non-persisted checkout credentials, 20-minute timeout. Canonical build, all 41 package tests, and exactly nine Swift lint inputs. No app launch, screenshots, privacy grants, signing secrets, or publication. |
-| [CI contracts](.github/workflows/ci_contract_tests.yml), [tests/package](.github/scripts/ci-contract/) | Unfiltered `pocket` push/PR, read-only contents, non-persisted credentials, five-minute timeout. Node's built-in test runner and one exact-pinned YAML parser inspect actual workflow structure, reject malformed/duplicate YAML, and test deliberately mutated configurations. Workflow `run` blocks are data, never executed by these structural tests. Also runs the existing 22 PR-policy tests and the named portable local-packaging and distribution-signing unittest steps; no native signing, packaging or uploads on Ubuntu. |
+| [CodeQL Advanced](.github/workflows/codeql.yml) | `pocket` push/PR; retains Actions, Python, and manual Swift scans, existing permissions, and Monday `31 15 * * 1` UTC schedule. Scheduled runs use GitHub's default-branch semantics, not the push branch filter. After repeated manifest-execution failures on the Xcode 27 preview runner (#88), Swift uses `macos-26` with explicit Xcode 26.6 for dependency resolution, app extraction and helper extraction. Actual hosted results, not this selection, establish scan success. The app build/test matrix still includes Xcode 27. Swift builds the app without signing; a **separate** canonical helper build follows initialization and app extraction, before analysis. |
+| [Native helper](.github/workflows/notch_control.yml) | Unfiltered `pocket` push/PR on `macos-26`, read-only contents, non-persisted checkout credentials, 20-minute timeout. Canonical build, all 69 package tests, and exactly ten Swift lint inputs. No app launch, screenshots, privacy grants, signing secrets, or publication. |
+| [CI contracts](.github/workflows/ci_contract_tests.yml), [tests/package](.github/scripts/ci-contract/) | Unfiltered `pocket` push/PR, read-only contents, non-persisted credentials, five-minute timeout. Node's built-in test runner and one exact-pinned YAML parser inspect actual workflow structure, reject malformed/duplicate YAML, and test deliberately mutated configurations. Workflow `run` blocks are data, never executed by these structural tests. Also runs the existing 22 PR-policy tests and the named portable local-packaging, distribution-signing, notarization-preparation and hosted-release unittest steps; no native signing, packaging or uploads on Ubuntu. |
 | [Local packaging](scripts/package.py), [portable tests](scripts/tests/test_package.py) | Explicit already-built Release app and new DMG paths; Python 3.9+ standard library, existing hash-pinned DMG builder unchanged. Native identity/signature checks, private copy, read-only image verification, exact-input content comparison, owned-device detach, no-clobber promotion. No implicit build/sign/install/launch, secrets, `local.env`, release credentials, or publication. See [usage and missing-dependency recovery](README.md#local-dmg-preparation). |
-| [Local distribution signing](scripts/distribution.py), [portable tests](scripts/tests/test_distribution.py) | Separately approved NP-9-local-signing-v1: explicit existing Developer ID Application name/team and a fresh private build directory. Xcode Release signing overrides, planned signing of the resource-only MediaRemoteAdapterTestClient plus outer app seal, and all-Mach-O/all-architecture signature evidence. Existing local defaults and packager unchanged. **NOT YET NOTARIZED**; no Keychain management, installation, app launch or publication. See [usage](README.md#local-developer-id-candidate-9-bounded-slice). |
+| [Local distribution signing](scripts/distribution.py), [portable tests](scripts/tests/test_distribution.py) | Separately approved NP-9-local-signing-v1: explicit existing Developer ID Application name/team, optional public certificate SHA-1 selector and a fresh private build directory. Xcode Release signing overrides, planned signing of the resource-only MediaRemoteAdapterTestClient plus outer app seal, and all-Mach-O/all-architecture signature evidence. Existing local defaults and packager unchanged. **NOT YET NOTARIZED**; no Keychain management, installation, app launch or publication. See [usage](README.md#local-developer-id-candidate-9-bounded-slice). |
+| [Notarization preparation](scripts/notarize.py), [portable tests](scripts/tests/test_notarize.py) | Explicit signed app, signer/team, existing notarytool profile and fresh output directory. Copies without changing the source, notarizes/staples the app, reuses exact-input packaging, then signs/notarizes/staples and verifies the final DMG. Native execution uploads to Apple; portable CI does not. No GitHub/Homebrew publication or installation. See [release gates and recovery](docs/releases.md). |
+| [Notch Pocket notarized release](.github/workflows/pocket-native-release.yml), [portable boundaries](scripts/tests/test_pocket_release.py) | Product tag `notch-pocket-v*` or explicit existing-tag dispatch from `pocket`; strict version/ancestry gate and all nine successful exact-commit product jobs from the latest `pocket` push runs. Separate hosted macOS 26 / full Xcode 26.6 signing job uses isolated temporary credentials; Ubuntu publication checks transferred and remote asset bytes before publishing a draft as latest. Final DMG plus public manifest only. Scoped Homebrew token opens a draft cask PR, never merges or writes `main`. Empty configuration fails with named missing secrets. See [setup, permissions and recovery](docs/releases.md#hosted-actions-workflow). |
 | [PR target check](.github/workflows/base_ref_check.yml), [guidance](.github/workflows/base_ref_check_comment.yml) | Existing `pull_request_target` events and check identities remain unchanged: `Fork PR target check` and `Sync PR target guidance comment`. Only `pocket` is an allowed base. Guidance uses its existing comment permissions; product-CI changes do not broaden them. |
 | [Existing PR-policy test workflow](.github/workflows/pr_target_policy_tests.yml) | Retains `Test PR target policy`, its four-file path filter, all-branch PR event, and `pocket` push event. The new contract workflow runs the same suite independently without changing that scope. Policy tests evaluate the existing inline policy script with mocked APIs, not workflow shell blocks or live writes. |
 | [Dependabot](.github/dependabot.yml) | All three existing weekly entries now target `pocket`: GitHub Actions at `/`, pip at `/Configuration/dmg`, Swift at `/`. Ecosystems and cadence unchanged. The isolated contract-test npm dependency is manually maintained; adding a fourth update entry is separate scope. |
-| [Manual build](.github/workflows/manual_build.yml) — **deferred** | Dispatch only, `head_ref` default/fallback `main`, Xcode `16.4` default/fallback, signed reusable build. Not a safe product-validation entry point; no retargeting or activation. |
-| [Reusable packaging](.github/workflows/build_reusable.yml) — **deferred** | `workflow_call`, Xcode `16.4` default, certificate import, version commits/pushes, archive/export using `development`, and app/DMG uploads. Project and product names are already distinct (below). Not notarized distribution or release authorization. |
-| [Release](.github/workflows/release.yml) — **deferred** | Comment-triggered `/release`, eligible same-repository `dev` → `main` PRs, Xcode `16.4`. Includes branch/version pushes, signed build, release upload, and automatic stable-release merge behavior. Do not invoke, retarget, or grant credentials as part of product CI. |
+| Inherited manual/reusable/comment release — **retired** | `manual_build.yml`, `build_reusable.yml`, `release.yml` and the otherwise-unused `extract_version.py` are removed. No Xcode 16.4/Apple Development release path, comment-triggered version writes or automatic release merge remains. Source contracts reject restored filenames, calls to the retired builder and additional tag/release/comment/repository-dispatch entry points. This is the current source inventory, not proof about arbitrary future workflow code. Historical runs/tags and license notices are preserved. Use only the owned workflow above. |
 | [Crowdin](.github/workflows/crowdin.yml) — **deferred** | `dev` push/manual dispatch, translation PRs targeting `dev`, repository writes and external project credentials. Independent Crowdin project/credential ownership is not established; no `pocket` synchronization is promised. |
-| [Issue-form version dropdown](.github/workflows/update-version-dropdown.yml) — **deferred** | Tag pushes, published releases, or manual dispatch; checks out the repository default branch and commits/pushes issue-form changes. Not enabled or redirected by the CI slice. |
+| [Issue-form version dropdown](.github/workflows/update-version-dropdown.yml) — **manual only** | Explicit `workflow_dispatch` only; tag/release triggers removed to prevent unrelated commits on the first product release. The existing default-branch checkout and issue-form update/commit script are retained. Not invoked by the product release workflow. |
 
 The old app trigger `'*'` was not a recursive branch wildcard: slash-containing
 feature branch pushes were not reliably covered by that pattern. Product CI now
@@ -167,6 +179,8 @@ npm test --prefix .github/scripts/ci-contract
 node --test .github/scripts/pr-target-policy.test.cjs
 python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'
 python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'
+python3 -B -m unittest discover -s scripts/tests -p 'test_notarize.py'
+python3 -B -m unittest discover -s scripts/tests -p 'test_pocket_release.py'
 ```
 
 Python packaging tests require only Python 3.9+ and its standard library on
@@ -279,14 +293,37 @@ Neither an owned partial output nor a competing output is deleted.
 
 ### Local distribution signing outcome and evidence
 
-`scripts/distribution.py --identity FULL_DEVELOPER_ID_NAME --team TEAM_ID --build-dir ABSOLUTE_NEW_BUILD`
+`scripts/distribution.py --identity FULL_DEVELOPER_ID_NAME --team TEAM_ID --build-dir ABSOLUTE_NEW_BUILD [--certificate-sha1 PUBLIC_CERTIFICATE_SHA1_40_HEX_CHARACTERS]`
 is the **NP-9-local-signing-v1** entrypoint. Follow the
 [exact signed-app → existing packager workflow](README.md#local-developer-id-candidate-9-bounded-slice).
 It never loads `local.env`, changes project/local-test signing defaults, touches
 an input app, imports/exports certificates, calls Keychain management tools, or
-submits anything to Apple. Existing app/helper IDs, version 0.1 and declared
+submits anything to Apple. Existing app/helper IDs, version 0.1.0 and declared
 entitlements are checked, not overridden. The helper's existing sandbox `false`
 entitlement is retained rather than replaced with app entitlements.
+
+The optional `--certificate-sha1` disambiguates certificates sharing the same
+common name without enumerating identities. It accepts exactly 40 hexadecimal
+characters (case-insensitive, no separators/prefix); an empty or malformed value
+fails before tool discovery or build-directory creation. Missing option values
+are argument errors. The full name and team remain required, even with a
+fingerprint. The normalized uppercase fingerprint replaces only the native
+signing selector, in both Xcode and the resource/outer-app `codesign --sign`
+commands. Omitting it preserves full-name selection and the existing result
+shape. An unavailable certificate is a native build/signing failure, not
+permission to retry by name or change credentials.
+
+`--certificate-sha1` belongs to **`scripts/distribution.py` only**.
+`scripts/notarize.py` DMG signing and the hosted release pipeline remain
+name-selected and unchanged; neither accepts or forwards this option.
+Use a human-provided known public certificate fingerprint, or follow the
+[README's artifact-only extraction example](README.md#local-developer-id-candidate-9-bounded-slice):
+`codesign --extract-certificates` reads the embedded public certificate of an
+already-approved signed artifact into a new task-owned temporary directory, then
+`openssl x509` reports the leaf's SHA-1 fingerprint. No Keychain inspection or
+enumeration, private-key export, or artifact mutation is authorized. This does
+not replace any signer, chain, team, timestamp, runtime, entitlement or
+all-architecture verification below.
 
 The explicit plain command-line `CODE_SIGN_IDENTITY=...` and
 `DEVELOPMENT_TEAM=...` overrides take precedence over project settings, including
@@ -326,7 +363,11 @@ loosen the contract.
 
 Final verification requires the Apple Developer ID Application certificate
 chain and supplied team using an inline `codesign -R` requirement; both app
-and helper also require their exact identifiers. Every physical Mach-O file,
+and helper also require their exact identifiers. If a fingerprint was supplied,
+the requirement additionally includes `certificate leaf = H"<40_HEX_SHA1>"`.
+It checks Xcode-signed code before resource signing, then every bundle and
+physical Mach-O file during final verification, with `--all-architectures`.
+A different leaf fails even if its common name and team match. Every physical Mach-O file,
 including nested resources and framework versions, is verified for all
 architectures and inspected per architecture for the requested certificate
 name, team, hardened-runtime flag, secure `Timestamp` (not merely `Signed Time`)
@@ -337,9 +378,9 @@ remain sealed resources, not a claim about interpreter runtime policy.
 
 | Exit | Outcome |
 | --- | --- |
-| 0 | `ok: true`, `status: "signed"`; exact `app`, `build_dir`, `configuration`, `version`, developer directory, team, app/helper identifiers and `code` evidence for each architecture |
+| 0 | `ok: true`, `status: "signed"`; exact `app`, `build_dir`, `configuration`, `version`, developer directory, team, app/helper identifiers and `code` evidence for each architecture; uppercase public `certificate_sha1` only when supplied and verified |
 | 2 | `invalid_arguments`; no supplied argument contents echoed |
-| 3 | `invalid_input`; invalid identity/team, unsafe paths or entitlement declarations |
+| 3 | `invalid_input`; invalid identity/team/certificate SHA-1, unsafe paths or entitlement declarations |
 | 4 | `missing_tool`, `unsupported_platform`; full Xcode 26+/macOS 15.6+ required |
 | 5 | `signature_failed`; no fallback, with original `tool_exit` when a native signing/verification command failed |
 | 6 | `build_failed`; original Xcode `tool_exit`, or explicit `timed_out` |
@@ -414,29 +455,30 @@ Do not launch/install either app or change preferences, shelf or privacy.
 
 The parent owns independent review, publication of the bounded PR targeting
 `pocket`, and required hosted/Shepherd evidence or exact blockers. Only the human
-merges/releases. This does not close #9/#54: notarized tagged downloads,
-automated owned Homebrew version/checksum publication, and second-Mac clean
-installation/coexistence proof remain incomplete and separately approved.
+merges/releases. This local-signing slice alone does not close #9/#54.
+The separate [0.1.0 release record](docs/releases.md#published-010) now establishes
+notarized tagged downloads, owned Homebrew publication and the owner's
+additional-Mac installation confirmation and distribution acceptance.
+That acceptance does not claim exhaustive runtime or coexistence coverage.
 
 ### Project versus distribution artifact
 
 [`notchPocket.xcodeproj/project.pbxproj`](notchPocket.xcodeproj/project.pbxproj)
 sets the app's Debug/Release `PRODUCT_NAME` to `notch-pocket`, references
 `notch-pocket.app`, and points `TEST_HOST` at that product. Build/test and CodeQL
-use project/scheme **`notchPocket`**. Reusable packaging uses
-`PROJECT_NAME: notchPocket` for the project, scheme and archive, but
-`APP_PRODUCT_NAME: notch-pocket` for `Release/notch-pocket.app` and
-`Release/notch-pocket.dmg`. Release artifact download and publication agree on
-the DMG name. [`Configuration/dmg/create_dmg.sh`](Configuration/dmg/create_dmg.sh)
+use project/scheme **`notchPocket`**. The owned distribution helper verifies
+`Products/Release/notch-pocket.app`; notarization produces
+`notch-pocket-VERSION.dmg` and the hosted workflow transfers that exact final
+artifact plus its public manifest. Release download and publication verify the
+same filename, version, size and checksum. [`Configuration/dmg/create_dmg.sh`](Configuration/dmg/create_dmg.sh)
 takes explicit app/output paths; it does not derive the app name from the scheme.
 
 Structural tests protect those source-level identities without executing
-packaging. The separate local Developer ID command above does not authorize
-these workflows. Archive/export success, notarization, release credential
-handling, translation ownership, and release/merge policy remain separately
-approved work. Inherited Xcode 16.4 defaults are not aligned
-with the product's Xcode 26+ build-host requirement. Do not run the deferred
-workflows to discover whether they work.
+packaging. The separate local Developer ID command above does not itself
+authorize publication. Native notarization, release credentials, exact-artifact
+evidence and approval remain the owned workflow's gates. The incompatible
+Xcode 16.4/Apple Development workflows are retired, not a fallback when those
+gates are unavailable. Translation ownership remains separate.
 
 ## Code Style Guidelines
 

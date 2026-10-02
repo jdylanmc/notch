@@ -17,6 +17,7 @@ from xml.parsers.expat import ExpatError
 
 
 ROOT = Path(__file__).resolve().parent.parent
+VERSION = "0.1.0"
 APP_NAME = "notch-pocket.app"
 APP_ID = "com.jdylanmc.notchpocket"
 HELPER_ID = APP_ID + ".XPCHelper"
@@ -54,10 +55,11 @@ def run_command(command, *, env, phase, timeout):
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
         )
     except OSError as exc:
-        raise DistributionError(phase, "Unable to start " + Path(command[0]).name) from exc
+        raise DistributionError(phase, "Unable to start " + Path(command[0]).name,
+                                process_started=False) from exc
     try:
         result = process.communicate(timeout=timeout)
-    except (subprocess.TimeoutExpired, KeyboardInterrupt) as exc:
+    except BaseException as exc:
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
@@ -67,13 +69,13 @@ def run_command(command, *, env, phase, timeout):
                                     pid=process.pid) from stop_error
         try:
             process.communicate(timeout=10)
-        except subprocess.TimeoutExpired as stop_error:
+        except (subprocess.TimeoutExpired, OSError) as stop_error:
             raise DistributionError("cleanup_failed", "Owned subprocess did not stop.",
                                     pid=process.pid) from stop_error
-        if isinstance(exc, KeyboardInterrupt):
-            raise
-        raise DistributionError(phase, Path(command[0]).name + " timed out.",
-                                timed_out=True) from exc
+        if isinstance(exc, subprocess.TimeoutExpired):
+            raise DistributionError(phase, Path(command[0]).name + " timed out.",
+                                    timed_out=True) from exc
+        raise
     if process.returncode:
         raise DistributionError(phase, Path(command[0]).name + " failed.",
                                 tool_exit=process.returncode)
@@ -81,12 +83,15 @@ def run_command(command, *, env, phase, timeout):
     return result
 
 
-def validate_inputs(identity, team, build_value):
+def validate_inputs(identity, team, build_value, *, certificate_sha1=None):
     if not re.fullmatch(r"[A-Z0-9]{10}", team):
         raise DistributionError("invalid_input", "Supply an explicit ten-character Apple team ID.")
     if (not re.fullmatch(r"Developer ID Application: [^\x00-\x1f\x7f]+ \([A-Z0-9]{10}\)", identity)
             or not identity.endswith(" (" + team + ")")):
         raise DistributionError("invalid_input", "Supply the full Developer ID Application name for this team.")
+    if certificate_sha1 is not None and not re.fullmatch(r"[0-9a-fA-F]{40}", certificate_sha1):
+        raise DistributionError("invalid_input", "Supply --certificate-sha1 as exactly 40 hexadecimal characters "
+                                "without separators.")
     build = Path(build_value)
     if not build.is_absolute() or ".." in build.parts:
         raise DistributionError("invalid_input", "Build path must be absolute without '..'.")
@@ -238,7 +243,7 @@ def bundle_layout(app, code):
         info = plist_dictionary(info_path.read_bytes(), "invalid_output")
         if any(info.get(key) != value for key, value in (
             ("CFBundleIdentifier", identifier), ("CFBundleExecutable", executable),
-            ("CFBundlePackageType", kind), ("CFBundleShortVersionString", "0.1"),
+            ("CFBundlePackageType", kind), ("CFBundleShortVersionString", VERSION),
         )):
             raise DistributionError("invalid_output", "Unexpected app/helper identity or version.")
         binary = bundle / "Contents/MacOS" / executable
@@ -251,20 +256,22 @@ def bundle_layout(app, code):
     return expected
 
 
-def requirement(team, identifier=None):
+def requirement(team, identifier=None, *, certificate_sha1=None):
     # The leading '=' makes -R an inline requirement, not a filename.
     value = ('=anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists'
              ' and certificate leaf[field.1.2.840.113635.100.6.1.13] exists'
              ' and certificate leaf[subject.OU] = "' + team + '"')
     if identifier is not None:
         value += ' and identifier "' + identifier + '"'
+    if certificate_sha1 is not None:
+        value += ' and certificate leaf = H"' + certificate_sha1 + '"'
     return value
 
 
-def verify_bundles(app, tools, env, team, run, *, deep=True):
+def verify_bundles(app, tools, env, team, run, *, deep=True, certificate_sha1=None):
     for bundle, identifier in ((app, APP_ID), (app / HELPER, HELPER_ID)):
         run([tools["codesign"], "--verify", *(["--deep"] if deep else []), "--strict", "--all-architectures",
-             "-R", requirement(team, identifier), str(bundle)],
+             "-R", requirement(team, identifier, certificate_sha1=certificate_sha1), str(bundle)],
             env=env, phase="signature_failed", timeout=120)
 
 
@@ -319,10 +326,10 @@ def check_entitlements(actual, expected):
         raise DistributionError("signature_failed", "Signed entitlements differ from the declared contract.")
 
 
-def verify_binary(binary, expected, identity, team, tools, env, run):
+def verify_binary(binary, expected, identity, team, tools, env, run, *, certificate_sha1=None):
     identifier, entitlements = expected
     run([tools["codesign"], "--verify", "--strict", "--all-architectures",
-         "-R", requirement(team, identifier), str(binary)],
+         "-R", requirement(team, identifier, certificate_sha1=certificate_sha1), str(binary)],
         env=env, phase="signature_failed", timeout=120)
     evidence = []
     for arch, fields, actual in signature_details(binary, tools, env, run):
@@ -387,8 +394,11 @@ def sign_resource(app, identity, tools, env, run):
     return RESOURCE_IDENTIFIER
 
 
-def build_distribution(identity, team, build_value, run=run_command):
-    build = validate_inputs(identity, team, build_value)
+def build_distribution(identity, team, build_value, run=run_command, *, certificate_sha1=None):
+    build = validate_inputs(identity, team, build_value, certificate_sha1=certificate_sha1)
+    if certificate_sha1 is not None:
+        certificate_sha1 = certificate_sha1.upper()
+    selector = certificate_sha1 if certificate_sha1 is not None else identity
     env = environment()
     tools = find_tools(env, run)
     try:
@@ -399,29 +409,31 @@ def build_distribution(identity, team, build_value, run=run_command):
         scratch = build / "Scratch"
         scratch.mkdir(mode=0o700)
         env["TMPDIR"] = str(scratch) + "/"
-        run(build_command(build, identity, team, tools), env=env, phase="build_failed", timeout=3600)
+        run(build_command(build, selector, team, tools), env=env, phase="build_failed", timeout=3600)
         app = build / "Products/Release" / APP_NAME
         code = code_inventory(app)
         expected = bundle_layout(app, code)
-        verify_bundles(app, tools, env, team, run, deep=False)
+        verify_bundles(app, tools, env, team, run, deep=False, certificate_sha1=certificate_sha1)
         for binary in code:
             if binary != app / RESOURCE_CODE:
-                verify_binary(binary, expected.get(binary, (None, {})), identity, team, tools, env, run)
-        resource_identifier = sign_resource(app, identity, tools, env, run)
+                verify_binary(binary, expected.get(binary, (None, {})), identity, team, tools, env, run,
+                              certificate_sha1=certificate_sha1)
+        resource_identifier = sign_resource(app, selector, tools, env, run)
         expected[app / RESOURCE_CODE] = (resource_identifier, {})
-        verify_bundles(app, tools, env, team, run)
+        verify_bundles(app, tools, env, team, run, certificate_sha1=certificate_sha1)
         if code_inventory(app) != code:
             raise DistributionError("invalid_output", "Code inventory changed during signing.")
         evidence = [
             {"path": str(binary.relative_to(app)),
              "signatures": verify_binary(binary, expected.get(binary, (None, {})),
-                                         identity, team, tools, env, run)}
+                                         identity, team, tools, env, run, certificate_sha1=certificate_sha1)}
             for binary in code
         ]
         return {"ok": True, "status": "signed", "distribution": "local-only",
                 "notarization": "NOT YET NOTARIZED", "gatekeeper_assessed": False,
                 "app": str(app), "build_dir": str(build), "configuration": "Release",
-                "version": "0.1", "team": team, "developer_dir": env["DEVELOPER_DIR"],
+                "version": VERSION, "team": team, "developer_dir": env["DEVELOPER_DIR"],
+                **({"certificate_sha1": certificate_sha1} if certificate_sha1 is not None else {}),
                 "app_identifier": APP_ID, "helper_identifier": HELPER_ID, "code": evidence}
     except DistributionError as exc:
         exc.details["retained_build_dir"] = str(build)
@@ -436,17 +448,20 @@ def build_distribution(identity, team, build_value, run=run_command):
 
 class Parser(argparse.ArgumentParser):
     def error(self, message):
-        raise DistributionError("invalid_arguments", "Use --identity, --team and --build-dir; see --help.")
+        raise DistributionError("invalid_arguments", "Use --identity, --team and --build-dir, "
+                                "with optional --certificate-sha1 VALUE; see --help.")
 
 
 def main(argv=None):
     parser = Parser(description=__doc__, epilog="NOT YET NOTARIZED. Does not package, install, launch or publish.")
     parser.add_argument("--identity", required=True, help="Full Developer ID Application certificate common name")
     parser.add_argument("--team", required=True, help="Explicit ten-character Apple team ID")
+    parser.add_argument("--certificate-sha1", help="Optional exact public certificate SHA-1 (40 hex characters); "
+                        "disambiguates certificates with the same common name")
     parser.add_argument("--build-dir", required=True, help="New absolute directory beneath this checkout's .build/")
     try:
         args = parser.parse_args(argv)
-        result = build_distribution(args.identity, args.team, args.build_dir)
+        result = build_distribution(args.identity, args.team, args.build_dir, certificate_sha1=args.certificate_sha1)
     except DistributionError as exc:
         print(json.dumps({"ok": False, "error": exc.code, "message": str(exc), **exc.details}), file=sys.stderr)
         return EXIT_CODES[exc.code]

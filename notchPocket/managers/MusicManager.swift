@@ -468,6 +468,16 @@ final class MusicManager: ObservableObject {
     private func updateFromPlaybackState(_ state: PlaybackState) {
         guard state.lastUpdated != .distantPast else { return }
 
+        if effectiveMediaController == .nowPlaying {
+            let remembered = Defaults[.lastNowPlayingLauncherBundleIdentifier]
+            let observed = MusicLaunchTargetResolver.rememberedBundleIdentifier(
+                observed: state.bundleIdentifier, previous: remembered
+            )
+            if observed != remembered {
+                Defaults[.lastNowPlayingLauncherBundleIdentifier] = observed
+            }
+        }
+
         if effectiveMediaController == .nowPlaying,
            MediaControllerType(nowPlayingBundleIdentifier: state.bundleIdentifier) != nil,
            Defaults[.lastSupportedNowPlayingBundleIdentifier] != state.bundleIdentifier {
@@ -791,8 +801,9 @@ final class MusicManager: ObservableObject {
     func openMusicApp() async -> MusicAppLaunchOutcome {
         let target = MusicLaunchTargetResolver.bundleIdentifier(
             preferred: preferredMediaController,
-            currentBundleIdentifier: bundleIdentifier,
-            rememberedNowPlayingBundleIdentifier: Defaults[.lastSupportedNowPlayingBundleIdentifier]
+            currentBundleIdentifier: effectiveMediaController == .nowPlaying ? bundleIdentifier : nil,
+            rememberedNowPlayingBundleIdentifier: Defaults[.lastNowPlayingLauncherBundleIdentifier]
+                ?? Defaults[.lastSupportedNowPlayingBundleIdentifier]
         )
         return await MusicAppLauncher(workspace: WorkspaceMusicAppOpening()).launch(bundleIdentifier: target)
     }

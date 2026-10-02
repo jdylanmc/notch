@@ -456,9 +456,6 @@ struct NotchHomeView: View {
             if Defaults[.showCalendar] {
                 CalendarView()
                     .frame(width: shouldShowCamera ? 170 : 215)
-                    .onHover { isHovering in
-                        vm.isHoveringCalendar = isHovering
-                    }
                     .environmentObject(vm)
                     .transition(.opacity)
             }
@@ -490,9 +487,7 @@ struct MusicSliderView: View {
     var onValueChange: (Double) -> Void
 
     // Layout options, ported from Atoll (GPL-3.0, itself a Notch Pocket
-    // fork) so the compact layout can put the times either side of the
-    // track. Defaults reproduce the previous stacked/duration look exactly,
-    // so the standard layout is untouched.
+    // fork). Defaults retain the standard stacked/duration layout.
     var labelLayout: TimeLabelLayout = .stacked
     var trailingLabel: TrailingLabel = .duration
     var restingTrackHeight: CGFloat = 5
@@ -619,8 +614,7 @@ struct CustomSlider: View {
     @Binding var lastDragged: Date
     var onValueChange: ((Double) -> Void)?
     var onDragChange: ((Double) -> Void)?
-    /// Defaults match the previous hard-coded 5/9 so the standard layout is
-    /// unchanged; the compact layout passes a chunkier track.
+    /// Defaults retain the standard layout's 5/9 track heights.
     var restingTrackHeight: CGFloat = 5
     var draggingTrackHeight: CGFloat = 9
 

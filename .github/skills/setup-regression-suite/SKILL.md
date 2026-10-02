@@ -1,0 +1,51 @@
+---
+name: setup-regression-suite
+description: "User-only walkthrough for preparing this machine's headless Tart regression VM. Use on direct user invocation or explicit acceptance of a regression-suite setup offer. Do not invoke automatically for missing prerequisites, run regressions, or replace an existing environment silently."
+user-invocable: true
+disable-model-invocation: true
+---
+
+# Set up the local regression environment
+
+Follow [the approved intent](intent.md), root `AGENTS.md`,
+[the reconstruction recipe](../../../docs/agents/vm-regression.md), and
+[the executable probe instructions](../../../experiments/tart-regression/README.md).
+
+## Walkthrough
+
+1. Confirm user activation: direct request or affirmative **Setup now** choice.
+   Keep **Cancel** and **Clarify custom setup location** available. A missing VM
+   or an agent's preference is not activation.
+2. Inspect the current platform and existing local/custom setup read-only.
+   Confirm supported Apple hardware, host/guest/toolchain compatibility, actual
+   licenses, available storage and the user's CPU/RAM/download budget.
+   Reuse a suitable prepared environment; never choose an unrelated VM.
+3. Agree on an ignored local directory, normally `.local/vm-regression/`.
+   Verify Git ignores disks, credentials and generated evidence before writing
+   them. Pin and verify Tart's release artifact/signature/license and the Apple
+   restore image; do not assume a mutable tag or an unpinned installer matches
+   the reviewed version.
+4. Guide fresh guest setup in the normal viewer. Use a dedicated test account;
+   no personal-data migration or Apple Account is required. The user handles
+   account-password and OS-consent prompts.
+5. Guide Remote Login for that account, a dedicated SSH key, and console-based
+   verification of the guest host fingerprint. Keep strict host-key checking;
+   no private key or password belongs in source, command arguments or reports.
+6. Explain guest-only automatic login, display/screen-saver idle settings,
+   sleep policy and testing authorization. The owner chooses these security
+   tradeoffs. Host Caffeine does not configure the guest; automatic login does
+   not prevent later idle locking.
+7. Install complete licensed Xcode and the explicitly approved Notch artifact.
+   Finish Xcode's first launch. Use immutable archives when transferring bundles;
+   verify candidate identity and signatures after guest-local extraction.
+8. Verify headless boot, graphical login, SSH access and effective idle settings.
+   Keep readiness separate from application test results. Do not invoke the
+   regression suite as an implicit setup step; return readiness to its caller.
+9. Write local `AGENTS.md` beside the VM with actual names, paths, ownership,
+   start/stop commands, prerequisites and limitations. Keep the portable recipe
+   and executable test sources in Git; private runtime state remains ignored.
+
+Return completed/pending steps, approved resource choices, verified identities,
+local instruction location and remaining human actions. Do not claim a suite
+pass from setup readiness. No automated privacy grants, host-security changes,
+paid resources, destructive replacement, publication or release without authority.
