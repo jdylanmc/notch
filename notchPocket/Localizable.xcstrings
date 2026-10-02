@@ -12,6 +12,9 @@
       }
     },
     "%lld shelf items" : {},
+    "A music app open is still pending." : {},
+    "A previous music app open request is still pending. Check Applications before trying again." : {},
+    "Opens the current music app without starting playback." : {},
     "Add Shelf Summary" : {},
     "Close and reopen the panel after the configuration issue is resolved." : {},
     "Dashboard" : {},
@@ -202,17 +205,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@"
-          }
-        }
-      }
-    },
-    "%@ could not be opened." : {
-      "comment" : "Concise music launcher failure. The placeholder is a human-readable music app name.",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ could not be opened."
           }
         }
       }
@@ -14128,13 +14120,13 @@
         }
       }
     },
-    "Music app %@ could not be opened. Try opening it from Applications." : {
+    "Opening %@ was not confirmed. It may still open. Check Applications before trying again." : {
       "comment" : "Music launcher failure. The placeholder is a human-readable music app name.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Music app %@ could not be opened. Try opening it from Applications."
+            "value" : "Opening %@ was not confirmed. It may still open. Check Applications before trying again."
           }
         }
       }
@@ -14150,13 +14142,13 @@
         }
       }
     },
-    "Music app could not be opened." : {
-      "comment" : "Concise music launcher failure when the app has no known display name.",
+    "Music app open was not confirmed." : {
+      "comment" : "Concise music launcher failure; the OS may still complete the open.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Music app could not be opened."
+            "value" : "Music app open was not confirmed."
           }
         }
       }
@@ -14171,6 +14163,7 @@
         }
       }
     },
+    "Music app open timed out." : {},
     "Music Source" : {
       "localizations" : {
         "cs" : {
@@ -24648,13 +24641,14 @@
     },
     "Tap to see the next of %lld waiting" : {},
     "The background helper crashed or was closed by macOS. It restarts automatically on the next OSD event." : {},
-    "The selected music app could not be opened. Try opening it from Applications." : {
+    "The music app open request timed out. It may still open. Check Applications before trying again." : {},
+    "The music app open was not confirmed. It may still open. Check Applications before trying again." : {
       "comment" : "Generic music launcher failure when the app has no known display name.",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The selected music app could not be opened. Try opening it from Applications."
+            "value" : "The music app open was not confirmed. It may still open. Check Applications before trying again."
           }
         }
       }

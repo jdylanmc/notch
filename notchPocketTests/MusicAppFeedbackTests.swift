@@ -36,7 +36,7 @@ final class MusicAppFeedbackTests: XCTestCase {
         let names = [
             MediaAppBundleID.spotify,
             MediaAppBundleID.appleMusic,
-            MediaAppBundleID.youTubeMusic,
+            MediaAppBundleID.youTubeMusic
         ].compactMap { render(MusicAppFeedback.displayName(for: $0)) }
 
         XCTAssertEqual(names.count, 3)
@@ -68,6 +68,37 @@ final class MusicAppFeedbackTests: XCTestCase {
         XCTAssertNil(MusicAppFeedback.message(for: outcome))
     }
 
+    func testCancellationIsNotAnErrorAndDoesNotClaimOSCancellation() {
+        XCTAssertNil(MusicAppFeedback.message(for: .cancelled))
+        XCTAssertNil(MusicAppFeedback.conciseMessage(for: .cancelled))
+    }
+
+    func testUnconfirmedRequestsNeverClaimNothingLaunched() {
+        for outcome in [MusicAppLaunchOutcome.timedOut, .alreadyOpening,
+                        .openFailed(bundleIdentifier: MediaAppBundleID.spotify)] {
+            let message = render(MusicAppFeedback.message(for: outcome))
+            XCTAssertNotNil(message)
+            XCTAssertTrue(message?.contains("Check Applications before trying again.") == true)
+            XCTAssertFalse(message?.contains("could not be opened") == true)
+            XCTAssertNotNil(MusicAppFeedback.conciseMessage(for: outcome))
+        }
+        XCTAssertTrue(render(MusicAppFeedback.message(for: .timedOut))?.contains("may still open") == true)
+    }
+
+    func testArbitraryPublishersHaveTruthfulGenericLabelsAndFeedbackNotSpotify() {
+        for source in ["org.videolan.vlc", "com.google.Chrome", "org.example.ExternalPlayer"] {
+            XCTAssertEqual(render(MusicAppFeedback.launchLabel(for: source)), "Open music app")
+            XCTAssertNil(MusicAppFeedback.displayName(for: source))
+            for outcome in [MusicAppLaunchOutcome.notInstalled(bundleIdentifier: source),
+                            .openFailed(bundleIdentifier: source)] {
+                let message = render(MusicAppFeedback.message(for: outcome))
+                XCTAssertNotNil(message)
+                XCTAssertFalse(message?.contains("Spotify") == true)
+                XCTAssertFalse(message?.contains(source) == true)
+            }
+        }
+    }
+
     func testEveryFailureOutcomeProducesAMessage() {
         let failures: [MusicAppLaunchOutcome] = [
             .noTarget,
@@ -75,6 +106,8 @@ final class MusicAppFeedbackTests: XCTestCase {
             .openFailed(bundleIdentifier: MediaAppBundleID.spotify),
             .notInstalled(bundleIdentifier: unknownBundleIdentifier),
             .openFailed(bundleIdentifier: unknownBundleIdentifier),
+            .timedOut,
+            .alreadyOpening
         ]
 
         for failure in failures {
@@ -113,7 +146,7 @@ final class MusicAppFeedbackTests: XCTestCase {
     func testUnknownBundleIdentifiersNeverReachUserFacingMessages() {
         let outcomes: [MusicAppLaunchOutcome] = [
             .notInstalled(bundleIdentifier: unknownBundleIdentifier),
-            .openFailed(bundleIdentifier: unknownBundleIdentifier),
+            .openFailed(bundleIdentifier: unknownBundleIdentifier)
         ]
 
         for outcome in outcomes {

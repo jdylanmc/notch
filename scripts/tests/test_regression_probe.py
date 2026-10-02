@@ -210,7 +210,7 @@ class RegressionSuiteContractTests(unittest.TestCase):
                        runID="10000000-0000-4000-8000-000000000001",
                        observedPublicText=dict.fromkeys([
                            "selectedSourceVerified", "idleLauncherVisible", "transportAbsent", "headerPreserved",
-                           "launchStatusVisible", "noFocusChange", "statusPixels", "statusDismissed", "launcherRestored",
+                           "launchStatusVisible", "noFocusChangeOnFailedLaunch", "statusPixels", "statusDismissed", "launcherRestored",
                        ], True), discovery={
                            "musicSource": source, "musicSourceRestored": True, "musicPreferencesRestored": True,
                            "musicPanelRestored": True, "musicWindowID": 10, "musicCandidatePID": 123,
@@ -248,6 +248,19 @@ class RegressionSuiteContractTests(unittest.TestCase):
             wrong = copy.deepcopy(receipt)
             wrong["discovery"].update(change)
             self.assertEqual(SUITE.evaluate(case, wrong, self.framework(), 0, "a" * 64)[0], "BLOCKED")
+
+    def test_music_focus_receipt_is_failure_scoped_not_a_success_activation_ban(self):
+        case, receipt = self.music_receipt()
+        for replacement in ["noFocusChange", "targetActivatedOnSuccess"]:
+            wrong = copy.deepcopy(receipt)
+            del wrong["observedPublicText"]["noFocusChangeOnFailedLaunch"]
+            wrong["observedPublicText"][replacement] = True
+            self.assertEqual(SUITE.evaluate(case, wrong, self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        wrong = copy.deepcopy(receipt)
+        wrong["observedPublicText"]["noFocusChangeOnFailedLaunch"] = False
+        wrong.update(verdict="FAIL", reason="rendered_output_mismatch", xcodeExit=65, suiteExit=10)
+        self.assertEqual(SUITE.evaluate(case, wrong, self.framework(False), 10, "a" * 64),
+                         ("FAIL", "rendered_output_mismatch"))
 
     def general_receipt(self, scenario="general-haptics-removed", scale=1):
         _, receipt = self.notifications_receipt(scale)
@@ -998,7 +1011,8 @@ class IdleLauncherSourceContractTests(unittest.TestCase):
         native = (root / "IdleMusicLauncherScenario.swift").read_text()
         view = (ROOT / "notchPocket/components/Music/MusicSectionView.swift").read_text()
         for identifier in ["com.jdylanmc.notchpocket.music.v1.idle-launcher",
-                           "com.jdylanmc.notchpocket.music.v1.launch-status"]:
+                           "com.jdylanmc.notchpocket.music.v1.launch-status",
+                           "com.jdylanmc.notchpocket.music.v1.launch-dismiss"]:
             self.assertIn(identifier, native)
             self.assertIn('.accessibilityIdentifier("' + identifier + '")', view)
         for action in ["launcher.click()", "dismiss.click()", "panel.screenshot()", "option.click()",
@@ -1009,7 +1023,27 @@ class IdleLauncherSourceContractTests(unittest.TestCase):
         self.assertNotIn("CFPreferencesSet", native)
         self.assertNotIn("launchEnvironment", native)
         self.assertNotIn("NSApp.activate", view)
-        self.assertRegex(view, r"\.onChange\(of: musicManager\.isPlaying\).+?in\s+if isPlaying \{\s+launchFailure = nil")
+        self.assertNotIn('panel.buttons["OK"]', native)
+        self.assertIn(".accessibilityHint(Text(guidance))", view)
+        self.assertRegex(view, r"\.onChange\(of: launchContext\).+?in\s+clearLaunch\(\)")
+        self.assertIn(".onDisappear(perform: clearLaunch)", view)
+        self.assertIn("launch.cancel()", view)
+        self.assertIn("value: launch.isLaunching", view)
+        self.assertIn(".disabled(launch.isLaunching)", view)
+        self.assertNotIn(".overlay(", view, "feedback must not cover active transports")
+        self.assertNotIn(".background(.black)", view)
+        self.assertIn(".frame(height: 32)", view)
+
+    def test_paused_launcher_is_distinct_from_retained_live_activity_and_gestures(self):
+        root = ROOT / "notchPocket"
+        view = (root / "components/Music/MusicSectionView.swift").read_text()
+        policy = (root / "MediaControllers/MusicAppLauncher.swift").read_text()
+        content = (root / "ContentView.swift").read_text()
+        self.assertIn("MusicPresentationPolicy.presentation(isPlaying: musicManager.isPlaying)", view)
+        self.assertNotIn("isPlayerIdle", view)
+        self.assertIn("isPlaying ? .player : .launcher", policy)
+        self.assertIn("coordinator.musicLiveActivityEnabled && (musicManager.isPlaying || !musicManager.isPlayerIdle)", content)
+        self.assertIn("coordinator.currentView == .home && !musicManager.isPlayerIdle && isHoveringMusicArea", content)
 
     def test_launcher_history_does_not_change_controller_fallback(self):
         manager = (ROOT / "notchPocket/managers/MusicManager.swift").read_text()
@@ -1021,11 +1055,30 @@ class IdleLauncherSourceContractTests(unittest.TestCase):
         self.assertRegex(updates, r"if effectiveMediaController == \.nowPlaying \{\s+"
                          r"let remembered = Defaults\[\.lastNowPlayingLauncherBundleIdentifier\]")
         self.assertIn("MusicLaunchTargetResolver.rememberedBundleIdentifier(", updates)
-        launcher = manager.split("func openMusicApp()", 1)[1].split("func forceUpdate()", 1)[0]
+        launcher = manager.split("var musicLaunchContext:", 1)[1].split("func forceUpdate()", 1)[0]
         self.assertIn("Defaults[.lastNowPlayingLauncherBundleIdentifier]", launcher)
         self.assertIn("?? Defaults[.lastSupportedNowPlayingBundleIdentifier]", launcher)
-        self.assertIn("currentBundleIdentifier: effectiveMediaController == .nowPlaying ? bundleIdentifier : nil", launcher)
-        self.assertIn("WorkspaceMusicAppOpening()", launcher)
+        self.assertIn("isPlaying: isPlaying", launcher)
+        self.assertIn("effective: effectiveMediaController", launcher)
+        self.assertIn("observedBundleIdentifier: bundleIdentifier", launcher)
+        self.assertIn("await musicAppLauncher.launch(bundleIdentifier: musicLaunchContext.bundleIdentifier)", launcher)
+        self.assertIn("let musicAppLauncher = MusicAppLauncher(workspace: WorkspaceMusicAppOpening())", manager)
+        policy = (ROOT / "notchPocket/MediaControllers/MusicAppLauncher.swift").read_text()
+        self.assertIn("if isPlaying, let observed = nonemptyBundleIdentifier(observedBundleIdentifier)", policy)
+        self.assertIn("currentBundleIdentifier: effective == .nowPlaying ? observedBundleIdentifier : nil", policy)
+        view = (ROOT / "notchPocket/components/Music/MusicSectionView.swift").read_text()
+        self.assertIn("launch.start(context: launchContext, currentContext: { manager.musicLaunchContext })", view)
+        self.assertIn("MusicAppFeedback.launchLabel(for: launchContext.bundleIdentifier)", view)
+        self.assertIn("musicAppLaunchIcon(for: launchContext.bundleIdentifier)", view)
+        self.assertIn("urlForApplication(withBundleIdentifier: bundleIdentifier)", view)
+        home = (ROOT / "notchPocket/components/Notch/NotchHomeView.swift").read_text()
+        self.assertIn("musicAppLaunchIcon(for: musicManager.musicLaunchContext.bundleIdentifier)", home)
+        self.assertIn("MusicAppFeedback.launchLabel(for: musicManager.musicLaunchContext.bundleIdentifier)", home)
+        self.assertIn("configuration.activates = true", policy,
+                      "successful user-requested opens intentionally activate the target")
+        self.assertIn("configuration.createsNewApplicationInstance = false", policy)
+        self.assertIn("return await withCheckedContinuation", policy)
+        self.assertNotIn("try await NSWorkspace.shared.openApplication", policy)
         self.assertNotRegex(launcher, r"togglePlay|\.play\(|\.pause\(")
 
 
@@ -1082,6 +1135,7 @@ class CompactModeRemovalSourceContractTests(unittest.TestCase):
         ]:
             self.assertIn(fragment, output)
         home = (ROOT / "notchPocket/components/Notch/NotchHomeView.swift").read_text()
+        home += (ROOT / "notchPocket/components/Music/MusicSliderView.swift").read_text()
         for fragment in [
             "MusicManager.shared.seek(to: newValue)", "MusicManager.shared.toggleShuffle()",
             "MusicManager.shared.previousTrack()", "MusicManager.shared.togglePlay()",
@@ -1090,7 +1144,7 @@ class CompactModeRemovalSourceContractTests(unittest.TestCase):
             "MusicManager.shared.skip(seconds: -15)", "MusicManager.shared.skip(seconds: 15)",
             "@Default(.musicControlSlots)", "@Default(.musicControlSlotLimit)",
             "MusicManager.shared.estimatedPlaybackPosition(at: currentDate)",
-            "appIcon(for: musicManager.bundleIdentifier ?? MediaAppBundleID.appleMusic)",
+            "musicAppLaunchIcon(for: musicManager.musicLaunchContext.bundleIdentifier)",
             ".frame(width: 30, height: 30)", "struct MusicSliderView: View", "struct CustomSlider: View",
         ]:
             self.assertIn(fragment, home)

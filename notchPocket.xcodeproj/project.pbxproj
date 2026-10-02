@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		530000072026100200000001 /* MusicSliderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 530000082026100200000001 /* MusicSliderView.swift */; };
+		530000052026100200000001 /* MusicLaunchTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 530000062026100200000001 /* MusicLaunchTransaction.swift */; };
 		530000012026091500000001 /* MusicAppLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 530000022026091500000001 /* MusicAppLauncher.swift */; };
 		530000032026091500000001 /* MusicSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 530000042026091500000001 /* MusicSectionView.swift */; };
 		CAC000062026091200000001 /* GraphCalendarPayloadDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC000072026091200000001 /* GraphCalendarPayloadDecoder.swift */; };
@@ -235,6 +237,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		530000082026100200000001 /* MusicSliderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSliderView.swift; sourceTree = "<group>"; };
+		530000062026100200000001 /* MusicLaunchTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicLaunchTransaction.swift; sourceTree = "<group>"; };
 		530000022026091500000001 /* MusicAppLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicAppLauncher.swift; sourceTree = "<group>"; };
 		530000042026091500000001 /* MusicSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSectionView.swift; sourceTree = "<group>"; };
 		CAC000072026091200000001 /* GraphCalendarPayloadDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphCalendarPayloadDecoder.swift; sourceTree = "<group>"; };
@@ -572,6 +576,7 @@
 				1153BD922D986E4300979FB0 /* AppleMusicController.swift */,
 				61F20E44C65E4DA1945BFF5C /* MediaAppBundleID.swift */,
 				530000022026091500000001 /* MusicAppLauncher.swift */,
+				530000062026100200000001 /* MusicLaunchTransaction.swift */,
 				B0C26F24108F414781F79D4F /* AppleScriptControllerSupport.swift */,
 				1153BD992D98824300979FB0 /* SpotifyController.swift */,
 				1153BD9B2D98853B00979FB0 /* NowPlayingController.swift */,
@@ -932,6 +937,7 @@
 			isa = PBXGroup;
 			children = (
 				530000042026091500000001 /* MusicSectionView.swift */,
+				530000082026100200000001 /* MusicSliderView.swift */,
 				147163972C5D35B70068B555 /* MusicVisualizer.swift */,
 			);
 			path = Music;
@@ -1238,7 +1244,9 @@
 				AA03OTP12E7A0001 /* OTPDetector.swift in Sources */,
 				1471639A2C5D35FF0068B555 /* MusicManager.swift in Sources */,
 				530000012026091500000001 /* MusicAppLauncher.swift in Sources */,
+				530000052026100200000001 /* MusicLaunchTransaction.swift in Sources */,
 				530000032026091500000001 /* MusicSectionView.swift in Sources */,
+				530000072026100200000001 /* MusicSliderView.swift in Sources */,
 				AA07ARM12E7A0001 /* AudioRouteManager.swift in Sources */,
 				F1F2A0A100000000000000F1 /* AudioCaptureManager.swift in Sources */,
 				B1B112932C6A577E00093D8F /* MouseTracker.swift in Sources */,

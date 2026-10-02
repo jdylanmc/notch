@@ -8,6 +8,55 @@ import XCTest
 @testable import notchPocket
 
 final class MusicLaunchTargetResolverTests: XCTestCase {
+    func testPlayingAppleMusicFallbackOpensObservedSourceWithoutNowPlayingHistory() {
+        let context = MusicLaunchContext(
+            isPlaying: true, preferred: .nowPlaying, effective: .appleMusic,
+            observedBundleIdentifier: MediaAppBundleID.appleMusic, rememberedBundleIdentifier: nil
+        )
+        XCTAssertEqual(context.bundleIdentifier, MediaAppBundleID.appleMusic)
+    }
+
+    func testPlayingSpotifyFallbackIgnoresOtherRememberedPublisher() {
+        let context = MusicLaunchContext(
+            isPlaying: true, preferred: .nowPlaying, effective: .spotify,
+            observedBundleIdentifier: MediaAppBundleID.spotify, rememberedBundleIdentifier: "org.videolan.vlc"
+        )
+        XCTAssertEqual(context.bundleIdentifier, MediaAppBundleID.spotify)
+    }
+
+    func testIdleFallbackDoesNotMasqueradeAsTrueNowPlayingPublisher() {
+        for remembered in [nil, "org.videolan.vlc"] {
+            let context = MusicLaunchContext(
+                isPlaying: false, preferred: .nowPlaying, effective: .appleMusic,
+                observedBundleIdentifier: MediaAppBundleID.appleMusic, rememberedBundleIdentifier: remembered
+            )
+            XCTAssertEqual(context.bundleIdentifier, remembered)
+        }
+    }
+
+    func testIdleDirectPreferenceWinsButPlayingObservedSourceWins() {
+        for playing in [false, true] {
+            let context = MusicLaunchContext(
+                isPlaying: playing, preferred: .spotify, effective: .spotify,
+                observedBundleIdentifier: MediaAppBundleID.appleMusic, rememberedBundleIdentifier: "org.videolan.vlc"
+            )
+            XCTAssertEqual(context.bundleIdentifier, playing ? MediaAppBundleID.appleMusic : MediaAppBundleID.spotify)
+        }
+    }
+
+    func testTrueNowPlayingUsesCurrentArbitraryPublisherBeforeHistory() {
+        for source in ["org.videolan.vlc", "com.google.Chrome", "org.example.ExternalPlayer"] {
+            for playing in [false, true] {
+                let context = MusicLaunchContext(
+                    isPlaying: playing, preferred: .nowPlaying, effective: .nowPlaying,
+                    observedBundleIdentifier: source, rememberedBundleIdentifier: MediaAppBundleID.spotify
+                )
+                XCTAssertEqual(context.bundleIdentifier, source)
+                XCTAssertEqual(String(localized: MusicAppFeedback.launchLabel(for: context.bundleIdentifier)), "Open music app")
+            }
+        }
+    }
+
     private func resolve(
         _ preferred: MediaControllerType,
         current: String? = nil,

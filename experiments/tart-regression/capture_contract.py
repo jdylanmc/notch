@@ -42,7 +42,7 @@ IDLE_MUSIC_SCENARIOS = {
 }
 IDLE_MUSIC_ASSERTIONS = {
     "selectedSourceVerified", "idleLauncherVisible", "transportAbsent", "headerPreserved",
-    "launchStatusVisible", "noFocusChange", "statusPixels", "statusDismissed", "launcherRestored",
+    "launchStatusVisible", "noFocusChangeOnFailedLaunch", "statusPixels", "statusDismissed", "launcherRestored",
 }
 
 

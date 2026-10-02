@@ -58,6 +58,7 @@ struct NowPlayingFallbackNotice: Identifiable, Equatable {
 final class MusicManager: ObservableObject {
     // MARK: - Properties
     static let shared = MusicManager()
+    let musicAppLauncher = MusicAppLauncher(workspace: WorkspaceMusicAppOpening())
     private static let noticeDuration: Duration = .seconds(6)
     private static let runtimeRecoveryDelay: Duration = .seconds(1)
 
@@ -798,14 +799,19 @@ final class MusicManager: ObservableObject {
             }
         }
     }
-    func openMusicApp() async -> MusicAppLaunchOutcome {
-        let target = MusicLaunchTargetResolver.bundleIdentifier(
+    var musicLaunchContext: MusicLaunchContext {
+        MusicLaunchContext(
+            isPlaying: isPlaying,
             preferred: preferredMediaController,
-            currentBundleIdentifier: effectiveMediaController == .nowPlaying ? bundleIdentifier : nil,
-            rememberedNowPlayingBundleIdentifier: Defaults[.lastNowPlayingLauncherBundleIdentifier]
+            effective: effectiveMediaController,
+            observedBundleIdentifier: bundleIdentifier,
+            rememberedBundleIdentifier: Defaults[.lastNowPlayingLauncherBundleIdentifier]
                 ?? Defaults[.lastSupportedNowPlayingBundleIdentifier]
         )
-        return await MusicAppLauncher(workspace: WorkspaceMusicAppOpening()).launch(bundleIdentifier: target)
+    }
+
+    func openMusicApp() async -> MusicAppLaunchOutcome {
+        await musicAppLauncher.launch(bundleIdentifier: musicLaunchContext.bundleIdentifier)
     }
 
     func forceUpdate() {

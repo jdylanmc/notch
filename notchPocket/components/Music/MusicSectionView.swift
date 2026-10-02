@@ -8,6 +8,15 @@
 import Defaults
 import SwiftUI
 
+@MainActor
+func musicAppLaunchIcon(for bundleIdentifier: String?) -> Image {
+    if let bundleIdentifier,
+       let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
+        return Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+    }
+    return Image(systemName: "music.note")
+}
+
 struct MusicLaunchInteractionPreferenceKey: PreferenceKey {
     static let defaultValue = false
 
@@ -29,8 +38,7 @@ struct MusicSectionView<PlayingContent: View>: View {
     @ObservedObject private var musicManager = MusicManager.shared
     @Default(.lastNowPlayingLauncherBundleIdentifier) private var rememberedBundleIdentifier
     @Default(.lastSupportedNowPlayingBundleIdentifier) private var legacyRememberedBundleIdentifier
-    @State private var launchFailure: MusicAppLaunchOutcome?
-    @State private var launchTask: Task<Void, Never>?
+    @StateObject private var launch = MusicLaunchTransaction(launcher: MusicManager.shared.musicAppLauncher)
     @State private var isHoveringFeedback = false
 
     private let playingContent: (@escaping () -> Void) -> PlayingContent
@@ -40,146 +48,99 @@ struct MusicSectionView<PlayingContent: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 4) {
             if MusicPresentationPolicy.presentation(isPlaying: musicManager.isPlaying).showsPlaybackControls {
                 playingContent(openMusicApp)
             } else {
-                Button(action: openMusicApp) {
-                    launcherIcon
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 32, height: 32)
-                        .padding(4)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(launchTask != nil)
-                .accessibilityLabel(Text(launcherLabel))
-                .accessibilityHint("Opens your preferred music app without starting playback.")
-                .accessibilityIdentifier("com.jdylanmc.notchpocket.music.v1.idle-launcher")
-                .help(Text(launcherLabel))
-                .frame(maxWidth: .infinity, alignment: .leading)
+                launcherButton
             }
-        }
-        .frame(minHeight: launchFailure != nil ? 64 : nil, alignment: .topLeading)
-        .overlay(alignment: .topLeading) {
-            if let launchFailure {
-                failureFeedback(launchFailure)
+            if let failure = launch.failure {
+                failureFeedback(failure)
                     .onHover { isHoveringFeedback = $0 }
                     .onDisappear { isHoveringFeedback = false }
             }
         }
-        .preference(
-            key: MusicLaunchInteractionPreferenceKey.self,
-            value: launchTask != nil
-        )
+        .preference(key: MusicLaunchInteractionPreferenceKey.self, value: launch.isLaunching)
         .preference(
             key: MusicLaunchFeedbackHoverPreferenceKey.self,
-            value: launchFailure != nil && isHoveringFeedback
+            value: launch.failure != nil && isHoveringFeedback
         )
-        .onChange(of: musicManager.isPlaying) { _, isPlaying in
-            if isPlaying {
-                launchFailure = nil
-                isHoveringFeedback = false
-            }
+        .onChange(of: launchContext) { _, _ in
+            clearLaunch()
         }
-        .onDisappear {
-            launchTask?.cancel()
-            launchTask = nil
-            launchFailure = nil
-            isHoveringFeedback = false
-        }
+        .onDisappear(perform: clearLaunch)
     }
 
-    private var launchTarget: String? {
-        MusicLaunchTargetResolver.bundleIdentifier(
+    private var launchContext: MusicLaunchContext {
+        // Defaults wrappers invalidate the view when history changes without a playback update.
+        MusicLaunchContext(
+            isPlaying: musicManager.isPlaying,
             preferred: musicManager.preferredMediaController,
-            currentBundleIdentifier: musicManager.effectiveMediaController == .nowPlaying ? musicManager.bundleIdentifier : nil,
-            rememberedNowPlayingBundleIdentifier: rememberedBundleIdentifier ?? legacyRememberedBundleIdentifier
+            effective: musicManager.effectiveMediaController,
+            observedBundleIdentifier: musicManager.bundleIdentifier,
+            rememberedBundleIdentifier: rememberedBundleIdentifier ?? legacyRememberedBundleIdentifier
         )
+    }
+
+    private var launcherButton: some View {
+        Button(action: openMusicApp) {
+            launcherIcon
+                .resizable()
+                .scaledToFit()
+                .frame(width: 32, height: 32)
+                .padding(4)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(launch.isLaunching)
+        .accessibilityLabel(Text(MusicAppFeedback.launchLabel(for: launchContext.bundleIdentifier)))
+        .accessibilityHint("Opens your preferred music app without starting playback.")
+        .accessibilityIdentifier("com.jdylanmc.notchpocket.music.v1.idle-launcher")
+        .help(Text(MusicAppFeedback.launchLabel(for: launchContext.bundleIdentifier)))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var launcherIcon: Image {
-        if let launchTarget {
-            return appIcon(for: launchTarget)
-        }
-        return Image(systemName: "music.note")
-    }
-
-    private var launcherLabel: LocalizedStringResource {
-        guard let name = MusicAppFeedback.displayName(for: launchTarget) else {
-            return "Open music app"
-        }
-        return LocalizedStringResource(
-            "Open \(String(localized: name))",
-            comment: "Music launcher button label. The placeholder is the user's selected music app."
-        )
-    }
-
-    private func conciseFailureMessage(for outcome: MusicAppLaunchOutcome) -> LocalizedStringResource? {
-        switch outcome {
-        case .opened:
-            return nil
-        case .noTarget:
-            return "No music app selected."
-        case .notInstalled(let bundleIdentifier):
-            guard let name = MusicAppFeedback.displayName(for: bundleIdentifier) else {
-                return "Music app is not installed."
-            }
-            return LocalizedStringResource(
-                "\(String(localized: name)) is not installed.",
-                comment: "Concise music launcher failure. The placeholder is a human-readable music app name."
-            )
-        case .openFailed(let bundleIdentifier):
-            guard let name = MusicAppFeedback.displayName(for: bundleIdentifier) else {
-                return "Music app could not be opened."
-            }
-            return LocalizedStringResource(
-                "\(String(localized: name)) could not be opened.",
-                comment: "Concise music launcher failure. The placeholder is a human-readable music app name."
-            )
-        }
+        musicAppLaunchIcon(for: launchContext.bundleIdentifier)
     }
 
     @ViewBuilder
     private func failureFeedback(_ outcome: MusicAppLaunchOutcome) -> some View {
-        if let message = conciseFailureMessage(for: outcome),
+        if let message = MusicAppFeedback.conciseMessage(for: outcome),
            let guidance = MusicAppFeedback.message(for: outcome) {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                     .accessibilityHidden(true)
-
                 Text(message)
                     .font(.caption.weight(.semibold))
+                    .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityHint(Text(guidance))
                     .accessibilityIdentifier("com.jdylanmc.notchpocket.music.v1.launch-status")
-
                 Button("OK") {
-                    launchFailure = nil
+                    launch.dismissFailure()
+                    isHoveringFeedback = false
                 }
                 .buttonStyle(.plain)
                 .font(.caption.weight(.semibold))
                 .frame(minWidth: 24, minHeight: 24)
                 .contentShape(Rectangle())
+                .accessibilityIdentifier("com.jdylanmc.notchpocket.music.v1.launch-dismiss")
             }
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(.black)
-            .clipped()
+            .frame(height: 32)
             .help(Text(guidance))
             .accessibilityElement(children: .contain)
         }
     }
 
+    private func clearLaunch() {
+        launch.cancel()
+        isHoveringFeedback = false
+    }
+
     private func openMusicApp() {
-        guard launchTask == nil else { return }
-        launchFailure = nil
-        launchTask = Task { @MainActor in
-            let outcome = await musicManager.openMusicApp()
-            guard !Task.isCancelled else { return }
-            launchFailure = MusicAppFeedback.message(for: outcome) == nil ? nil : outcome
-            launchTask = nil
-        }
+        let manager = musicManager
+        launch.start(context: launchContext, currentContext: { manager.musicLaunchContext })
     }
 }

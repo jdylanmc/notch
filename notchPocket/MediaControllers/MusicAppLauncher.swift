@@ -47,6 +47,25 @@ enum MusicLaunchTargetResolver {
     }
 }
 
+struct MusicLaunchContext: Equatable {
+    let isPlaying: Bool
+    let preferred: MediaControllerType
+    let effective: MediaControllerType?
+    let observedBundleIdentifier: String?
+    let rememberedBundleIdentifier: String?
+
+    var bundleIdentifier: String? {
+        if isPlaying, let observed = nonemptyBundleIdentifier(observedBundleIdentifier) {
+            return observed
+        }
+        return MusicLaunchTargetResolver.bundleIdentifier(
+            preferred: preferred,
+            currentBundleIdentifier: effective == .nowPlaying ? observedBundleIdentifier : nil,
+            rememberedNowPlayingBundleIdentifier: rememberedBundleIdentifier
+        )
+    }
+}
+
 private func nonemptyBundleIdentifier(_ value: String?) -> String? {
     guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
           !trimmed.isEmpty else { return nil }
@@ -64,6 +83,9 @@ enum MusicAppLaunchOutcome: Equatable {
     case noTarget
     case notInstalled(bundleIdentifier: String)
     case openFailed(bundleIdentifier: String)
+    case timedOut
+    case alreadyOpening
+    case cancelled
 }
 
 enum MusicAppFeedback {
@@ -75,9 +97,38 @@ enum MusicAppFeedback {
         return controller.localizedResource
     }
 
+    static func launchLabel(for bundleIdentifier: String?) -> LocalizedStringResource {
+        guard let name = displayName(for: bundleIdentifier) else { return "Open music app" }
+        return LocalizedStringResource(
+            "Open \(String(localized: name))",
+            comment: "Music launcher button label. The placeholder is the user's selected music app."
+        )
+    }
+
+    static func conciseMessage(for outcome: MusicAppLaunchOutcome) -> LocalizedStringResource? {
+        switch outcome {
+        case .opened, .cancelled:
+            return nil
+        case .noTarget:
+            return "No music app selected."
+        case .notInstalled(let bundleIdentifier):
+            guard let name = displayName(for: bundleIdentifier) else { return "Music app is not installed." }
+            return LocalizedStringResource(
+                "\(String(localized: name)) is not installed.",
+                comment: "Concise music launcher failure. The placeholder is a human-readable music app name."
+            )
+        case .openFailed:
+            return "Music app open was not confirmed."
+        case .timedOut:
+            return "Music app open timed out."
+        case .alreadyOpening:
+            return "A music app open is still pending."
+        }
+    }
+
     static func message(for outcome: MusicAppLaunchOutcome) -> LocalizedStringResource? {
         switch outcome {
-        case .opened:
+        case .opened, .cancelled:
             return nil
         case .noTarget:
             return "No music app is selected. Choose a Music Source in Settings or play music once with Now Playing."
@@ -91,35 +142,50 @@ enum MusicAppFeedback {
             )
         case .openFailed(let bundleIdentifier):
             guard let name = displayName(for: bundleIdentifier) else {
-                return "The selected music app could not be opened. Try opening it from Applications."
+                return "The music app open was not confirmed. It may still open. Check Applications before trying again."
             }
             return LocalizedStringResource(
-                "Music app \(String(localized: name)) could not be opened. Try opening it from Applications.",
+                "Opening \(String(localized: name)) was not confirmed. It may still open. Check Applications before trying again.",
                 comment: "Music launcher failure. The placeholder is a human-readable music app name."
             )
+        case .timedOut:
+            return "The music app open request timed out. It may still open. Check Applications before trying again."
+        case .alreadyOpening:
+            return "A previous music app open request is still pending. Check Applications before trying again."
         }
     }
 }
 
 @MainActor
-struct MusicAppLauncher {
+final class MusicAppLauncher {
     private let workspace: any MusicAppOpening
+    private(set) var isOpening = false
 
     init(workspace: any MusicAppOpening) {
         self.workspace = workspace
     }
 
     func launch(bundleIdentifier: String?) async -> MusicAppLaunchOutcome {
+        guard !Task.isCancelled else { return .cancelled }
         guard let bundleIdentifier = nonemptyBundleIdentifier(bundleIdentifier) else {
             Log.music.error("Cannot open music app: no preferred or observed target")
             return .noTarget
+        }
+        guard !isOpening else {
+            Log.music.error("Music app open still pending; refusing another OS request")
+            return .alreadyOpening
         }
         guard let url = workspace.applicationURL(forBundleIdentifier: bundleIdentifier) else {
             Log.music.error("Music app is not installed: \(bundleIdentifier)")
             return .notInstalled(bundleIdentifier: bundleIdentifier)
         }
-        guard await workspace.openApplication(at: url) else {
-            Log.music.error("Failed to open music app: \(bundleIdentifier)")
+        guard !Task.isCancelled else { return .cancelled }
+        isOpening = true
+        defer { isOpening = false }
+        let opened = await workspace.openApplication(at: url)
+        guard !Task.isCancelled else { return .cancelled }
+        guard opened else {
+            Log.music.error("Music app open was not confirmed: \(bundleIdentifier)")
             return .openFailed(bundleIdentifier: bundleIdentifier)
         }
         Log.music.debug("Opened music app: \(bundleIdentifier)")
@@ -137,12 +203,20 @@ struct WorkspaceMusicAppOpening: MusicAppOpening {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         configuration.createsNewApplicationInstance = false
-        do {
-            _ = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
-            return true
-        } catch {
-            Log.music.error("NSWorkspace could not open music app: \(error)")
-            return false
+        // Only the native completion releases the gate; Task cancellation cannot
+        // tell us whether an already-dispatched OS open is still pending.
+        return await withCheckedContinuation { continuation in
+            NSWorkspace.shared.openApplication(at: url, configuration: configuration) { application, error in
+                if let error {
+                    Log.music.error("NSWorkspace did not confirm music app open: \(error)")
+                    continuation.resume(returning: false)
+                } else if application != nil {
+                    continuation.resume(returning: true)
+                } else {
+                    Log.music.error("NSWorkspace completed music app open without an application or error")
+                    continuation.resume(returning: false)
+                }
+            }
         }
     }
 }

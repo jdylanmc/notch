@@ -192,9 +192,10 @@ extension GuestRegressionProbe {
         let appeared = status.waitForExistence(timeout: 5)
         state.observed["launchStatusVisible"] = appeared
             && ((status.value as? String) ?? status.label) == scenario.message && panel.frame.contains(status.frame)
-        state.observed["noFocusChange"] = NSWorkspace.shared.frontmostApplication?.processIdentifier == foreground.processIdentifier
+        state.observed["noFocusChangeOnFailedLaunch"] =
+            NSWorkspace.shared.frontmostApplication?.processIdentifier == foreground.processIdentifier
         try captureMusicStatus(panel, status: appeared ? status : nil, scenario: scenario, state: state, runID: runID)
-        let dismiss = panel.buttons["OK"]
+        let dismiss = panel.buttons["com.jdylanmc.notchpocket.music.v1.launch-dismiss"]
         if appeared && waitHittable(dismiss) { dismiss.click() }
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: status)
         state.observed["statusDismissed"] = appeared && XCTWaiter.wait(for: [gone], timeout: 5) == .completed
