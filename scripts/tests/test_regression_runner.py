@@ -582,6 +582,63 @@ class RunnerContracts(unittest.TestCase):
         self.assertEqual(configured, [])
         self.assertEqual(RUNNER.inventory(self.products), before)
 
+    def test_prepared_suite_unsafe_output_is_refused_before_any_side_effect(self):
+        suite = load_script("run-suite.py")
+        (self.source / "run-suite.py").write_bytes((SOURCE / "run-suite.py").read_bytes())
+        candidate = self.root / "candidate.json"
+        candidate.write_text(json.dumps({"executableSHA256": "a" * 64, "version": "1", "build": "1"}))
+        alias = self.root / "products-alias"
+        alias.symlink_to(self.products, target_is_directory=True)
+        root_alias = self.root / "root-alias"
+        root_alias.symlink_to(self.root, target_is_directory=True)
+        writable = self.root / "writable"
+        writable.mkdir()
+        writable.chmod(0o777)
+        manifest, sha = self.artifact()
+        approved = RUNNER.verify_prepared(self.products, manifest, sha, source=self.source, run=self.native)
+        products_before = RUNNER.inventory(self.products)
+        source_before = RUNNER.inventory(self.source)
+        uid = os.getuid()
+        for output, owner in [
+            (self.products / "unsafe-suite", uid),
+            (self.products / "Debug/unsafe-suite", uid),
+            (self.products, uid),
+            (alias / "unsafe-suite", uid),
+            (alias, uid),
+            (root_alias / "Products/unsafe-suite", uid),
+            (writable / "unsafe-suite", uid),
+            (self.root / "unowned-suite", uid + 1),
+        ]:
+            with self.subTest(output=output, uid=owner):
+                args = argparse.Namespace(
+                    registry=SOURCE / "suite.json", candidate=candidate, output=output, context="ad-hoc",
+                    feature_ref=None, requester_id="parent", worker_id="worker", dispatch_ref="test-dispatch",
+                    scenario=None, runner_manifest=manifest, runner_manifest_sha256=sha,
+                )
+                with contextlib.ExitStack() as stack:
+                    stack.enter_context(patch.object(suite, "ROOT", self.root))
+                    stack.enter_context(patch.object(os, "getuid", return_value=owner))
+                    effects = [
+                        stack.enter_context(patch.object(target, name, side_effect=AssertionError(name)))
+                        for target, name in [
+                            (Path, "mkdir"), (Path, "write_text"), (Path, "write_bytes"),
+                            (os, "open"), (os, "write"), (suite.subprocess, "run"),
+                            (suite.subprocess, "Popen"), (suite, "export_capture"),
+                        ]
+                    ]
+                    with self.assertRaisesRegex(ValueError, "canonical absolute|owned.*outside Products"):
+                        suite.run(args)
+                    for effect in effects:
+                        effect.assert_not_called()
+                self.assertFalse((self.root / ".notch-regression-suite.lock").exists())
+                self.assertEqual(RUNNER.inventory(self.products), products_before)
+                self.assertEqual(RUNNER.inventory(self.source), source_before)
+                self.assertEqual(RUNNER.digest(manifest.read_bytes()), sha)
+                self.assertEqual(
+                    RUNNER.verify_prepared(self.products, manifest, sha, source=self.source, run=self.native),
+                    approved,
+                )
+
     def test_paired_prepared_flags_and_old_cli_defaults(self):
         parser = argparse.ArgumentParser()
         RUNNER.add_prepared_arguments(parser)
@@ -759,6 +816,15 @@ class RunnerContracts(unittest.TestCase):
             self.assertEqual(suite.run(args), 20)
             report = json.loads((args.output / "report.json").read_text())
             self.assertIn("Prepared per-run manifest cleanup is unverified", report["cases"][0]["error"])
+            alias = self.root / "legacy-products"
+            alias.symlink_to(self.products, target_is_directory=True)
+            args.scenario = ["legacy"]
+            args.runner_manifest = args.runner_manifest_sha256 = None
+            args.output = alias / "legacy-output"
+            self.assertEqual(suite.run(args), 0)
+            self.assertTrue((self.products / "legacy-output/report.json").is_file())
+            self.assertNotIn("--requires-prepared-runner", commands[-1])
+            self.assertNotIn("--runner-manifest", commands[-1])
 
     def test_prepared_drift_blocks_guest_before_mutable_manifest_or_ui(self):
         spec = importlib.util.spec_from_file_location("guest_prepared", SOURCE / "GuestRegressionProbe/run-guest.py")
