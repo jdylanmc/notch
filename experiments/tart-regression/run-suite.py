@@ -105,6 +105,18 @@ def evaluate(case, receipt, framework, command_exit, candidate_hash):
                     "appearanceSectionHeaderClassVerified",
                 ])):
             return "BLOCKED", "appearance_assertions_unverified"
+    if case["id"] == "notifications-ai-replies-removed" and raw in {"PASS", "FAIL"}:
+        expected = {"Show notifications in the notch", "From all apps", "suggestionControlAbsent"}
+        observed = receipt.get("observedPublicText")
+        discovery = receipt.get("discovery")
+        if (not isinstance(observed, dict) or set(observed) != expected
+                or any(type(value) is not bool for value in observed.values())
+                or (raw == "PASS") != all(observed.values())
+                or not isinstance(discovery, dict)
+                or any(discovery.get(field) is not True for field in [
+                    "notificationsPaneSelected", "notificationsFormMapped", "notificationsFullFormVisible",
+                ])):
+            return "BLOCKED", "notifications_assertions_unverified"
     if case["kind"] == "regression":
         if raw == "PASS" and receipt.get("reason") != case["expectedReason"]:
             return "BLOCKED", "success_assertion_not_reached"

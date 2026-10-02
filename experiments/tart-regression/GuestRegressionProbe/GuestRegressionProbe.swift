@@ -33,6 +33,8 @@ final class GuestRegressionProbe: XCTestCase {
         var discovery: [String: Any] = [:]
         var appearanceContentFrame: CGRect?
         var appearanceControls: [String: Bool] = [:]
+        var notificationsContentFrame: CGRect?
+        var notificationsControls: [String: Bool] = [:]
     }
 
     private let candidate = URL(fileURLWithPath: "/Applications/notch-pocket.app")
@@ -190,6 +192,63 @@ final class GuestRegressionProbe: XCTestCase {
     func testInstalledAppearanceWithoutIdleFace() {
         runInstalledSettingsOutput(testName: "testInstalledAppearanceWithoutIdleFace",
                                    modes: ["appearance-idle-face-removed"])
+    }
+
+    @MainActor
+    func testInstalledNotificationsWithoutAIReplies() {
+        runInstalledSettingsOutput(testName: "testInstalledNotificationsWithoutAIReplies",
+                                   modes: ["notifications-ai-replies-removed"])
+    }
+
+    @MainActor
+    private func inspectNotifications(_ settings: XCUIElement, state: RunState) throws {
+        let row = settings.descendants(matching: .outlineRow)
+            .containing(.staticText, identifier: "Notifications").firstMatch
+        let notifications = row.staticTexts["Notifications"]
+        try require(waitHittable(notifications), "notifications_control_unavailable")
+        notifications.click()
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: row)
+        try require(XCTWaiter.wait(for: [selected], timeout: 5) == .completed, "notifications_selection_not_observed")
+        state.discovery["notificationsPaneSelected"] = row.isSelected
+        try require(settings.frame.width >= 700 && settings.frame.height >= 600, "notifications_window_too_small")
+        let scrollViews = settings.scrollViews.allElementsBoundByIndex
+        let sidebars = scrollViews.filter { $0.outlines.count == 1 }
+        let forms = scrollViews.filter { $0.outlines.count == 0 }
+        try require(sidebars.count == 1 && forms.count == 1, "notifications_form_ambiguous")
+        let form = forms[0]
+        try require(form.frame.minX >= sidebars[0].frame.maxX && settings.frame.contains(form.frame),
+                    "notifications_form_mapping_unverified")
+        state.discovery["notificationsFormMapped"] = true
+
+        // The allow-list and the old suggestion section must fit, not disappear below the capture.
+        // No notification setting is toggled to make the form shorter.
+        func contentFrames() throws -> [CGRect] {
+            let snapshot = try form.snapshot()
+            let content = snapshot.children.filter { $0.elementType != .scrollBar && !$0.frame.isEmpty }
+            try require(!content.isEmpty && content.allSatisfy { snapshot.frame.contains($0.frame) },
+                        "notifications_full_form_not_visible")
+            return content.map(\.frame)
+        }
+        form.scroll(byDeltaX: 0, deltaY: 10_000)
+        let headFrames = try contentFrames()
+        form.scroll(byDeltaX: 0, deltaY: -10_000)
+        let tailFrames = try contentFrames()
+        try require(headFrames == tailFrames, "notifications_full_form_not_visible")
+        state.discovery["notificationsFullFormVisible"] = true
+        let frame = form.frame
+        let windowFrame = settings.frame
+        state.notificationsContentFrame = CGRect(
+            x: (frame.minX - windowFrame.minX) / windowFrame.width,
+            y: (windowFrame.maxY - frame.maxY) / windowFrame.height,
+            width: frame.width / windowFrame.width, height: frame.height / windowFrame.height
+        )
+        // Typed staticTexts resolves native SwiftUI AXValue labels even when AXLabel is empty.
+        state.notificationsControls = Dictionary(uniqueKeysWithValues: NotificationsOutputOracle.retainedLabels.map {
+            let controls = form.staticTexts.matching(identifier: $0)
+            return ($0, controls.count == 1 && controls.firstMatch.isHittable)
+        })
+        state.notificationsControls["suggestionControlAbsent"] =
+            !form.staticTexts[NotificationsOutputOracle.suggestionLabel].exists
     }
 
     @MainActor
@@ -351,6 +410,8 @@ final class GuestRegressionProbe: XCTestCase {
             try require(generalRow.exists && generalRow.isSelected, "prepared_general_pane_required")
             if mode == "appearance-idle-face-removed" {
                 try inspectAppearance(settings, state: state)
+            } else if mode == "notifications-ai-replies-removed" {
+                try inspectNotifications(settings, state: state)
             } else {
                 let about = settings.descendants(matching: .outlineRow)
                     .containing(.staticText, identifier: "About").firstMatch.staticTexts["About"]
@@ -400,11 +461,23 @@ final class GuestRegressionProbe: XCTestCase {
                 state.observed = AppearanceOutputOracle.evaluate(
                     observations, contentFrame: contentFrame, controls: state.appearanceControls
                 )
+            } else if mode == "notifications-ai-replies-removed" {
+                guard let contentFrame = state.notificationsContentFrame else {
+                    throw Blocked.reason("notifications_content_frame_unavailable")
+                }
+                state.observed = NotificationsOutputOracle.evaluate(
+                    observations, contentFrame: contentFrame, controls: state.notificationsControls
+                )
             } else {
                 state.observed = AboutOutputOracle.evaluate(observations, version: expectedVersion, build: expectedBuild)
             }
             let attachment = XCTAttachment(screenshot: capture)
-            let pane = mode == "appearance-idle-face-removed" ? "appearance" : "about"
+            let pane: String
+            switch mode {
+            case "appearance-idle-face-removed": pane = "appearance"
+            case "notifications-ai-replies-removed": pane = "notifications"
+            default: pane = "about"
+            }
             attachment.name = "guest-public-\(pane)-\(runID)"
             attachment.lifetime = .keepAlways
             add(attachment)

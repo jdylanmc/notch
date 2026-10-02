@@ -149,10 +149,10 @@ class RegressionSuiteContractTests(unittest.TestCase):
         return {"totalTestCount": 1, "passedTests": int(passed), "failedTests": int(not passed),
                 "skippedTests": 0, "expectedFailures": 0}
 
-    def test_real_registry_preserves_about_journey_and_controls_and_adds_face_removal(self):
+    def test_real_registry_preserves_journeys_and_controls_and_adds_ai_removal(self):
         cases = SUITE.load_registry(ROOT / "experiments/tart-regression/suite.json")
         self.assertEqual([c["id"] for c in cases if c["kind"] == "regression"],
-                         ["about-version", "appearance-idle-face-removed"])
+                         ["about-version", "appearance-idle-face-removed", "notifications-ai-replies-removed"])
         self.assertEqual([(c["id"], c["scenario"], c["expectedVerdict"], c["expectedReason"])
                           for c in cases if c["kind"] == "control"], [
             ("about-wrong-output", "visual-fail", "FAIL", "rendered_output_mismatch"),
@@ -161,7 +161,51 @@ class RegressionSuiteContractTests(unittest.TestCase):
             ("abort-after-settings-open", "native-abort-after-open", "BLOCKED", "native_interaction_aborted"),
             ("abort-after-about-selection", "native-abort-after-about", "BLOCKED", "native_interaction_aborted"),
         ])
-        self.assertEqual(len(cases), 7)
+        self.assertEqual(len(cases), 8)
+
+    def test_notifications_requires_complete_consistent_output_and_viewport_proof(self):
+        case = next(c for c in SUITE.load_registry(ROOT / "experiments/tart-regression/suite.json")
+                    if c["id"] == "notifications-ai-replies-removed")
+        observations = dict.fromkeys([
+            "Show notifications in the notch", "From all apps", "suggestionControlAbsent",
+        ], True)
+        discovery = dict.fromkeys([
+            "notificationsPaneSelected", "notificationsFormMapped", "notificationsFullFormVisible",
+        ], True)
+        receipt = dict(self.receipt(scenario=case["scenario"]), testIdentifier=case["test"],
+                       observedPublicText=observations, discovery=discovery)
+        self.assertEqual(SUITE.evaluate(case, receipt, self.framework(), 0, "a" * 64),
+                         ("PASS", "rendered_output_verified"))
+        for field in observations:
+            with self.subTest(missing=field):
+                incomplete = {key: value for key, value in observations.items() if key != field}
+                self.assertEqual(SUITE.evaluate(case, dict(receipt, observedPublicText=incomplete),
+                                                self.framework(), 0, "a" * 64)[0], "BLOCKED")
+            with self.subTest(wrong=field):
+                failed = dict(receipt, verdict="FAIL", reason="rendered_output_mismatch",
+                              suiteExit=10, xcodeExit=65, observedPublicText=dict(observations, **{field: False}))
+                self.assertEqual(SUITE.evaluate(case, failed, self.framework(False), 10, "a" * 64),
+                                 ("FAIL", "rendered_output_mismatch"))
+                self.assertEqual(SUITE.evaluate(case, dict(receipt, observedPublicText=failed["observedPublicText"]),
+                                                self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        for field in discovery:
+            for value in [False, None, 1]:
+                with self.subTest(guard=field, value=value):
+                    self.assertEqual(SUITE.evaluate(case, dict(receipt, discovery=dict(discovery, **{field: value})),
+                                                    self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        for change in [{"observedPublicText": None}, {"observedPublicText": {}},
+                       {"observedPublicText": dict(observations, suggestionControlAbsent=1)},
+                       {"observedPublicText": dict(observations, unexpected=True)},
+                       {"discovery": None}, {"discovery": {}},
+                       {"cleanup": "blocked"}, {"expectedCandidateSHA256": "c" * 64},
+                       {"screenshotSHA256": None}, {"testIdentifier": self.case["test"]}]:
+            with self.subTest(change=change):
+                self.assertEqual(SUITE.evaluate(case, dict(receipt, **change),
+                                                self.framework(), 0, "a" * 64)[0], "BLOCKED")
+        blocked = dict(receipt, verdict="BLOCKED", reason="notifications_full_form_not_visible",
+                       suiteExit=20, xcodeExit=65, observedPublicText={})
+        self.assertEqual(SUITE.evaluate(case, blocked, self.framework(False), 20, "a" * 64),
+                         ("BLOCKED", "notifications_full_form_not_visible"))
 
     def test_appearance_requires_complete_consistent_observable_assertions(self):
         case = next(c for c in SUITE.load_registry(ROOT / "experiments/tart-regression/suite.json")
@@ -432,6 +476,130 @@ class GUIJobCleanupTests(unittest.TestCase):
         self.assertFalse(result["jobUnloaded"])
         self.assertEqual(result["bootoutError"], "TimeoutExpired")
         self.assertEqual(result["lookupError"], "TimeoutExpired")
+
+
+class AIReplyRemovalSourceContractTests(unittest.TestCase):
+    """Removal/preservation source contracts, not live banner or send evidence."""
+
+    def test_generation_default_and_framework_have_no_remaining_product_reader(self):
+        sources = [source for folder in ["notchPocket", "notchPocketXPCHelper", "Shared"]
+                   for source in (ROOT / folder).rglob("*.swift")]
+        self.assertTrue(sources)
+        for source in sources:
+            with self.subTest(path=str(source.relative_to(ROOT))):
+                self.assertNotRegex(source.read_text(),
+                                    r"SmartReply|smartRepliesEnabled|suggestReplies|suggestionChips"
+                                    r"|ReplySuggestionSet|FoundationModels|LanguageModelSession|SystemLanguageModel")
+        self.assertFalse((ROOT / "notchPocket/managers/SmartReplyManager.swift").exists())
+        project = (ROOT / "notchPocket.xcodeproj/project.pbxproj").read_text()
+        for removed in ["SmartReply", "AA05SRM", "FoundationModels"]:
+            self.assertNotIn(removed, project)
+
+    def test_notifications_settings_and_allow_list_remain_without_suggestions(self):
+        settings = (ROOT / "notchPocket/components/Settings/Views/NotificationSettingsView.swift").read_text()
+        for fragment in [
+            "Defaults.Toggle(key: .notificationLiveActivity)", 'Text("Show notifications in the notch")',
+            "Defaults.Toggle(key: .notificationsFromAllApps)", 'Text("From all apps")',
+            "if !notificationsFromAllApps", "ForEach(knownNotificationApps)", "appRow(app)",
+            "allowedApps.contains(app.bundleID)", "allowedApps.insert(app.bundleID)",
+            "allowedApps.remove(app.bundleID)", ".disabled(!notificationLiveActivity)",
+            '.navigationTitle("Notifications")',
+        ]:
+            self.assertIn(fragment, settings)
+        for label in ["Messages", "FaceTime", "Mail", "Outlook", "Microsoft Teams", "WhatsApp",
+                      "Telegram", "Telegram Desktop", "Discord", "Claude"]:
+            self.assertIn('name: "' + label + '"', settings)
+        self.assertNotIn("Suggest replies", settings)
+        self.assertNotIn("Apple Intelligence", settings)
+        constants = (ROOT / "notchPocket/models/Constants.swift").read_text()
+        for key in ["notificationLiveActivity", "notificationsFromAllApps"]:
+            self.assertIn('static let ' + key + ' = Key<Bool>("' + key + '", default: false)', constants)
+        self.assertIn('static let notificationAllowedApps = Key<Set<String>>(', constants)
+        navigation = (ROOT / "notchPocket/components/Settings/SettingsView.swift").read_text()
+        self.assertIn("case .notifications:\n                    NotificationSettingsView()", navigation)
+
+    def test_manual_composer_focus_draft_error_and_handoff_paths_remain(self):
+        view = (ROOT / "notchPocket/components/Notch/NotificationLiveActivity.swift").read_text()
+        self.assertNotIn("suggestions", view)
+        reply_row = view.split("private var replyRow: some View {", 1)[1].split("private var replyField:", 1)[0]
+        self.assertIn("replyField", reply_row)
+        self.assertIn("if let sendError", reply_row)
+        self.assertNotIn(".task", reply_row)
+        for fragment in [
+            'TextField("Reply", text: $replyText, axis: .horizontal)',
+            ".focused($replyFocused)", ".onSubmit(send)", "Button(action: send)",
+            ".disabled(isSending || didSend || didHandOff)", ".disabled(!canSend)",
+            "replyText = manager.draft(for: notification.id)", "manager.setDraft(text, for: notification.id)",
+            "hostWindow?.wantsKeyForTextInput = false", "hostWindow?.wantsKeyForTextInput = true",
+            "manager.holdActive()", "manager.holdWhileTyping()", "manager.resumeDismiss()",
+            "manager.isComposingReply = true", "manager.isComposingReply = false",
+            "SharingStateManager.shared.beginInteraction()", "SharingStateManager.shared.endInteraction()",
+            "let outcome = await manager.reply(to: notification, text: text)",
+            "didSend = outcome == .sent", "didHandOff = outcome == .handedOffToApp || outcome == .draftedInApp",
+            "manager.clearDraft(for: notification.id)", "manager.dismissActive(token: notification.id)",
+            "case .reply:\n            replyRow", "else if notification.canReply",
+            "Task { await manager.open(notification) }",
+        ]:
+            self.assertIn(fragment, view)
+        failure = view.split("if outcome == .failed {", 1)[1].split('replyText = ""', 1)[0]
+        self.assertIn("sendError = String(localized:", failure)
+        self.assertIn("Your draft is still here", failure)
+        self.assertIn("return", failure)
+        self.assertNotIn("clearDraft", failure)
+        on_appear = view.split(".onAppear {", 2)[-1].split(".onDisappear {", 1)[0]
+        self.assertNotIn("replyFocused = true", on_appear)
+
+    def test_notification_source_drafts_timeouts_and_delivery_fallbacks_are_retained(self):
+        manager = (ROOT / "notchPocket/managers/SystemNotificationManager.swift").read_text()
+        for fragment in [
+            "forName: .systemNotificationDidAppear", "forName: .systemNotificationDidDisappear",
+            "XPCHelperClient.shared.startNotificationWatching()", "XPCHelperClient.shared.stopNotificationWatching()",
+            "private var replyDrafts: [String: String] = [:]",
+            'func draft(for id: String) -> String { replyDrafts[id] ?? "" }',
+            "replyDrafts[id] = text", "replyDrafts.removeValue(forKey: id)",
+            "if isComposingReply, activeNotification != nil", "func cycleToNextQueued()",
+            "func holdWhileTyping()", "func holdActive()", "func resumeDismiss(after delay: TimeInterval = 3)",
+            "private let bannerReplyTimeout: TimeInterval = 2.0",
+            "private let imessageScriptTimeout: TimeInterval = 4.0",
+            "await XPCHelperClient.shared.replyToNotification(token: notification.id, text: text)",
+            "if bannerDelivered == nil", "await XPCHelperClient.shared.sendIMessage(text, toChatNamed: chatName)",
+            "ContactAvatarManager.shared.phoneNumber(forContactNamed: sender)",
+            'URL(string: "whatsapp://send?phone=\\(phone)&text=\\(encoded)")',
+            "NSPasteboard.general.setString(text, forType: .string)", "await open(notification)",
+            "return .sent", "return .failed", "return .draftedInApp", "return .handedOffToApp",
+        ]:
+            self.assertIn(fragment, manager)
+        timeout = manager.split("if bannerDelivered == nil {", 1)[1].split("\n        }", 1)[0]
+        self.assertIn("return .failed", timeout)
+        self.assertNotIn("sendIMessage", timeout)
+        self.assertTrue((ROOT / "notchPocketXPCHelper/NotificationWatcher.swift").is_file())
+        self.assertTrue((ROOT / "Shared/NotchPocketXPCHelperProtocol.swift").is_file())
+
+    def test_native_queries_use_typed_values_and_never_gate_on_expected_output(self):
+        native = (ROOT / "experiments/tart-regression/GuestRegressionProbe/GuestRegressionProbe.swift").read_text()
+        notifications = native.split("private func inspectNotifications(", 1)[1].split(
+            "private func inspectAppearance(", 1)[0]
+        for fragment in [
+            '.containing(.staticText, identifier: "Notifications")', 'row.staticTexts["Notifications"]',
+            "form.staticTexts.matching(identifier: $0)", "form.staticTexts[NotificationsOutputOracle.suggestionLabel]",
+            "snapshot.frame.contains($0.frame)", "headFrames == tailFrames",
+            "sidebars.count == 1 && forms.count == 1",
+        ]:
+            self.assertIn(fragment, notifications)
+        output = notifications.split("state.notificationsControls =", 1)[1]
+        self.assertNotIn("require(", output)
+        for label in ["Show notifications in the notch", "From all apps", "Suggest replies with Apple Intelligence"]:
+            self.assertNotIn('"' + label + '"', notifications)
+        self.assertIn('addTeardownBlock { @MainActor in self.restore(state) }', native)
+        self.assertIn('let control = row.staticTexts[targetPane]', native)
+
+    def test_negative_control_records_prior_artifact_not_an_assumed_base_build(self):
+        note = (ROOT / "experiments/tart-regression/scenarios/notifications-ai-replies-removed.md").read_text()
+        self.assertIn("4fff039f5a62249c7ac84466c5cb0c124b2c9a06", note)
+        self.assertIn("32331e682ed6fb6bba460019c1a949dee39e32ce92decafda48312ef0ce3aaaf", note)
+        self.assertIn("550cb9bb7ab424e359f6d7c70e48ff091ed2eca5", note)
+        self.assertIn("full eight-case registry", note)
+        self.assertIn("not negative proof", note)
 
 
 class IdleFaceRemovalSourceContractTests(unittest.TestCase):

@@ -31,6 +31,15 @@ full panel and retained appearance customization are unchanged. Historical
 translations for the removed control remain in the owned string catalog;
 they do not enable a runtime feature.
 
+**Notification replies:** AI-generated reply suggestions and their Settings
+control are removed. Notifications and manual replies remain, including drafts,
+focus/compose holds, timeout errors and existing delivery/app/clipboard fallbacks.
+The separate `canReply` eligibility behavior is unchanged. A stored
+`smartRepliesEnabled=true` is ignored, not migrated or deleted; historical
+translations remain in the catalog. The
+[installed-app regression](experiments/tart-regression/scenarios/notifications-ai-replies-removed.md)
+checks Settings output, not live banner capture or message delivery.
+
 <p align="center">
   <img src="notchPocket/Assets.xcassets/logo2.imageset/NotchPocket%20icon.png" alt="Notch Pocket utility pocket icon" width="150" />
 </p>

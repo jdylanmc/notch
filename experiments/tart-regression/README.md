@@ -1,7 +1,7 @@
 # Source-only installed-app probe
 
 This is the initial **registered installed-app regression suite**, built from the
-XCTest/Vision Tart experiment. It currently covers two application journeys and
+XCTest/Vision Tart experiment. It currently covers three application journeys and
 five explicit oracle/restoration controls, not the whole app. See the
 [VM reconstruction recipe](../../docs/agents/vm-regression.md) first.
 
@@ -60,6 +60,9 @@ executable hashes and source/build provenance separately; both apps can be
 0.1.0 (272). The available old artifact is the PR97 preview from `4fff039`, not a
 build of the removal branch's base. See the scenario's exact pins and report
 requirements; the minimal launcher manifest alone is insufficient provenance.
+The Notifications removal uses the same documented prior artifact for its
+independent wrong-behavior check; see its [scenario note](scenarios/notifications-ai-replies-removed.md).
+It is not a build of the AI-removal branch's base either.
 
 ## Exercise the installed app in the guest
 
@@ -129,6 +132,7 @@ panes are an explicit unsupported fixture, not silently replaced.
 | `visual-no-reveal` | FAIL / 10; XCTest 65 | Missing revealed build text reaches the pixel oracle, not an environment-block classification |
 | `native-abort-after-open` | BLOCKED / 20; XCTest 65 | A real XCTest failure after opening Settings still runs teardown and reports restoration |
 | `native-abort-after-about` | BLOCKED / 20; XCTest 65 | A real XCTest failure after About selection still restores the fixture |
+| `notifications-ai-replies-removed` | PASS / 0 on new candidate | Retained notification labels render; suggestion control is absent in Accessibility and pixels |
 
 Do not convert the two negative controls into passing application tests.
 `runs/<name>/` holds invocation/framework/result receipts, log and `.xcresult`;
@@ -142,8 +146,9 @@ Retained automatic system attachments are disabled.
 
 - The examples expect an English Settings UI and the repository's versioned panel
   and Settings markers, with one guest display and a visible Settings gear.
-- It covers About version/build and
-  [Appearance idle-face removal](scenarios/appearance-idle-face-removed.md), not
+- It covers About version/build,
+  [Appearance idle-face removal](scenarios/appearance-idle-face-removed.md) and
+  [Notifications AI-reply removal](scenarios/notifications-ai-replies-removed.md), not
   all retained features. New features need their own independent scenarios.
 - Appearance uses typed static-text value lookup, row-scoped sidebar navigation,
   and structural form mapping. Its single screenshot requires positive full-form
@@ -151,6 +156,12 @@ Retained automatic system attachments are disabled.
   for General/Media and the removed section. Missing retained controls are
   output failures after pane setup, never setup guards. OCR shares About's
   same-row fragment geometry; this does not authorize offscreen absence claims.
+- Notifications likewise uses row-scoped navigation, typed static-text value
+  lookup, structural form mapping and full-form fit at both scroll endpoints.
+  Prepare a tall enough guest Settings window to include the default allow-list
+  and the old suggestion tail in both candidates. Overflow is BLOCKED, never
+  absence proof. No preference is toggled to force fit; missing retained labels
+  are output failures. The same one-capture receipt/restoration contract applies.
 - Readiness and cleanup are checked, but this remains prototype code, not a
   hardened multi-user execution service or an authorization boundary.
 - User-controlled OS consent, guest idle lock, hardware and application readiness
