@@ -226,7 +226,9 @@ restoration exits; no stale authorized binary may stand in for new tests.
 Each native Settings receipt records
 `discovery.screenCapturePreflightAccess` from the actual runner. This is a
 non-prompting observation, not a replacement for the scenario's output
-assertions. Cross-source permission acceptance requires the observed value to
+assertions. When that initial observation was reached, the final receipt also
+records `discovery.screenCapturePreflightAccessAfterTest` after native
+restoration. Cross-source permission acceptance requires the observed values to
 be `true` for both source snapshots; a successful Settings screenshot alone
 does not establish this grant. Never call `CGRequestScreenCaptureAccess` or
 change the privacy database to make the observation pass.

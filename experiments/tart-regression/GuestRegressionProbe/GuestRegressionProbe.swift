@@ -180,6 +180,9 @@ final class GuestRegressionProbe: XCTestCase {
                 state.reason = "candidate_integrity_unverified"
             }
         }
+        if state.discovery["screenCapturePreflightAccess"] is Bool {
+            state.discovery["screenCapturePreflightAccessAfterTest"] = CGPreflightScreenCaptureAccess()
+        }
         var receipt: [String: Any] = [
             "runID": runID, "scenario": mode, "verdict": state.verdict, "reason": state.reason,
             "testIdentifier": "GuestRegressionProbe/GuestRegressionProbe/\(testName)",
