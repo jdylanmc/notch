@@ -430,6 +430,15 @@ def verify_code(products, roles, entries, config, run):
             entitlements = plistlib.loads(entitlements) if entitlements.strip() else {}
             if not isinstance(entitlements, dict):
                 raise RunnerError("Invalid signed test entitlements.")
+            if config["mode"] == "stable":
+                if "com.apple.application-identifier" in entitlements:
+                    raise RunnerError("Profileless runner must not claim a provisioned application identifier.")
+                if path == products / roles["runner"]["binary"] and any(
+                    entitlements.get(key) is not True for key in (
+                        "com.apple.security.app-sandbox", "com.apple.security.get-task-allow",
+                    )
+                ):
+                    raise RunnerError("Stable runner must retain XCTest sandbox and debug entitlements.")
             # Record Xcode's legitimate sandbox/debug/test entitlements, never distribution-strip them.
             dr, _ = run(["/usr/bin/codesign", "--display", "--arch", arch, "-r-", str(path)])
             designated = stable_requirement(dr.decode(), identifier, config) if stable else dr.decode().strip()
@@ -455,6 +464,8 @@ def build_command(tool, build, config):
         "DEVELOPMENT_TEAM=" + config.get("team", ""), "ENABLE_HARDENED_RUNTIME=NO",
         "CODE_SIGNING_ALLOWED=" + ("NO" if config["mode"] == "unsigned" else "YES"),
         "CODE_SIGNING_REQUIRED=" + ("NO" if config["mode"] == "unsigned" else "YES"),
+        *(["CODE_SIGN_ENTITLEMENTS=" + str(SOURCE / TARGET / "StableRunner.entitlements")]
+          if config["mode"] == "stable" else []),
     ]
 
 

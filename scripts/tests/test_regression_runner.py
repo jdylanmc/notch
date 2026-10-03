@@ -179,6 +179,7 @@ class RunnerContracts(unittest.TestCase):
         self.assertIn("CODE_SIGN_IDENTITY=" + LEAF, command)
         self.assertIn("DEVELOPMENT_TEAM=" + TEAM, command)
         self.assertIn("ENABLE_HARDENED_RUNTIME=NO", command)
+        self.assertIn("CODE_SIGN_ENTITLEMENTS=" + str(SOURCE / RUNNER.TARGET / "StableRunner.entitlements"), command)
         self.assertFalse(any("CODE_SIGN_INJECT_BASE_ENTITLEMENTS" in arg or "--options" in arg
                              or "OTHER_CODE_SIGN_FLAGS" in arg or "allowProvisioning" in arg
                              or "notchPocket.xcodeproj" in arg for arg in command))
@@ -186,6 +187,33 @@ class RunnerContracts(unittest.TestCase):
                       RUNNER.build_command("/xcodebuild", self.root, RUNNER.signing(IDENTITY, TEAM, None)))
         self.assertIn("CODE_SIGNING_ALLOWED=NO",
                       RUNNER.build_command("/xcodebuild", self.root, {"mode": "unsigned"}))
+
+    def test_stable_entitlement_input_replaces_sdk_app_id_not_xctest_entitlements(self):
+        with (SOURCE / RUNNER.TARGET / "StableRunner.entitlements").open("rb") as stream:
+            self.assertEqual(plistlib.load(stream), {})
+        for config in ({"mode": "adhoc"}, {"mode": "unsigned"}):
+            with self.subTest(config=config):
+                self.assertFalse(any(arg.startswith("CODE_SIGN_ENTITLEMENTS=")
+                                     for arg in RUNNER.build_command("/xcodebuild", self.root, config)))
+
+    def test_stable_code_refuses_unprovisioned_application_identifier(self):
+        self.entitlements["com.apple.application-identifier"] = TEAM + "." + RUNNER.BUNDLE_ID + ".xctrunner"
+        with self.assertRaisesRegex(RUNNER.RunnerError, "provisioned application identifier"):
+            self.verify()
+
+    def test_stable_code_requires_actual_runner_sandbox_and_debug_entitlements(self):
+        for key in ("com.apple.security.app-sandbox", "com.apple.security.get-task-allow"):
+            for value in (None, False, 1, "true"):
+                with self.subTest(key=key, value=value):
+                    self.entitlements = {
+                        "com.apple.security.app-sandbox": True, "com.apple.security.get-task-allow": True,
+                    }
+                    if value is None:
+                        del self.entitlements[key]
+                    else:
+                        self.entitlements[key] = value
+                    with self.assertRaisesRegex(RUNNER.RunnerError, "sandbox and debug entitlements"):
+                        self.verify()
 
     def test_environment_excludes_credentials_and_signing_injection(self):
         with patch.dict(os.environ, {"SECRET": "hidden", "XCODE_XCCONFIG_FILE": "/bad",

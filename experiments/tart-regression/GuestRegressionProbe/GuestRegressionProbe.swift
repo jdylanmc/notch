@@ -510,7 +510,10 @@ final class GuestRegressionProbe: XCTestCase {
             state.app = application
             application.activate()
             let matches = application.descendants(matching: .any).matching(identifier: "NotchPocketSettingsWindow")
-            state.discovery = ["initialSettingsMarkerCount": matches.count]
+            state.discovery = [
+                "initialSettingsMarkerCount": matches.count,
+                "screenCapturePreflightAccess": CGPreflightScreenCaptureAccess()
+            ]
             let settings = matches.firstMatch
             state.window = settings
             if !settings.exists {

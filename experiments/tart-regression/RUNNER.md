@@ -74,6 +74,27 @@ Stable mode checks the Developer ID certificate chain, full signer, team and
 selected leaf (when supplied), and requires a normal identifier/Apple-chain/team
 designated requirement, not a cdhash-only or weakened expression.
 
+Stable mode supplies the empty, source-pinned `StableRunner.entitlements` through
+Xcode's normal `CODE_SIGN_ENTITLEMENTS` setting. This replaces the generic SDK
+entitlement input, **not** Xcode's XCTest product-type or debug entitlements.
+With no explicit input, Xcode's UI-test target selects the SDK's
+`Entitlements.plist`, which claims `com.apple.application-identifier`. The
+profileless Developer ID runner then claims a provisioned identity it cannot
+authorize. Native guest logs showed `taskgated-helper` rejecting that runner
+because no eligible provisioning profile was found, before any test completed.
+Clearing `DEVELOPMENT_TEAM` did not remove the claim and is not a fix.
+
+The explicit input retains the same certificate, team, identifiers and normal
+designated requirements. Native comparison must show that every other
+entitlement is unchanged. Verification rejects a provisioned application-ID
+claim and requires the runner's sandbox and `get-task-allow` values to be actual
+booleans `true`; it never removes entitlements from an already signed artifact.
+Base-entitlement injection remains enabled. Ad-hoc and unsigned modes retain
+their previous inputs. See Apple's
+[provisioning-profile explanation](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles)
+and Swift Build's `lookupEntitlementsFilePath` for the SDK fallback.
+Successful signing still does not establish Gatekeeper approval or OS consent.
+
 `codesign --display -r-` emits the designated requirement on **stdout**;
 `Executable=...` diagnostics are on stderr. The parser recognizes only:
 
@@ -201,6 +222,22 @@ BLOCKED evidence, not permission to restore ad-hoc code, re-sign the app,
 weaken timeouts or claim stable TCC reuse. Preserve the old granted runner until
 this migration is explicitly owned. Check successful, negative-control and
 restoration exits; no stale authorized binary may stand in for new tests.
+
+Each native Settings receipt records
+`discovery.screenCapturePreflightAccess` from the actual runner. This is a
+non-prompting observation, not a replacement for the scenario's output
+assertions. Cross-source permission acceptance requires the observed value to
+be `true` for both source snapshots; a successful Settings screenshot alone
+does not establish this grant. Never call `CGRequestScreenCaptureAccess` or
+change the privacy database to make the observation pass.
+
+Outer administrative restoration must observe the current pointer before
+attempting a warp. An already-matching pointer is an explicit no-op, not a
+reason to request input permission. If movement is necessary and
+`CGWarpMouseCursorPosition` fails, retain its raw return code and report the
+failure. Restore the verified original foreground only after pointer handling,
+then verify both with observation-only reads. Use new record/restore paths for
+each run; never retry or rewrite a consumed failed restoration receipt.
 
 Permission-free contracts:
 
