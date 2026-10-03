@@ -427,6 +427,87 @@ class RunnerContracts(unittest.TestCase):
         with self.assertRaises(RUNNER.RunnerError):
             RUNNER.verify_prepared(self.products, manifest, sha, source=self.source, run=self.native)
 
+    def transition(self, mutate=None):
+        manifest, _ = self.artifact()
+        before = json.loads(manifest.read_bytes())
+        after = copy.deepcopy(before)
+        after_root = self.root / "after"
+        after_root.mkdir()
+        if mutate:
+            mutate(after)
+        with patch.object(RUNNER, "verify_prepared", side_effect=[before, after]) as verify:
+            result = RUNNER.compare_prepared(self.root, "a" * 64, after_root, "b" * 64)
+            self.assertEqual(verify.call_args_list[0].args,
+                             (self.root / "Products", self.root / "runner-manifest.json", "a" * 64))
+            self.assertEqual(verify.call_args_list[0].kwargs, {"source": self.root})
+            self.assertEqual(verify.call_args_list[1].args,
+                             (after_root / "Products", after_root / "runner-manifest.json", "b" * 64))
+            self.assertEqual(verify.call_args_list[1].kwargs, {"source": after_root})
+        return result
+
+    def test_transition_accepts_new_test_code_without_claiming_consent(self):
+        def change(after):
+            after["source"]["files"]["GuestRegressionProbe/AddedTests.swift"] = "c" * 64
+            for role in after["roles"].values():
+                after["files"][role["binary"]]["sha256"] = "d" * 64
+                after["code"][role["binary"]]["slices"][0]["cdhash"] = "e" * 40
+        result = self.transition(change)
+        self.assertEqual(result["status"], "COMPATIBLE_IDENTITY")
+        self.assertEqual(result["changedSourceFiles"], ["GuestRegressionProbe/AddedTests.swift"])
+        self.assertTrue(all(role["executableChanged"] and role["codeHashesChanged"]
+                            for role in result["roles"].values()))
+        self.assertEqual(result["permissionReadiness"], "UNVERIFIED")
+        self.assertEqual(result["nativeAcceptance"], "NOT_PERFORMED")
+
+    def test_transition_unchanged_artifact_is_not_cross_source_proof(self):
+        result = self.transition()
+        self.assertEqual(result["status"], "COMPATIBLE_IDENTITY")
+        self.assertEqual(result["changedSourceFiles"], [])
+        self.assertTrue(all(not role["executableChanged"] and not role["codeHashesChanged"]
+                            for role in result["roles"].values()))
+
+    def test_transition_refuses_identity_capability_and_typed_entitlement_drift(self):
+        manifest, _ = self.artifact()
+        original = json.loads(manifest.read_bytes())
+        binary = original["roles"]["runner"]["binary"]
+        mutations = [
+            lambda value: value["signing"].update(certificateSHA1="f" * 40),
+            lambda value: value["roles"]["runner"].update(identifier="different.runner"),
+            lambda value: value["roles"]["runner"].update(path="different.app"),
+            lambda value: value["code"][binary].update(architectures=["arm64", "x86_64"]),
+            lambda value: value["code"][binary]["slices"][0].update(designatedRequirement="different"),
+            lambda value: value["code"][binary]["slices"][0].update(flags=0x10000),
+            lambda value: value["code"][binary]["slices"][0]["entitlements"].update(newCapability=True),
+            lambda value: value["code"][binary]["slices"][0]["entitlements"].update(
+                {"com.apple.security.app-sandbox": 1}),
+        ]
+        for mutate in mutations:
+            after = copy.deepcopy(original)
+            mutate(after)
+            with self.subTest(mutation=mutate), \
+                    patch.object(RUNNER, "verify_prepared", side_effect=[original, after]), \
+                    self.assertRaises(RUNNER.RunnerError) as raised:
+                RUNNER.compare_prepared(self.root, "a" * 64, self.root, "b" * 64)
+            self.assertTrue(raised.exception.details["identityChanged"])
+
+    def test_transition_requires_successful_verification_of_both_packages(self):
+        manifest, _ = self.artifact()
+        before = json.loads(manifest.read_bytes())
+        with patch.object(RUNNER, "verify_prepared",
+                          side_effect=[before, RUNNER.RunnerError("After package pin mismatch")]), \
+                self.assertRaisesRegex(RUNNER.RunnerError, "pin mismatch"):
+            RUNNER.compare_prepared(self.root, "a" * 64, self.root, "b" * 64)
+
+    def test_compare_cli_preserves_explicit_package_roots_and_pins(self):
+        result = {"status": "COMPATIBLE_IDENTITY", "permissionReadiness": "UNVERIFIED"}
+        with patch.object(RUNNER, "compare_prepared", return_value=result) as compare, \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            code = RUNNER.main(["compare", "--before-root", str(self.root), "--before-sha256", "a" * 64,
+                               "--after-root", str(self.source), "--after-sha256", "b" * 64])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output.getvalue()), result)
+        compare.assert_called_once_with(self.root, "a" * 64, self.source, "b" * 64)
+
     def test_prepared_rejects_adhoc_and_changed_entitlements(self):
         manifest, sha = self.artifact()
         self.entitlements = {}

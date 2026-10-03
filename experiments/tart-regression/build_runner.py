@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build only the standalone XCTest harness; verify prepared Products without keys."""
+"""Build the standalone XCTest harness; verify and compare prepared packages without keys."""
 
 import argparse
 import hashlib
@@ -584,6 +584,43 @@ def prepared_test_manifest(products, artifact):
     return relocate(data)
 
 
+def compare_prepared(before_root, before_sha256, after_root, after_sha256):
+    before_root, after_root = canonical(before_root), canonical(after_root)
+    before = verify_prepared(before_root / "Products", before_root / "runner-manifest.json",
+                             before_sha256, source=before_root)
+    after = verify_prepared(after_root / "Products", after_root / "runner-manifest.json",
+                            after_sha256, source=after_root)
+    for key in ("signing", "roles"):
+        if json_bytes(before[key]) != json_bytes(after[key]):
+            raise RunnerError("Prepared runner transition changes " + key + ".", identityChanged=True)
+    roles = {}
+    for role, description in before["roles"].items():
+        binary = description["binary"]
+        old_code, new_code = before["code"][binary], after["code"][binary]
+        old_identity = [{key: value for key, value in item.items() if key != "cdhash"}
+                        for item in old_code["slices"]]
+        new_identity = [{key: value for key, value in item.items() if key != "cdhash"}
+                        for item in new_code["slices"]]
+        if (old_code["architectures"] != new_code["architectures"]
+                or json_bytes(old_identity) != json_bytes(new_identity)):
+            raise RunnerError("Prepared runner transition changes " + role + " identity or entitlements.",
+                              identityChanged=True)
+        roles[role] = {
+            "executableChanged": before["files"][binary]["sha256"] != after["files"][binary]["sha256"],
+            "codeHashesChanged": [item["cdhash"] for item in old_code["slices"]]
+                                != [item["cdhash"] for item in new_code["slices"]],
+        }
+    names = set(before["source"]["files"]) | set(after["source"]["files"])
+    return {
+        "status": "COMPATIBLE_IDENTITY",
+        "beforeManifestSHA256": before_sha256, "afterManifestSHA256": after_sha256,
+        "beforeSourceRevision": before["source"]["revision"], "afterSourceRevision": after["source"]["revision"],
+        "changedSourceFiles": sorted(name for name in names
+                                    if before["source"]["files"].get(name) != after["source"]["files"].get(name)),
+        "roles": roles, "permissionReadiness": "UNVERIFIED", "nativeAcceptance": "NOT_PERFORMED",
+    }
+
+
 def add_prepared_arguments(parser):
     parser.add_argument("--runner-manifest", type=Path)
     parser.add_argument("--runner-manifest-sha256")
@@ -619,10 +656,17 @@ def main(argv=None):
     verifier.add_argument("--products", type=Path, required=True)
     verifier.add_argument("--runner-manifest", type=Path, required=True)
     verifier.add_argument("--runner-manifest-sha256", required=True)
+    comparison = commands.add_parser("compare", help="Verify two portable packages without launching or promoting them.")
+    comparison.add_argument("--before-root", type=Path, required=True)
+    comparison.add_argument("--before-sha256", required=True)
+    comparison.add_argument("--after-root", type=Path, required=True)
+    comparison.add_argument("--after-sha256", required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "build":
             result = build(args)
+        elif args.command == "compare":
+            result = compare_prepared(args.before_root, args.before_sha256, args.after_root, args.after_sha256)
         else:
             manifest = verify_prepared(args.products, args.runner_manifest, args.runner_manifest_sha256)
             result = {"status": "VERIFIED", "source": manifest["source"], "roles": manifest["roles"],

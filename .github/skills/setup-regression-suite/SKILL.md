@@ -51,12 +51,25 @@ Follow [the approved intent](intent.md), root `AGENTS.md`,
    owned output directories, not Products; an interrupted output is not a
    reason to modify the approved artifact. Native signatures are freshly
    verified for every prepared invocation, not trusted from a prior run.
+   Establish this identity **before the first grant on a fresh guest**. Do not
+   grant an ad-hoc test build and migrate later as the normal setup path.
+   For an existing guest, use the owner contract's targeted legacy migration:
+   container access and Screen Recording are separate grants, and a stale
+   cdhash-only recording entry needs human replacement, not another checkbox
+   assumption. Keep unrelated entries and data unchanged.
+   An explicitly authorized consent-only launch uses Xcode's normal test
+   environment; opening the runner app directly can fail before any prompt.
 8. Verify headless boot, graphical login, SSH access and effective idle settings.
    Keep readiness separate from application test results. Do not invoke the
    regression suite as an implicit setup step; return readiness to its caller.
 9. Write local `AGENTS.md` beside the VM with actual names, paths, ownership,
    start/stop commands, prerequisites and limitations. Keep the portable recipe
    and executable test sources in Git; private runtime state remains ignored.
+   Record the stable role identifiers, public signing selectors, fixed runtime
+   path and last verified package pin. Distinguish setup prepared from the
+   coordinator's completed rebuild/restart/no-new-prompt acceptance. New tests
+   using the same approved capabilities must not reactivate this walkthrough
+   merely because their source or executable hashes changed.
 
 Return completed/pending steps, approved resource choices, verified identities,
 local instruction location and remaining human actions. Do not claim a suite

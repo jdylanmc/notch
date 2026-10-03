@@ -204,6 +204,57 @@ overwritten or recursively cleaned.
    the suite requires both, alongside existing exact framework counts, exits
    and restoration. No execution/cleanup deadlines are relaxed.
 
+## One-time setup, not per-test consent
+
+The setup unit is the **guest account plus stable runner identity**, not a test
+file, source revision, suite invocation or build directory. Routine additions
+within the already-approved capability set must run without human intervention.
+New OS capabilities or an intentional identity change are separate setup work;
+never silently request broader access.
+
+| Phase | Expected behavior |
+| --- | --- |
+| Fresh guest | Prepare the stable-signed runner first. Do not authorize an ad-hoc runner and then switch identities. Record the fixed runtime path and approved public signing selectors in ignored machine-local instructions; keys remain outside the guest. |
+| Legacy guest migration | Preserve existing data and artifacts. Container consent and Screen Recording are separate. If native diagnostics identify a stale cdhash-only recording rule, the human removes only that runner's stale recording entry, re-adds the exact verified stable app, and enables it. An already-enabled checkbox does not prove the stored code requirement was replaced. No automatic `tccutil` reset, database edit or container deletion. |
+| Normal build/test | Build new immutable Products with the same signer, role identifiers, requirements and entitlement set. Compare packages, promote at the same path while no worker/job/lock owns the guest, and run independently. Do not repeat setup, change permissions or fall back to ad-hoc signing. |
+| Readiness failure | Preserve the result and stop the affected permission-dependent work. Diagnose the actual identity/grant mismatch; do not repeatedly run a known-blocked suite or make approval part of each run. |
+
+A standalone XCTest runner is not an ordinary double-clickable app: Xcode
+supplies its test-framework search paths. Any separately authorized consent-only
+launch must use the normal Xcode execution environment. A direct launch can
+exit on a missing XCTest library before any consent prompt appears. Consent-only
+launches and setup observations are not regression acceptance.
+
+## Compare before replacing a prepared runner
+
+Each portable package root contains its pinned source, `Products/`, and
+`runner-manifest.json`. Verify both complete packages before deciding that a
+new test build preserves the configured identity:
+
+```bash
+python3 -B experiments/tart-regression/build_runner.py compare \
+  --before-root /absolute/previous-portable-package \
+  --before-sha256 PARENT_RECORDED_PREVIOUS_MANIFEST_SHA256 \
+  --after-root /absolute/new-portable-package \
+  --after-sha256 PARENT_RECORDED_NEW_MANIFEST_SHA256
+```
+
+This read-only command uses each package's own source snapshot, never a mutable
+checkout HEAD as a substitute for older source. Both pins, source trees, complete
+Products and actual signatures must verify. Signer configuration, relative role
+paths/identifiers/versions, architectures, normal designated requirements,
+entitlements and flags must match. A drift returns BLOCKED/20, not a fallback
+signer or a permission reset. An accepted comparison returns
+`COMPATIBLE_IDENTITY`, changed source filenames, and separate executable/code-hash
+change observations for each role.
+
+Compatibility is neither consent nor proof that a new test was added: unchanged
+packages are compatible but report no changes. Native acceptance remains
+`NOT_PERFORMED` and permission readiness remains `UNVERIFIED`. The caller must
+review the actual test change, require genuinely changed native code for the
+cross-source proof, and keep the packages immutable during comparison/promotion.
+Fresh verification at installation and invocation remains mandatory.
+
 ## Parent-owned native acceptance
 
 Use two deliberately different, explicitly chosen test-source snapshots and
@@ -222,6 +273,14 @@ BLOCKED evidence, not permission to restore ad-hoc code, re-sign the app,
 weaken timeouts or claim stable TCC reuse. Preserve the old granted runner until
 this migration is explicitly owned. Check successful, negative-control and
 restoration exits; no stale authorized binary may stand in for new tests.
+
+Before calling the setup reusable, prove this complete sequence without any
+additional approval between the two sources: first source with actual capture
+preflight `true` and expected scenario/control outcomes; genuinely rebuilt
+second source at the same path with compatible identity and actual preflight
+`true`; then another normal guest restart and successful headless execution.
+Record any prompt as a setup/persistence failure, not a normal suite step.
+Only after this evidence may the prepared guest serve as an unattended baseline.
 
 Each native Settings receipt records
 `discovery.screenCapturePreflightAccess` from the actual runner. This is a

@@ -26,6 +26,13 @@ Read [the approved intent](intent.md), [worker contract](WORKER.md),
    optional strict-boolean evidence gate applies only to selected declared cases;
    the nine existing entries/default CLI remain unchanged. Direct launchers
    receive `--requires-prepared-runner` as well as the paired manifest arguments.
+   For a rebuilt prepared package, require the coordinator's verified
+   `build_runner.py compare` identity-transition evidence against the recorded
+   baseline before accepting promotion. Compatibility does not establish
+   current permissions: use actual native preflight where the scenario needs
+   capture, never a checkbox or an XCTest screenshot as a proxy. A known stale
+   recording rule is a targeted setup blocker, not a reason to run the same
+   blocked suite repeatedly or request consent for every source change.
 2. Read `.local/vm-regression/AGENTS.md` when present, or the user's custom setup
    location. Inspect Tart configuration, the named VM and guest readiness.
    Installed Tart alone is insufficient. A stopped prepared VM is not missing
