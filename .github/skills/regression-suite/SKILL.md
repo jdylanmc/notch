@@ -16,6 +16,16 @@ Read [the approved intent](intent.md), [worker contract](WORKER.md),
 1. Identify context: **ad hoc** or **feature verification**. For feature work,
    record the owning issue/PR/Ship loop. Resolve the candidate, test revision and
    registered scope. Full registered regressions are the default.
+   For panel/ScreenCapture-dependent cases, supply parent-prepared stable
+   Products and the approved manifest hash under the
+   [runner owner contract](../../../experiments/tart-regression/RUNNER.md).
+   Treat signature qualification and human-granted permission readiness as
+   independent prerequisites; a new source hash must retain the verified
+   designated requirement, not reuse stale authorized test code.
+   New cases declare `requiresPreparedRunner: true` in the registry. This
+   optional strict-boolean evidence gate applies only to selected declared cases;
+   the nine existing entries/default CLI remain unchanged. Direct launchers
+   receive `--requires-prepared-runner` as well as the paired manifest arguments.
 2. Read `.local/vm-regression/AGENTS.md` when present, or the user's custom setup
    location. Inspect Tart configuration, the named VM and guest readiness.
    Installed Tart alone is insufficient. A stopped prepared VM is not missing
