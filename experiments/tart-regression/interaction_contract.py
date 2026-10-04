@@ -175,6 +175,8 @@ def captures(receipt):
         observed[role] = output(capture)
     discovery = receipt.get("discovery")
     require(isinstance(discovery, dict) and discovery.get("setupQualified") is True)
+    require(discovery.get("screenCapturePreflightAccess") is True
+            and discovery.get("screenCapturePreflightAccessAfterTest") is True)
     preferences = {
         "General:Open notch on hover": True, "General:Compact mode": False,
         "Appearance:Always show tabs": True, "Shelf:Enable shelf": True,

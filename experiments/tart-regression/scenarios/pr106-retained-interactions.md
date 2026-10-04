@@ -138,6 +138,49 @@ cleared/zero elapsed/no error. Only the original hover boolean is temporarily
 changed by the tests, using its real native control/value, and restored.
 No stored preference, Shelf, history or profile is deleted.
 
+Permission evidence uses the established canonical discovery fields:
+`screenCapturePreflightAccess` records the actual non-prompting
+`CGPreflightScreenCaptureAccess()` result at setup, before its permission guard.
+If that observation was reached (even when false), finish samples the API again
+**after restoration** into `screenCapturePreflightAccessAfterTest`. It does not
+copy the first value or infer permission from successful capture. Both fields
+must be actual boolean `true` for full-capture acceptance, including negative
+control clearance. Missing, false or nonboolean evidence is BLOCKED; a later
+permission/evidence failure never overwrites an earlier primary FAIL.
+
+Candidate/producer activation uses only the retained original
+`NSRunningApplication`, freshly resolved by original PID and checked for
+aliveness, bundle URL/identifier and matching launch date. No
+`XCUIApplication.activate()` is used: that API can launch a stopped app.
+Every input rechecks the original process. Each restoration stage checks its
+own target before activation/input, so a vanished/replaced candidate or producer
+fails that gate without launching a replacement; independently safe cleanup
+stages still run. These checks do not make native input atomic with process death.
+Before each keyboard chord, the verified non-launching helper activates the
+original candidate and a bounded wait observes that exact live PID/bundle URL/ID
+as frontmost. Identity and focus are rechecked before input. Unavailable focus
+refuses the keyboard step as `candidate_focus_unavailable` (BLOCKED), before
+any keyboard-transition assertion.
+
+After fixture qualification, hover/click/exit/keyboard results are recorded
+immediately, before dependent navigation or capture. A witnessed wrong
+transition retains `primaryVerdict: FAIL` / `primaryReason:
+rendered_output_mismatch` through subsequent refusals, capture errors and
+cleanup. Incomplete evidence or failed cleanup still makes the overall verdict
+BLOCKED. Missing identity, window, grant or readable panel state remains a
+precondition/evidence refusal, not a product FAIL. Setup and teardown transitions
+do not invent new product failures.
+
+The existing permission-free `test-oracle.sh` now executes the shared
+`PR106FailurePolicy` against disappeared/replaced candidate and producer
+identities, disappearance between activation/input, rejected activation, and
+qualified transition failures with successful/failed cleanup. Portable reader
+tests separately retain strict capture/restoration rejection for incomplete
+primary-FAIL receipts and missing/false/nonboolean before/after permission
+receipts across all five cases. The shared failure policy also exercises
+missing/lost before/after grants with prior PASS/FAIL and successful/failed
+restoration. These are failure-path contracts, not native acceptance.
+
 **External gate:** normal playback may update Notch's remembered media history.
 The test cannot honestly undo that through public UI. Every receipt explicitly
 says `profileRestoration: parent-required-not-performed-by-test`. After exporting

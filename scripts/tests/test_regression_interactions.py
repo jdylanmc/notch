@@ -45,7 +45,9 @@ def receipt(media=False):
         "interactionFixture": fixture(), "interactionWorker": "independent-worker",
         "interactionRestoration": dict.fromkeys(
             ["candidate", "settings", "preferences", "tab", "panel", "pointer", "foreground", "producer"], True),
-        "profileRestoration": "parent-required-not-performed-by-test", "discovery": {"setupQualified": True},
+        "profileRestoration": "parent-required-not-performed-by-test",
+        "discovery": {"setupQualified": True, "screenCapturePreflightAccess": True,
+                      "screenCapturePreflightAccessAfterTest": True},
         "frameworkCountVerified": True, "suiteExit": 0, "xcodeExit": 0, "captures": [],
     }
     steps = ([("baseline", "Regression Alpha"), ("baseline-repeat", "Regression Alpha"),
@@ -165,6 +167,42 @@ class InteractionContracts(unittest.TestCase):
             capture["scenario"] = value["scenario"]
         self.assertEqual(self.evaluate(value), ("PASS", "expected_control_outcome_verified"))
 
+    def test_all_five_cases_require_strict_before_and_after_capture_grants(self):
+        values = [receipt(), receipt(True)]
+        wrong_tab = receipt()
+        paint(wrong_tab["captures"][-1], "shelf", False)
+        recompute(wrong_tab)
+        wrong_tab["scenario"] = "pr106-panel-wrong-tab"
+        wrong_direction = receipt(True)
+        paint(wrong_direction["captures"][-1], "Regression Charlie", True)
+        wrong_direction["discovery"]["engineSamples"][-1].update(title="Regression Charlie", next=5, previous=4)
+        recompute(wrong_direction)
+        wrong_direction["scenario"] = "pr106-media-wrong-direction"
+        wrong_pulse = receipt(True)
+        wrong_pulse["captures"][-1]["transportSHA256"]["next"] = "f" * 64
+        recompute(wrong_pulse)
+        wrong_pulse["scenario"] = "pr106-media-wrong-pulse"
+        for control in (wrong_tab, wrong_direction, wrong_pulse):
+            for capture in control["captures"]:
+                capture["scenario"] = control["scenario"]
+            values.append(control)
+        self.assertEqual({value["scenario"] for value in values}, set(CONTRACT.TESTS))
+        for valid in values:
+            self.assertEqual(self.evaluate(valid)[0], "PASS")
+            for field in ("screenCapturePreflightAccess", "screenCapturePreflightAccessAfterTest"):
+                for changed in ("missing", False, None, 0, 1, 0.0, 1.0, "true", "false", [], {}):
+                    with self.subTest(scenario=valid["scenario"], field=field, value=changed):
+                        value = copy.deepcopy(valid)
+                        if changed == "missing":
+                            del value["discovery"][field]
+                        else:
+                            value["discovery"][field] = changed
+                        with self.assertRaises(ValueError):
+                            CONTRACT.captures(value)
+                        self.assertEqual(self.evaluate(value)[0], "BLOCKED")
+                        self.assertEqual(value["primaryVerdict"], valid["primaryVerdict"])
+                        self.assertEqual(value["primaryReason"], valid["primaryReason"])
+
     def test_missing_or_stale_evidence_and_cleanup_block(self):
         for media in (False, True):
             valid = receipt(media)
@@ -225,6 +263,76 @@ class InteractionContracts(unittest.TestCase):
             path.write_text(json.dumps(dict(value, snapshotSHA256="d" * 64)))
             with self.assertRaises(ValueError):
                 CONTRACT.arguments(args, "pr106-panel", CONTRACT.TESTS["pr106-panel"], "a" * 64)
+
+    def test_transition_primary_fail_survives_incomplete_evidence_and_cleanup(self):
+        for transition in ("hoverOpened", "clickOpened", "exitClosed"):
+            for restored in (True, False):
+                with self.subTest(transition=transition, restored=restored):
+                    value = receipt()
+                    value["discovery"]["transitions"][transition] = False
+                    recompute(value)
+                    self.assertEqual(self.evaluate(value), ("FAIL", "rendered_output_mismatch"))
+                    value.update(verdict="BLOCKED", suiteExit=20, xcodeExit=65,
+                                 reason="incomplete_native_journey" if restored else "restoration_unverified")
+                    value["captures"] = value["captures"][:1]
+                    if not restored:
+                        value["cleanup"] = "blocked"
+                        value["interactionRestoration"]["candidate"] = False
+                    self.assertEqual(self.evaluate(value)[0], "BLOCKED")
+                    self.assertEqual(value["primaryVerdict"], "FAIL")
+                    self.assertEqual(value["primaryReason"], "rendered_output_mismatch")
+                    # Relabeling an incomplete receipt cannot bypass the unchanged capture/restoration gates.
+                    forged = dict(value, verdict="FAIL", suiteExit=10, reason="rendered_output_mismatch")
+                    self.assertEqual(self.evaluate(forged)[0], "BLOCKED")
+
+    def test_native_failure_policy_is_shared_with_permission_free_tests(self):
+        native = (SOURCE / "GuestRegressionProbe/PR106Probe.swift").read_text()
+        for text in ("app.activate()", "producer.activate()", "journey.app?.activate()"):
+            self.assertNotIn(text, native)
+        for text in ("NSRunningApplication(processIdentifier: pid)", "!retained.isTerminated",
+                     "application.launchDate == retained.launchDate", "current: processIdentity(application)",
+                     "PR106FailurePolicy.perform(", "journey.outcome.transition(qualified: journey.exercising",
+                     "journey.outcome.result(", "journey.exercising = false"):
+            self.assertIn(text, native)
+        policy = "GuestRegressionProbe/PR106FailurePolicy.swift"
+        self.assertIn(policy, (SOURCE / "test-oracle.sh").read_text())
+        self.assertIn("try checkPR106FailurePaths()", (SOURCE / "OracleContractTests.swift").read_text())
+        project = (SOURCE / "GuestRegressionProbe/GuestRegressionProbe.xcodeproj/project.pbxproj").read_text()
+        self.assertIn("path = PR106FailurePolicy.swift;", project)
+        self.assertIn("A00000000000000000000019, A00000000000000000000017);", project)
+
+    def test_keyboard_pair_requires_observed_original_candidate_focus(self):
+        native = (SOURCE / "GuestRegressionProbe/PR106Probe.swift").read_text()
+        focused_key = ('try focusOriginalCandidate(journey)\n'
+                       '        try input(journey) { app.typeKey("i", modifierFlags: [.command, .shift]) }')
+        self.assertEqual(native.count(focused_key), 2)
+        focus = native.split("private func focusOriginalCandidate(", 1)[1].split("\n    @MainActor", 1)[0]
+        for text in ("try activateOriginal(journey)", "let focused = wait {",
+                     "processIdentity(NSWorkspace.shared.frontmostApplication) == expected",
+                     'pid: journey.pid, bundleURL: candidate, bundleID: "com.jdylanmc.notchpocket"',
+                     "try originalAction(journey)", '"candidate_focus_unavailable"'):
+            self.assertIn(text, focus)
+        self.assertNotIn("confirmTransition", focus)
+        self.assertNotIn("outcome.observe", focus)
+
+    def test_permission_receipts_sample_native_setup_and_post_restoration(self):
+        native = (SOURCE / "GuestRegressionProbe/PR106Probe.swift").read_text()
+        setup = native.split("private func setup(", 1)[1].split("private func qualify(", 1)[0]
+        self.assertIn('let screenCaptureAccess = CGPreflightScreenCaptureAccess()\n'
+                      '        journey.discovery["screenCapturePreflightAccess"] = screenCaptureAccess', setup)
+        self.assertIn("try require(screenCaptureAccess && AXIsProcessTrusted()", setup)
+        self.assertEqual(setup.count('journey.discovery["screenCapturePreflightAccess"] ='), 1)
+        run = native.split("private func run(", 1)[1].split("private func setup(", 1)[0]
+        # XCTest teardown is LIFO: finish's second native sample follows restoration.
+        self.assertLess(run.index("self.finish(journey, media: media)"), run.index("self.restore(journey)"))
+        finish = native.split("private func finish(", 1)[1]
+        observation = ('if journey.discovery["screenCapturePreflightAccess"] is Bool {\n'
+                       '            journey.discovery["screenCapturePreflightAccessAfterTest"] = CGPreflightScreenCaptureAccess()')
+        self.assertIn(observation, finish)
+        self.assertLess(finish.index(observation), finish.index("journey.outcome.result("))
+        self.assertIn('captureBefore: journey.discovery["screenCapturePreflightAccess"] as? Bool', finish)
+        self.assertIn('captureAfter: journey.discovery["screenCapturePreflightAccessAfterTest"] as? Bool', finish)
+        self.assertNotIn("CGRequestScreenCaptureAccess", native)
 
     def test_explicit_registration_and_protected_runner_unchanged(self):
         cases = SUITE.load_registry(SOURCE / "suite.json")

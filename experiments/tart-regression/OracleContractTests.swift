@@ -46,6 +46,133 @@ enum OracleContractTests {
         try checkGeneralNativeLabelGeometry(.general)
         try checkGeneralNativeLabelGeometry(.panelSwipes)
         try checkFixtureAudio()
+        try checkPR106FailurePaths()
+    }
+
+    private static func checkPR106FailurePaths() throws {
+        typealias Policy = PR106FailurePolicy
+        typealias Identity = Policy.ProcessIdentity
+        func check(_ condition: Bool, _ message: String) throws {
+            guard condition else {
+                throw NSError(domain: "PR106FailureContracts", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: message])
+            }
+        }
+        for (role, pid, path, identifier) in [
+            ("candidate", Int32(42), "/Applications/notch-pocket.app", "com.jdylanmc.notchpocket"),
+            ("producer", Int32(43), "/Users/notch/fixture/NotchMediaFixture.app",
+             "com.jdylanmc.notchpocket.regression.mediafixture")
+        ] {
+            let expected = Identity(pid: pid, bundleURL: URL(fileURLWithPath: path), bundleID: identifier)
+            let independent = Identity(pid: 84, bundleURL: URL(fileURLWithPath: "/Test/Independent.app"),
+                                       bundleID: "test.independent.cleanup")
+            // The native adapter projects terminated/unavailable applications to nil.
+            let rejected: [Identity?] = [
+                nil,
+                .init(pid: pid + 100, bundleURL: expected.bundleURL, bundleID: identifier),
+                .init(pid: pid, bundleURL: URL(fileURLWithPath: "/Applications/Other.app"), bundleID: identifier),
+                .init(pid: pid, bundleURL: expected.bundleURL, bundleID: "different.identity")
+            ]
+            for current in rejected {
+                var activations = 0
+                var inputs = 0
+                var restoration: [String: Bool] = [:]
+                let activate = Policy.perform(expected: expected, current: current) {
+                    activations += 1
+                    return true
+                }
+                let input = Policy.perform(expected: expected, current: current) {
+                    inputs += 1
+                    return true
+                }
+                restoration[role] = activate == .performed && input == .performed
+                var safeCleanup = 0
+                restoration["independentCleanup"] = Policy.perform(expected: independent, current: independent) {
+                    safeCleanup += 1
+                    return true
+                } == .performed
+                let result = Policy.Outcome().result(nativeFailures: 0, touched: true,
+                                                     restored: restoration.values.allSatisfy { $0 }, hasErrors: true,
+                                                     captureBefore: true, captureAfter: true)
+                try check(activate == .identityChanged && input == .identityChanged && activations == 0 && inputs == 0,
+                          "\(role): disappeared/replaced identity must prevent activation and input")
+                try check(restoration[role] == false && safeCleanup == 1 && restoration["independentCleanup"] == true
+                          && result.verdict == "BLOCKED" && result.reason == "restoration_unverified",
+                          "\(role): failed restoration stays explicit and independent cleanup continues")
+            }
+            for afterActivation in rejected {
+                var activations = 0
+                var inputs = 0
+                let activated = Policy.perform(expected: expected, current: expected) { activations += 1; return true }
+                let stoppedBeforeInput = Policy.perform(expected: expected, current: afterActivation) { inputs += 1; return true }
+                try check(activated == .performed && stoppedBeforeInput == .identityChanged && activations == 1 && inputs == 0,
+                          "\(role): recheck ownership after activation and before input")
+            }
+            var inputs = 0
+            try check(Policy.perform(expected: expected, current: expected) { inputs += 1; return true } == .performed
+                      && inputs == 1, "\(role): original live identity permits input")
+            try check(Policy.perform(expected: expected, current: expected) { false } == .actionRejected,
+                      "\(role): failed native activation is not success")
+        }
+        for transition in ["panel_hover_open_not_observed", "panel_open_not_observed", "panel_close_not_observed"] {
+            for restored in [true, false] {
+                var outcome = Policy.Outcome()
+                outcome.transition(qualified: true, matched: false)
+                try check(outcome.verdict == "FAIL" && outcome.reason == "rendered_output_mismatch",
+                          "\(transition): record the witnessed failure before throwing")
+                outcome.refuse(transition)
+                outcome.refuse("later_capture_unavailable")
+                outcome.transition(qualified: false, matched: false)
+                outcome.complete(passed: true)
+                let result = outcome.result(nativeFailures: 0, touched: true, restored: restored, hasErrors: true,
+                                            captureBefore: true, captureAfter: true)
+                try check(outcome.verdict == "FAIL" && outcome.reason == "rendered_output_mismatch"
+                          && result.verdict == "BLOCKED"
+                          && result.reason == (restored ? "incomplete_native_journey" : "restoration_unverified"),
+                          "\(transition): cleanup/capture must not overwrite the primary failure")
+                let aborted = outcome.result(nativeFailures: 1, touched: true, restored: restored, hasErrors: false,
+                                             captureBefore: true, captureAfter: true)
+                try check(aborted.verdict == "BLOCKED" && outcome.verdict == "FAIL",
+                          "\(transition): a native abort cannot qualify incomplete evidence")
+            }
+            var unavailable = Policy.Outcome()
+            unavailable.transition(qualified: false, matched: false)
+            unavailable.refuse("existing_capture_and_accessibility_grants_required")
+            let result = unavailable.result(nativeFailures: 0, touched: false, restored: false, hasErrors: true,
+                                            captureBefore: false, captureAfter: false)
+            try check(unavailable.verdict == "BLOCKED" && result.verdict == "BLOCKED"
+                      && result.reason == "existing_capture_and_accessibility_grants_required",
+                      "\(transition): unavailable capabilities are not product failures")
+        }
+        var missingFocus = Policy.Outcome()
+        missingFocus.refuse("candidate_focus_unavailable")
+        let unfocused = missingFocus.result(nativeFailures: 0, touched: true, restored: true, hasErrors: true,
+                                            captureBefore: true, captureAfter: true)
+        try check(unfocused.verdict == "BLOCKED" && unfocused.reason == "candidate_focus_unavailable"
+                  && missingFocus.verdict == "BLOCKED", "Missing keyboard focus is a prerequisite refusal")
+        let permissions: [Bool?] = [nil, false, true]
+        for passed in [true, false] {
+            var outcome = Policy.Outcome()
+            outcome.complete(passed: passed)
+            for before in permissions {
+                for after in permissions {
+                    let result = outcome.result(nativeFailures: 0, touched: true, restored: true, hasErrors: false,
+                                                captureBefore: before, captureAfter: after)
+                    let qualified = before == true && after == true
+                    try check(result.verdict == (qualified ? outcome.verdict : "BLOCKED")
+                              && result.reason == (qualified ? outcome.reason : "screen_capture_permission_unverified")
+                              && outcome.verdict == (passed ? "PASS" : "FAIL")
+                              && outcome.reason == (passed ? "rendered_output_verified" : "rendered_output_mismatch"),
+                              "Both actual capture grants are required without overwriting the primary outcome")
+                    let cleanupFailed = outcome.result(nativeFailures: 0, touched: true, restored: false, hasErrors: true,
+                                                       captureBefore: before, captureAfter: after)
+                    try check(cleanupFailed.verdict == "BLOCKED" && cleanupFailed.reason == "restoration_unverified"
+                              && outcome.verdict == (passed ? "PASS" : "FAIL"),
+                              "Permission loss must not mask failed restoration or the original output failure")
+                }
+            }
+        }
+        print("PR106 failure paths: original-process action guards and sticky transition failures verified without UI.")
     }
 
     private static func checkFixtureAudio() throws {

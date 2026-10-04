@@ -22,6 +22,7 @@ final class PR106Probe: XCTestCase {
         var panel: XCUIElement?
         var settings: XCUIElement?
         var pid: pid_t = -1
+        var originalApp: NSRunningApplication?
         var windowID = 0
         var frame = CGRect.zero
         var pointer = CGPoint.zero
@@ -37,6 +38,7 @@ final class PR106Probe: XCTestCase {
         var fixture: [String: Any] = [:]
         var producer: XCUIApplication?
         var producerPID: pid_t = -1
+        var originalProducer: NSRunningApplication?
         var producerTouched = false
         var transport: [String: CGRect] = [:]
         var captures: [[String: Any]] = []
@@ -46,8 +48,8 @@ final class PR106Probe: XCTestCase {
         var restoration: [String: Bool] = [:]
         var discovery: [String: Any] = [:]
         var errors: [String: String] = [:]
-        var verdict = "BLOCKED"
-        var reason = "preconditions_not_established"
+        var outcome = PR106FailurePolicy.Outcome()
+        var exercising = false
     }
 
     @MainActor func testPanel() { run(media: false) }
@@ -63,10 +65,74 @@ final class PR106Probe: XCTestCase {
 
     private func fileHash(_ url: URL) throws -> String { hash(try Data(contentsOf: url)) }
 
+    @MainActor
     private func running(_ url: URL, identifier: String) -> pid_t? {
         let matches = NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
-        guard matches.count == 1, matches[0].bundleURL == url else { return nil }
+        guard matches.count == 1, matches[0].bundleURL == url, matches[0].bundleIdentifier == identifier,
+              !matches[0].isTerminated else { return nil }
         return matches[0].processIdentifier
+    }
+
+    @MainActor
+    private func processIdentity(_ application: NSRunningApplication?) -> PR106FailurePolicy.ProcessIdentity? {
+        guard let application, !application.isTerminated,
+              let url = application.bundleURL, let identifier = application.bundleIdentifier else { return nil }
+        return .init(pid: application.processIdentifier, bundleURL: url, bundleID: identifier)
+    }
+
+    @MainActor
+    private func originalAction(
+        _ journey: Journey, producer: Bool = false, action: (NSRunningApplication) -> Bool
+    ) throws {
+        let role = producer ? "producer" : "candidate"
+        let pid = producer ? journey.producerPID : journey.pid
+        let retained = producer ? journey.originalProducer : journey.originalApp
+        let url: URL
+        if producer {
+            guard let path = journey.fixture["producerPath"] as? String else { throw Refusal.reason("producer_pin_required") }
+            url = URL(fileURLWithPath: path)
+        } else {
+            url = candidate
+        }
+        let identifier = producer ? producerID : "com.jdylanmc.notchpocket"
+        guard let retained, !retained.isTerminated, retained.processIdentifier == pid,
+              let application = NSRunningApplication(processIdentifier: pid),
+              application.launchDate == retained.launchDate,
+              running(url, identifier: identifier) == pid else {
+            throw Refusal.reason(role + "_identity_changed")
+        }
+        let result = PR106FailurePolicy.perform(
+            expected: .init(pid: pid, bundleURL: url, bundleID: identifier),
+            current: processIdentity(application), action: { action(application) })
+        switch result {
+        case .performed: return
+        case .identityChanged: throw Refusal.reason(role + "_identity_changed")
+        case .actionRejected: throw Refusal.reason(role + "_action_rejected")
+        }
+    }
+
+    @MainActor
+    private func input(_ journey: Journey, producer: Bool = false, action: () -> Void) throws {
+        try originalAction(journey, producer: producer) { _ in action(); return true }
+    }
+
+    @MainActor
+    private func activateOriginal(_ journey: Journey, producer: Bool = false) throws {
+        try originalAction(journey, producer: producer) { $0.isActive || $0.activate(options: []) }
+        try originalAction(journey, producer: producer) { _ in true }
+    }
+
+    @MainActor
+    private func focusOriginalCandidate(_ journey: Journey) throws {
+        try activateOriginal(journey)
+        let expected = PR106FailurePolicy.ProcessIdentity(
+            pid: journey.pid, bundleURL: candidate, bundleID: "com.jdylanmc.notchpocket")
+        let focused = wait {
+            self.processIdentity(NSWorkspace.shared.frontmostApplication) == expected
+        }
+        try originalAction(journey) { _ in true }
+        try require(focused && processIdentity(NSWorkspace.shared.frontmostApplication) == expected,
+                    "candidate_focus_unavailable")
     }
 
     @MainActor
@@ -84,15 +150,15 @@ final class PR106Probe: XCTestCase {
         addTeardownBlock { @MainActor in self.restore(journey) }
         do {
             try setup(journey, media: media)
+            journey.exercising = true
             if media { try mediaJourney(journey) } else { try panelJourney(journey) }
-            journey.verdict = journey.observed.values.allSatisfy { $0 } ? "PASS" : "FAIL"
-            journey.reason = journey.verdict == "PASS" ? "rendered_output_verified" : "rendered_output_mismatch"
+            journey.outcome.complete(passed: journey.observed.values.allSatisfy { $0 })
         } catch Refusal.reason(let reason) {
-            if journey.verdict != "FAIL" { journey.reason = reason }
+            journey.outcome.refuse(reason)
             journey.errors["primary"] = reason
         } catch {
             let native = error as NSError
-            if journey.verdict != "FAIL" { journey.reason = "native_or_evidence_error" }
+            journey.outcome.refuse("native_or_evidence_error")
             journey.errors["primary"] = "\(native.domain):\(native.code)"
         }
     }
@@ -114,7 +180,9 @@ final class PR106Probe: XCTestCase {
         try require(session["CGSSessionScreenIsLocked"] as? Bool != true
                     && session[kCGSessionOnConsoleKey as String] as? Bool == true
                     && session[kCGSessionLoginDoneKey as String] as? Bool == true, "guest_session_unavailable")
-        try require(CGPreflightScreenCaptureAccess() && AXIsProcessTrusted(), "existing_capture_and_accessibility_grants_required")
+        let screenCaptureAccess = CGPreflightScreenCaptureAccess()
+        journey.discovery["screenCapturePreflightAccess"] = screenCaptureAccess
+        try require(screenCaptureAccess && AXIsProcessTrusted(), "existing_capture_and_accessibility_grants_required")
         let modes = media ? ["pr106-media", "pr106-media-wrong-direction", "pr106-media-wrong-pulse"]
             : ["pr106-panel", "pr106-panel-wrong-tab"]
         try require(UUID(uuidString: environment["NOTCH_VM_RUN_ID"] ?? "") != nil
@@ -145,6 +213,7 @@ final class PR106Probe: XCTestCase {
             throw Refusal.reason("original_running_ui_required")
         }
         journey.pid = pid
+        journey.originalApp = NSRunningApplication(processIdentifier: pid)
         journey.pointer = pointer
         journey.foreground = foreground
         let app = XCUIApplication(url: candidate)
@@ -161,7 +230,7 @@ final class PR106Probe: XCTestCase {
         try qualify(journey)
         try require(panel.value as? String == "closed" && !panel.frame.contains(pointer), "closed_panel_pointer_fixture_required")
         journey.touched = true
-        app.activate()
+        try activateOriginal(journey)
         try clickOpen(journey)
         journey.originalTab = try tabs(journey).first { $0.value == "selected" }?.key
         try require(journey.originalTab == "home", "original_home_fixture_required")
@@ -179,7 +248,7 @@ final class PR106Probe: XCTestCase {
             try require(try preference(journey, pane: "General", label: "Change media with horizontal gestures"),
                         "horizontal_gestures_fixture_required")
             let mediaForm = try form(journey, pane: "Media")
-            mediaForm.scroll(byDeltaX: 0, deltaY: 10_000)
+            try input(journey) { mediaForm.scroll(byDeltaX: 0, deltaY: 10_000) }
             let sources = mediaForm.popUpButtons.allElementsBoundByIndex.filter {
                 $0.value as? String == "Now Playing" || $0.label == "Now Playing"
             }
@@ -215,6 +284,8 @@ final class PR106Probe: XCTestCase {
 
     @MainActor
     private func qualify(_ journey: Journey) throws {
+        try originalAction(journey) { _ in true }
+        try require(CGPreflightScreenCaptureAccess() && AXIsProcessTrusted(), "existing_capture_and_accessibility_grants_required")
         guard let panel = journey.panel else { throw Refusal.reason("panel_unavailable") }
         try require(running(candidate, identifier: "com.jdylanmc.notchpocket") == journey.pid
                     && panel.identifier == marker + "window.\(journey.windowID)" && journey.windowID > 0
@@ -255,17 +326,51 @@ final class PR106Probe: XCTestCase {
     }
 
     @MainActor
-    private func clickOpen(_ journey: Journey) throws {
-        try at(journey, top(journey)).click()
-        try require(panelState(journey, "open"), "panel_open_not_observed")
+    private func clickOpen(_ journey: Journey, transition: String? = nil) throws {
+        let coordinate = try at(journey, top(journey))
+        try input(journey) { coordinate.click() }
+        try confirmTransition(journey, expected: "open", matched: panelState(journey, "open"),
+                              key: transition, reason: "panel_open_not_observed")
         Thread.sleep(forTimeInterval: 0.5)
     }
 
     @MainActor
-    private func exitPanel(_ journey: Journey) throws {
-        try at(journey, journey.pointer).hover()
-        try require(panelState(journey, "closed"), "panel_close_not_observed")
+    private func exitPanel(_ journey: Journey, transition: String? = nil) throws {
+        let coordinate = try at(journey, journey.pointer)
+        try input(journey) { coordinate.hover() }
+        try confirmTransition(journey, expected: "closed", matched: panelState(journey, "closed"),
+                              key: transition, reason: "panel_close_not_observed")
         Thread.sleep(forTimeInterval: 0.5)
+    }
+
+    @MainActor
+    private func confirmTransition(
+        _ journey: Journey, expected: String, matched: Bool, key: String? = nil, reason: String
+    ) throws {
+        // A missing process/window/grant/value is unavailable evidence, not a witnessed model refusal.
+        try qualify(journey)
+        guard let value = journey.panel?.value as? String, ["open", "closed"].contains(value) else {
+            throw Refusal.reason("panel_state_unavailable")
+        }
+        let observed = matched && value == expected
+        journey.outcome.transition(qualified: journey.exercising, matched: observed)
+        if journey.exercising && !observed && journey.discovery["firstTransitionFailure"] == nil {
+            journey.discovery["firstTransitionFailure"] = [
+                "expected": expected, "observed": value, "withinDeadline": matched, "reason": reason
+            ]
+        }
+        if journey.exercising, let key {
+            journey.transitions[key] = observed
+            journey.discovery["transitions"] = journey.transitions
+            observe(journey, key, observed)
+        }
+        try require(observed, reason)
+    }
+
+    @MainActor
+    private func hover(_ journey: Journey, at point: CGPoint) throws {
+        let coordinate = try at(journey, point)
+        try input(journey) { coordinate.hover() }
     }
 
     @MainActor
@@ -285,7 +390,7 @@ final class PR106Probe: XCTestCase {
         guard let panel = journey.panel else { throw Refusal.reason("panel_unavailable") }
         let button = panel.buttons[marker + "tab." + name]
         try require(button.exists && button.isHittable, "native_tab_control_required")
-        button.click()
+        try input(journey) { button.click() }
         Thread.sleep(forTimeInterval: 0.5)
     }
 
@@ -297,7 +402,7 @@ final class PR106Probe: XCTestCase {
                                                       ["Settings", "gear"], ["Settings", "gear"]))
         try require(gear.count == 1 && gear.firstMatch.isHittable, "settings_gear_required")
         journey.openedSettings = true
-        gear.firstMatch.click()
+        try input(journey) { gear.firstMatch.click() }
         try require(settings.waitForExistence(timeout: 3), "settings_open_not_observed")
         if journey.openedSettingsPane == nil {
             let known = ["General", "Appearance", "Media", "Notifications", "Shelf", "Shortcuts", "Advanced", "About"]
@@ -314,13 +419,14 @@ final class PR106Probe: XCTestCase {
 
     @MainActor
     private func form(_ journey: Journey, pane: String) throws -> XCUIElement {
+        try originalAction(journey) { _ in true }
         guard let settings = journey.settings, settings.exists,
               running(candidate, identifier: "com.jdylanmc.notchpocket") == journey.pid else {
             throw Refusal.reason("settings_identity_changed")
         }
         let row = settings.descendants(matching: .outlineRow).containing(.staticText, identifier: pane).firstMatch
         try require(row.exists && row.staticTexts[pane].isHittable, "settings_pane_required")
-        if !row.isSelected { row.staticTexts[pane].click() }
+        if !row.isSelected { try input(journey) { row.staticTexts[pane].click() } }
         try require(wait { row.isSelected }, "settings_selection_not_observed")
         let forms = settings.scrollViews.allElementsBoundByIndex.filter { $0.outlines.count == 0 }
         try require(forms.count == 1 && settings.frame.contains(forms[0].frame), "settings_form_required")
@@ -347,7 +453,7 @@ final class PR106Probe: XCTestCase {
     private func toggle(_ journey: Journey, pane: String, label: String) throws -> XCUIElement {
         let content = try form(journey, pane: pane)
         for delta in [10_000.0, -10_000.0] {
-            content.scroll(byDeltaX: 0, deltaY: CGFloat(delta))
+            try input(journey) { content.scroll(byDeltaX: 0, deltaY: CGFloat(delta)) }
             let labels = content.staticTexts.matching(identifier: label)
             if labels.count == 1 && content.frame.contains(labels.firstMatch.frame) && !labels.firstMatch.frame.isEmpty {
                 let controls = content.checkBoxes.allElementsBoundByIndex + content.switches.allElementsBoundByIndex
@@ -377,7 +483,10 @@ final class PR106Probe: XCTestCase {
         guard let actual = toggleValue(control.value), journey.originalHover != nil else {
             throw Refusal.reason("original_hover_value_required")
         }
-        if actual != enabled { journey.changedHover = true; control.click() }
+        if actual != enabled {
+            journey.changedHover = true
+            try input(journey) { control.click() }
+        }
         try require(wait { self.toggleValue(control.value) == enabled }, "hover_change_not_observed")
     }
 
@@ -390,7 +499,7 @@ final class PR106Probe: XCTestCase {
             guard let original = journey.scroll[pane], let target = original.first, let first = current.first else {
                 throw Refusal.reason("original_scroll_required")
             }
-            if current != original { content.scroll(byDeltaX: 0, deltaY: target.minY - first.minY) }
+            if current != original { try input(journey) { content.scroll(byDeltaX: 0, deltaY: target.minY - first.minY) } }
             try require(try scrollFrames(content) == original, "settings_scroll_restoration_unverified")
         }
         guard let originalPane = journey.openedSettingsPane else {
@@ -400,48 +509,52 @@ final class PR106Probe: XCTestCase {
         let row = settings.descendants(matching: .outlineRow).containing(.staticText, identifier: originalPane).firstMatch
         if !row.isSelected {
             try require(row.staticTexts[originalPane].isHittable, "original_settings_pane_unavailable")
-            row.staticTexts[originalPane].click()
+            try input(journey) { row.staticTexts[originalPane].click() }
             try require(wait { row.isSelected }, "settings_pane_restoration_unverified")
         }
         let close = settings.buttons[XCUIIdentifierCloseWindow]
         try require(close.isHittable, "settings_close_control_required")
-        close.click()
+        try input(journey) { close.click() }
         try require(wait { !settings.exists }, "settings_close_not_observed")
     }
 
     @MainActor
     private func observe(_ journey: Journey, _ key: String, _ value: Bool) {
-        journey.observed[key] = value
-        if !value { journey.verdict = "FAIL"; journey.reason = "rendered_output_mismatch" }
+        journey.observed[key] = (journey.observed[key] ?? true) && value
+        journey.outcome.observe(value)
     }
 
     @MainActor
     private func panelJourney(_ journey: Journey) throws {
-        try at(journey, top(journey)).hover()
-        journey.transitions["hoverOpened"] = panelState(journey, "open")
+        try hover(journey, at: top(journey))
+        try confirmTransition(journey, expected: "open", matched: panelState(journey, "open"),
+                              key: "hoverOpened", reason: "panel_hover_open_not_observed")
         try selectTab(journey, "dashboard")
         try capture(journey, role: "hover", expected: "dashboard")
-        try exitPanel(journey)
-        journey.transitions["exitClosed"] = journey.panel?.value as? String == "closed"
+        try exitPanel(journey, transition: "exitClosed")
         try clickOpen(journey)
         try openSettings(journey)
         try setHover(journey, false)
         try closeSettings(journey)
         try exitPanel(journey)
-        try at(journey, top(journey)).hover()
+        try hover(journey, at: top(journey))
         // Above the entire supported UI hover-delay range, without changing that slider.
         Thread.sleep(forTimeInterval: 2)
-        journey.transitions["disabledHoverClosed"] = journey.panel?.value as? String == "closed"
-        try clickOpen(journey)
-        journey.transitions["clickOpened"] = journey.panel?.value as? String == "open"
+        try confirmTransition(journey, expected: "closed", matched: journey.panel?.value as? String == "closed",
+                              key: "disabledHoverClosed", reason: "disabled_hover_opened_panel")
+        try clickOpen(journey, transition: "clickOpened")
         try selectTab(journey, "shelf")
         try capture(journey, role: "click", expected: "shelf")
         try exitPanel(journey)
         guard let app = journey.app else { throw Refusal.reason("candidate_required") }
-        app.typeKey("i", modifierFlags: [.command, .shift])
-        journey.transitions["keyboardOpened"] = panelState(journey, "open")
-        app.typeKey("i", modifierFlags: [.command, .shift])
-        journey.transitions["keyboardClosed"] = panelState(journey, "closed")
+        try focusOriginalCandidate(journey)
+        try input(journey) { app.typeKey("i", modifierFlags: [.command, .shift]) }
+        try confirmTransition(journey, expected: "open", matched: panelState(journey, "open"),
+                              key: "keyboardOpened", reason: "keyboard_open_not_observed")
+        try focusOriginalCandidate(journey)
+        try input(journey) { app.typeKey("i", modifierFlags: [.command, .shift]) }
+        try confirmTransition(journey, expected: "closed", matched: panelState(journey, "closed"),
+                              key: "keyboardClosed", reason: "keyboard_close_not_observed")
         try clickOpen(journey)
         try selectTab(journey, "dashboard")
         if environment["NOTCH_VM_SCENARIO"] == "pr106-panel-wrong-tab" {
@@ -450,8 +563,6 @@ final class PR106Probe: XCTestCase {
             try selectTab(journey, "shelf")
         }
         try capture(journey, role: "challenge", expected: "dashboard")
-        for (key, value) in journey.transitions { observe(journey, key, value) }
-        journey.discovery["transitions"] = journey.transitions
     }
 
     @MainActor
@@ -468,6 +579,7 @@ final class PR106Probe: XCTestCase {
                     "producer_identity_mismatch")
         guard let pid = running(url, identifier: producerID) else { throw Refusal.reason("exact_running_producer_required") }
         journey.producerPID = pid
+        journey.originalProducer = NSRunningApplication(processIdentifier: pid)
         journey.producer = XCUIApplication(url: url)
         try require(try producerValue(journey, "identity") == "\(producerID) pid=\(pid)"
                     && producerValue(journey, "engine") == "stopped"
@@ -480,6 +592,7 @@ final class PR106Probe: XCTestCase {
 
     @MainActor
     private func producerValue(_ journey: Journey, _ key: String) throws -> String {
+        try originalAction(journey, producer: true) { _ in true }
         guard let app = journey.producer, let path = journey.fixture["producerPath"] as? String,
               running(URL(fileURLWithPath: path), identifier: producerID) == journey.producerPID else {
             throw Refusal.reason("producer_identity_changed")
@@ -519,16 +632,16 @@ final class PR106Probe: XCTestCase {
         try setHover(journey, false)
         try closeSettings(journey)
         guard let producer = journey.producer else { throw Refusal.reason("producer_required") }
-        producer.activate()
+        try activateOriginal(journey, producer: true)
         let play = producer.buttons["mediafixture.v2.play"]
         try require(play.exists && play.isHittable, "producer_play_control_required")
         journey.producerTouched = true
-        play.click()
+        try input(journey, producer: true) { play.click() }
         try engine(journey, setup: true)
         let initialNext = journey.engineSamples[0]["next"] as? Int ?? -1
         let initialPrevious = journey.engineSamples[0]["previous"] as? Int ?? -1
         try require(initialNext >= 0 && initialPrevious >= 0, "producer_command_baseline_required")
-        journey.app?.activate()
+        try activateOriginal(journey)
         if journey.panel?.value as? String != "open" { try clickOpen(journey) }
         try selectTab(journey, "home")
         try require(wait(5) { journey.panel?.staticTexts["Regression Alpha"].exists == true }, "os_consumer_delivery_unavailable")
@@ -541,17 +654,17 @@ final class PR106Probe: XCTestCase {
             throw Refusal.reason("native_music_hover_region_required")
         }
         let musicPoint = CGPoint(x: title.frame.midX, y: title.frame.midY)
-        try at(journey, musicPoint).hover()
+        try hover(journey, at: musicPoint)
         try scroll(journey, next: true, point: musicPoint)
         Thread.sleep(forTimeInterval: 0.6)
         try engine(journey)
-        try at(journey, top(journey)).hover()
+        try hover(journey, at: top(journey))
         try capture(journey, role: "next", expected: "Regression Bravo", media: true)
-        try at(journey, musicPoint).hover()
+        try hover(journey, at: musicPoint)
         try scroll(journey, next: false, point: musicPoint)
         Thread.sleep(forTimeInterval: 0.6)
         try engine(journey)
-        try at(journey, top(journey)).hover()
+        try hover(journey, at: top(journey))
         try capture(journey, role: "previous", expected: "Regression Alpha", media: true)
         if environment["NOTCH_VM_SCENARIO"] != "pr106-media" {
             try require(journey.observed.values.allSatisfy { $0 }
@@ -560,7 +673,7 @@ final class PR106Probe: XCTestCase {
                         "negative_control_prerequisite_missing")
         }
         try exitPanel(journey)
-        try at(journey, top(journey)).hover()
+        try hover(journey, at: top(journey))
         try qualify(journey)
         let axPanel = try nativePanel(journey)
         try require(try axString(axPanel, kAXValueAttribute) == "closed", "race_closed_start_required")
@@ -568,7 +681,7 @@ final class PR106Probe: XCTestCase {
         let start = ProcessInfo.processInfo.systemUptime
         try scroll(journey, next: environment["NOTCH_VM_SCENARIO"] != "pr106-media-wrong-direction",
                    point: top(journey), alreadyQualified: true)
-        try mouseClick(top(journey))
+        try mouseClick(journey, at: top(journey))
         var opened: TimeInterval?
         while ProcessInfo.processInfo.systemUptime - start < 0.14 {
             if try axString(axPanel, kAXValueAttribute) == "open" {
@@ -586,7 +699,7 @@ final class PR106Probe: XCTestCase {
         if environment["NOTCH_VM_SCENARIO"] == "pr106-media-wrong-pulse" {
             guard let next = journey.transport["next"] else { throw Refusal.reason("transport_region_required") }
             // A real hover paints a different transport region. Do not alter the image or the oracle.
-            try at(journey, CGPoint(x: next.midX, y: next.midY)).hover()
+            try hover(journey, at: CGPoint(x: next.midX, y: next.midY))
         }
         try capture(journey, role: "race", expected: "Regression Bravo", media: true)
         observe(journey, "pulseCleanup", journey.captures.indices.dropFirst(2).allSatisfy {
@@ -614,18 +727,19 @@ final class PR106Probe: XCTestCase {
         try require(abs(native.scrollingDeltaX) >= 400 && native.scrollingDeltaY == 0
                     && (native.scrollingDeltaX < 0) == next, "native_scroll_direction_unavailable")
         event.location = point
-        event.post(tap: .cghidEventTap)
+        try input(journey) { event.post(tap: .cghidEventTap) }
     }
 
-    private func mouseClick(_ point: CGPoint) throws {
+    @MainActor
+    private func mouseClick(_ journey: Journey, at point: CGPoint) throws {
         guard let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
               let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
             throw Refusal.reason("native_click_unavailable")
         }
         down.setIntegerValueField(.mouseEventClickState, value: 1)
         up.setIntegerValueField(.mouseEventClickState, value: 1)
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
+        try input(journey) { down.post(tap: .cghidEventTap) }
+        try input(journey) { up.post(tap: .cghidEventTap) }
     }
 
     private func axString(_ element: AXUIElement, _ attribute: String) throws -> String {
@@ -761,9 +875,15 @@ final class PR106Probe: XCTestCase {
 
     @MainActor
     private func restore(_ journey: Journey) {
+        journey.exercising = false
         guard journey.touched else { return }
         func attempt(_ key: String, _ work: () throws -> Bool) {
-            do { journey.restoration[key] = try work() }
+            do {
+                if key != "foreground" && (key != "producer" || journey.producerPID > 0 || journey.producerTouched) {
+                    try self.originalAction(journey, producer: key == "producer") { _ in true }
+                }
+                journey.restoration[key] = try work()
+            }
             catch Refusal.reason(let reason) { journey.restoration[key] = false; journey.errors[key] = reason }
             catch {
                 journey.restoration[key] = false
@@ -774,10 +894,10 @@ final class PR106Probe: XCTestCase {
         attempt("producer") {
             guard journey.producerTouched else { return true }
             guard let producer = journey.producer else { return false }
-            producer.activate()
+            try self.activateOriginal(journey, producer: true)
             let stop = producer.buttons["mediafixture.v2.stop"]
             try self.require(stop.exists && stop.isHittable, "producer_stop_control_required")
-            stop.click()
+            try self.input(journey, producer: true) { stop.click() }
             guard let path = journey.fixture["producerPath"] as? String,
                   let pin = journey.fixture["producerSHA256"] as? String else { return false }
             return try self.producerValue(journey, "engine") == "stopped"
@@ -787,7 +907,7 @@ final class PR106Probe: XCTestCase {
                 && self.fileHash(URL(fileURLWithPath: path).appendingPathComponent("Contents/MacOS/NotchMediaFixture")) == pin
         }
         attempt("preferences") {
-            journey.app?.activate()
+            try self.activateOriginal(journey)
             if journey.panel?.value as? String != "open" { try self.clickOpen(journey) }
             if journey.changedHover {
                 try self.openSettings(journey)
@@ -824,12 +944,17 @@ final class PR106Probe: XCTestCase {
             return journey.panel?.value as? String == "closed"
         }
         attempt("pointer") {
-            try self.at(journey, journey.pointer).hover()
+            try self.hover(journey, at: journey.pointer)
             return CGEvent(source: nil)?.location == journey.pointer
         }
         attempt("foreground") {
-            guard let original = journey.foreground, !original.isTerminated else { return false }
-            original.activate(options: [])
+            guard let original = journey.foreground, let expected = self.processIdentity(original),
+                  let current = NSRunningApplication(processIdentifier: expected.pid),
+                  current.launchDate == original.launchDate else { return false }
+            let activation = PR106FailurePolicy.perform(expected: expected, current: self.processIdentity(current)) {
+                current.isActive || current.activate(options: [])
+            }
+            guard activation == .performed else { return false }
             return self.wait { NSWorkspace.shared.frontmostApplication?.processIdentifier == original.processIdentifier }
         }
         attempt("candidate") {
@@ -840,15 +965,17 @@ final class PR106Probe: XCTestCase {
 
     @MainActor
     private func finish(_ journey: Journey, media: Bool) {
-        let primaryVerdict = journey.verdict
-        let primaryReason = journey.reason
+        let primaryVerdict = journey.outcome.verdict
+        let primaryReason = journey.outcome.reason
         let nativeFailures = testRun?.failureCount ?? 0
-        var verdict = journey.verdict
-        var reason = journey.reason
+        if journey.discovery["screenCapturePreflightAccess"] is Bool {
+            journey.discovery["screenCapturePreflightAccessAfterTest"] = CGPreflightScreenCaptureAccess()
+        }
         let restored = journey.restoration.count == 8 && journey.restoration.values.allSatisfy { $0 }
-        if nativeFailures > 0 && verdict != "FAIL" { verdict = "BLOCKED"; reason = "native_interaction_aborted" }
-        if journey.touched && !restored { verdict = "BLOCKED"; reason = "restoration_unverified" }
-        if !journey.errors.isEmpty && verdict != "BLOCKED" { verdict = "BLOCKED"; reason = "incomplete_native_journey" }
+        let (verdict, reason) = journey.outcome.result(
+            nativeFailures: nativeFailures, touched: journey.touched, restored: restored, hasErrors: !journey.errors.isEmpty,
+            captureBefore: journey.discovery["screenCapturePreflightAccess"] as? Bool,
+            captureAfter: journey.discovery["screenCapturePreflightAccessAfterTest"] as? Bool)
         let receipt: [String: Any] = [
             "runID": environment["NOTCH_VM_RUN_ID"] ?? "", "scenario": environment["NOTCH_VM_SCENARIO"] ?? "",
             "testIdentifier": "GuestRegressionProbe/PR106Probe/" + (media ? "testMedia" : "testPanel"),
