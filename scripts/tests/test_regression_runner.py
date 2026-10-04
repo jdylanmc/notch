@@ -55,6 +55,7 @@ class RunnerContracts(unittest.TestCase):
         self.signature_error = False
         self.ad_hoc = False
         self.leaf = LEAF
+        self.acl_output = b"drwxr-xr-x 2 owner group 64 Jan 1 00:00 container\n"
         self.write_products(self.products)
 
     def tearDown(self):
@@ -111,6 +112,9 @@ class RunnerContracts(unittest.TestCase):
 
     def native(self, command, **kwargs):
         self.calls.append(command)
+        if command[0] == "/bin/ls":
+            self.assertEqual(command[1], "-ldeb")
+            return self.acl_output, b""
         if command[0] == "/usr/bin/lipo":
             return self.arches, b""
         if command[0] != "/usr/bin/codesign":
@@ -507,6 +511,140 @@ class RunnerContracts(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(output.getvalue()), result)
         compare.assert_called_once_with(self.root, "a" * 64, self.source, "b" * 64)
+
+    def protected_artifact(self):
+        manifest, _ = self.artifact()
+        data = json.loads(manifest.read_bytes())
+        entries, root_mode = RUNNER.protect_containers(
+            self.products, data["roles"], data["files"], self.native)
+        data.update(schemaVersion=2, productsRootMode=root_mode, files=entries)
+        manifest.write_bytes(RUNNER.json_bytes(data))
+        return manifest, RUNNER.digest(manifest.read_bytes())
+
+    def test_container_protection_changes_only_verified_runner_ancestors(self):
+        before = RUNNER.inventory(self.products)
+        _, roles = RUNNER.product_roles(self.products)
+        containers = RUNNER.product_containers(self.products, roles)
+        self.assertEqual(containers, [self.runner.parent, self.products])
+        entries, root_mode = RUNNER.protect_containers(self.products, roles, before, self.native)
+        self.assertEqual(root_mode, 0o555)
+        expected = copy.deepcopy(before)
+        expected["Debug"]["mode"] = 0o555
+        self.assertEqual(entries, expected)
+        self.assertEqual(RUNNER.inventory(self.products), expected)
+        self.assertEqual(self.runner.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(self.bundle.stat().st_mode & 0o777, 0o755)
+
+    def test_container_acl_or_unreadable_listing_is_not_ignored(self):
+        _, roles = RUNNER.product_roles(self.products)
+        before = RUNNER.inventory(self.products)
+        for output in (b"", b"unexpected\n", b"drwxr-xr-x+ 2 owner group 64 container\n",
+                       b"drwxr-xr-x@ 2 owner group 64 container\n 0: everyone allow add_file\n"):
+            self.acl_output = output
+            with self.subTest(output=output), self.assertRaisesRegex(RUNNER.RunnerError, "ACL"):
+                RUNNER.protect_containers(self.products, roles, before, self.native)
+            self.assertEqual(RUNNER.inventory(self.products), before)
+            self.assertEqual(self.products.stat().st_mode & 0o777, 0o755)
+
+    def test_protection_does_not_bless_files_appearing_during_chmod(self):
+        before = RUNNER.inventory(self.products)
+        _, roles = RUNNER.product_roles(self.products)
+        chmod = os.chmod
+
+        def change(path, mode):
+            chmod(path, mode)
+            if path == self.runner.parent:
+                (self.products / "unexpected").write_text("drift")
+
+        with patch.object(RUNNER.os, "chmod", side_effect=change), \
+                self.assertRaisesRegex(RUNNER.RunnerError, "beyond the declared"):
+            RUNNER.protect_containers(self.products, roles, before, self.native)
+        self.assertTrue((self.products / "unexpected").exists())
+
+    def test_protected_manifest_binds_root_mode_outside_regular_inventory(self):
+        manifest, pin = self.protected_artifact()
+        result = RUNNER.verify_prepared(self.products, manifest, pin, source=self.source,
+                                        run=self.native, require_protected=True)
+        self.assertEqual(result["schemaVersion"], 2)
+        before = RUNNER.inventory(self.products)
+        self.products.chmod(0o755)
+        self.assertEqual(RUNNER.inventory(self.products), before)
+        with self.assertRaisesRegex(RUNNER.RunnerError, "no longer read-only"):
+            RUNNER.verify_prepared(self.products, manifest, pin, source=self.source, run=self.native)
+
+    def test_protected_schema_and_container_mode_are_strict(self):
+        manifest, _ = self.protected_artifact()
+        original = json.loads(manifest.read_bytes())
+        for change in (
+            lambda data: data.update(productsRootMode=True),
+            lambda data: data.pop("productsRootMode"),
+            lambda data: data.update(schemaVersion=3),
+            lambda data: data.update(extra=True),
+            lambda data: data.update(schemaVersion=1),
+        ):
+            data = copy.deepcopy(original)
+            change(data)
+            manifest.write_bytes(RUNNER.json_bytes(data))
+            with self.subTest(change=change), self.assertRaises(RUNNER.RunnerError):
+                RUNNER.verify_prepared(self.products, manifest, RUNNER.digest(manifest.read_bytes()),
+                                       source=self.source, run=self.native)
+        self.runner.parent.chmod(0o755)
+        original["files"]["Debug"]["mode"] = 0o755
+        manifest.write_bytes(RUNNER.json_bytes(original))
+        with self.assertRaisesRegex(RUNNER.RunnerError, "no longer read-only"):
+            RUNNER.verify_prepared(self.products, manifest, RUNNER.digest(manifest.read_bytes()),
+                                   source=self.source, run=self.native)
+
+    def test_container_acl_rechecked_after_native_signature_verification(self):
+        manifest, pin = self.protected_artifact()
+
+        def run(command, **kwargs):
+            if command[0] == "/usr/bin/codesign":
+                self.acl_output = b"dr-xr-xr-x+ 2 owner group 64 container\n"
+            return self.native(command, **kwargs)
+
+        with self.assertRaisesRegex(RUNNER.RunnerError, "ACL"):
+            RUNNER.verify_prepared(self.products, manifest, pin, source=self.source, run=run)
+
+    def test_container_root_mode_rechecked_after_signature_verification(self):
+        manifest, pin = self.protected_artifact()
+
+        def run(command, **kwargs):
+            if command[0] == "/usr/bin/codesign":
+                self.products.chmod(0o755)
+            return self.native(command, **kwargs)
+
+        with self.assertRaisesRegex(RUNNER.RunnerError, "no longer read-only"):
+            RUNNER.verify_prepared(self.products, manifest, pin, source=self.source, run=run)
+
+    def test_legacy_package_cannot_satisfy_explicit_protected_requirement(self):
+        manifest, pin = self.artifact()
+        self.assertEqual(RUNNER.verify_prepared(self.products, manifest, pin, source=self.source,
+                                               run=self.native)["schemaVersion"], 1)
+        with self.assertRaisesRegex(RUNNER.RunnerError, "protected schema-v2"):
+            RUNNER.verify_prepared(self.products, manifest, pin, source=self.source,
+                                   run=self.native, require_protected=True)
+
+    def test_transition_refuses_container_protection_downgrade(self):
+        manifest, _ = self.artifact()
+        after = json.loads(manifest.read_bytes())
+        before = copy.deepcopy(after)
+        before.update(schemaVersion=2, productsRootMode=0o555)
+        with patch.object(RUNNER, "verify_prepared", side_effect=[before, after]), \
+                self.assertRaisesRegex(RUNNER.RunnerError, "removes container protection") as raised:
+            RUNNER.compare_prepared(self.root, "a" * 64, self.root, "b" * 64)
+        self.assertTrue(raised.exception.details["storageProtectionChanged"])
+
+    def test_verify_cli_requires_protection_only_when_explicit(self):
+        result = {"schemaVersion": 2, "source": {}, "roles": {}}
+        with patch.object(RUNNER, "verify_prepared", return_value=result) as verify, \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            code = RUNNER.main(["verify", "--products", str(self.products),
+                               "--runner-manifest", str(self.root / "runner-manifest.json"),
+                               "--runner-manifest-sha256", "a" * 64, "--require-protected-products"])
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(output.getvalue())["protectedContainers"])
+        self.assertTrue(verify.call_args.kwargs["require_protected"])
 
     def test_prepared_rejects_adhoc_and_changed_entitlements(self):
         manifest, sha = self.artifact()
@@ -1221,6 +1359,9 @@ class RunnerContracts(unittest.TestCase):
         manifest = Path(result["manifest"])
         self.assertEqual(result["manifestSHA256"], RUNNER.digest(manifest.read_bytes()))
         self.assertEqual(json.loads(manifest.read_bytes())["signing"], CONFIG)
+        self.assertEqual(json.loads(manifest.read_bytes())["schemaVersion"], 2)
+        self.assertEqual(json.loads(manifest.read_bytes())["productsRootMode"], 0o555)
+        self.assertEqual((args.build_dir / "Products/Debug").stat().st_mode & 0o777, 0o555)
         self.assertEqual(result["permissionReadiness"], "UNVERIFIED")
 
     def test_source_drift_does_not_publish_success_manifest(self):
@@ -1236,6 +1377,51 @@ class RunnerContracts(unittest.TestCase):
                 self.assertRaises(RUNNER.RunnerError):
             RUNNER.build(args)
         self.assertFalse((args.build_dir / "runner-manifest.json").exists())
+
+    def test_container_protection_failure_retains_build_without_manifest(self):
+        args = argparse.Namespace(identity=IDENTITY, team=TEAM, certificate_sha1=LEAF, unsigned=False,
+                                  build_dir=self.root / "acl-build", source_revision=REVISION)
+
+        def run(command, **kwargs):
+            if "build-for-testing" in command:
+                self.write_products(args.build_dir / "Products")
+                return b"", b""
+            return self.native(command, **kwargs)
+
+        self.acl_output = b"drwxr-xr-x+ 2 owner group 64 container\n"
+        with patch.object(RUNNER, "new_build_path", return_value=args.build_dir), \
+                patch.object(RUNNER, "find_xcode", return_value=("/xcodebuild", "Xcode 27.0")), \
+                patch.object(RUNNER, "source_snapshot", return_value={"sha256": "a"}), \
+                patch.object(RUNNER, "native", side_effect=run), self.assertRaises(RUNNER.RunnerError) as failed:
+            RUNNER.build(args)
+        self.assertEqual(failed.exception.details["retainedBuildDir"], str(args.build_dir))
+        self.assertTrue((args.build_dir / "Products").is_dir())
+        self.assertFalse((args.build_dir / "runner-manifest.json").exists())
+
+    def test_default_build_modes_keep_legacy_writable_containers(self):
+        for unsigned in (False, True):
+            args = argparse.Namespace(identity=None, team=None, certificate_sha1=None, unsigned=unsigned,
+                                      build_dir=self.root / ("default-" + str(unsigned)), source_revision=REVISION)
+
+            def run(command, **kwargs):
+                if "build-for-testing" in command:
+                    self.write_products(args.build_dir / "Products")
+                    return b"", b""
+                return self.native(command, **kwargs)
+
+            with self.subTest(unsigned=unsigned), \
+                    patch.object(RUNNER, "new_build_path", return_value=args.build_dir), \
+                    patch.object(RUNNER, "find_xcode", return_value=("/xcodebuild", "Xcode 27.0")), \
+                    patch.object(RUNNER, "source_snapshot", return_value={"sha256": "a"}), \
+                    patch.object(RUNNER, "native", side_effect=run), \
+                    patch.object(RUNNER, "protect_containers") as protect:
+                result = RUNNER.build(args)
+            protect.assert_not_called()
+            manifest = json.loads(Path(result["manifest"]).read_bytes())
+            self.assertEqual(manifest["schemaVersion"], 1)
+            self.assertNotIn("productsRootMode", manifest)
+            self.assertEqual((args.build_dir / "Products").stat().st_mode & 0o777, 0o755)
+            self.assertEqual((args.build_dir / "Products/Debug").stat().st_mode & 0o777, 0o755)
 
 
 if __name__ == "__main__":

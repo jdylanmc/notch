@@ -47,6 +47,11 @@ Follow [the approved intent](intent.md), root `AGENTS.md`,
    human-only consent for the actual responsible runner. Record its stable
    ignored work path; do not overwrite an existing owner-granted runner.
    Signature readiness is not permission readiness or guaranteed TCC reuse.
+   The unattended baseline requires a schema-v2 package verified with
+   `--require-protected-products`. Products and the runner's ancestor
+   containers are read-only and ACL-free; signed bundle contents/modes are
+   unchanged. Verify protection after extraction and at the fixed path.
+   Never unlock or overlay an existing package to install an update.
    Keep prepared Products immutable. Per-run xctestrun files belong in new
    owned output directories, not Products; an interrupted output is not a
    reason to modify the approved artifact. Native signatures are freshly

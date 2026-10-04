@@ -44,6 +44,10 @@ Use this as the bounded worker assignment, not an implementation task.
    not consent. Prepared invocations freshly verify source/Products/signatures;
    their mutable manifest stays in the owned run output, never Products.
    Do not delete Products manifests to bypass verification after an interruption.
+   For the unattended baseline, require schema v2 and
+   `verify --require-protected-products` before execution. Recheck protected
+   root/container modes and ACLs after extraction and execution. A legacy v1
+   package may be inspected but is not a protected-baseline acceptance.
 5. Inspect actual output evidence, raw XCTest result, executed-test count,
    candidate/run/capture identity and restoration. Export only expected
    app-filtered/public scenario artifacts; no host or personal desktop capture.

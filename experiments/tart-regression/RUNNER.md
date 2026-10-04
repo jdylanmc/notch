@@ -129,6 +129,30 @@ inputs are allowed but explicitly identified by their **working-tree snapshot**;
 HEAD alone is never claimed as their source identity. Changes during the build
 or verification fail. Only success emits a manifest and its SHA-256.
 
+Stable builds now emit **schema v2**. After successful signing verification,
+the builder removes write bits only from Products and the directories between
+Products and the verified runner app, deepest first. It preserves read/search
+bits and does not change any app, test-bundle or framework contents or modes.
+The manifest binds Products' root mode explicitly; the full inventory already
+binds the other protected directory modes. Only those declared mode changes
+are permitted during protection; newly appearing files fail the build.
+
+Protected containers must have no ACL entries. ACL inspection errors or ACLs
+are explicit failures, not permission normalization. Verification checks the
+root mode, all protected containers and their ACLs before and after native
+signature inspection. This prevents incidental directory-entry writes such as
+`.DS_Store` creation in those containers; it is not protection against a
+privileged writer, an owner changing modes, existing writable files, or every
+directory outside the app. The writer of the observed sidecar was not proved.
+Jobs, results and mutable test manifests remain outside Products.
+
+Schema v1 remains readable for historical inspection and explicit migration,
+but cannot establish the new unattended baseline. Use
+`verify --require-protected-products` to enforce v2; never relabel a v1
+artifact, unlock an existing sealed package, or add an observed sidecar to
+expectations just to pass. Ad-hoc and unsigned builds retain schema v1 and
+their previous modes.
+
 Builds have a fixed 600-second deadline; inspection commands have 30/120-second
 deadlines. Successful/reaped commands are never signalled. On timeout/cancellation,
 cleanup can kill only the live group anchored by the invocation's still-unreaped
@@ -164,7 +188,8 @@ overwritten or recursively cleaned.
    python3 -B build_runner.py verify \
      --products "$PWD/Products" \
      --runner-manifest "$PWD/runner-manifest.json" \
-     --runner-manifest-sha256 'PARENT_APPROVED_MANIFEST_SHA256'
+     --runner-manifest-sha256 'PARENT_APPROVED_MANIFEST_SHA256' \
+     --require-protected-products
    ```
 
    This performs read-only source/hash/role/nested-signature/requirement
@@ -254,6 +279,10 @@ packages are compatible but report no changes. Native acceptance remains
 review the actual test change, require genuinely changed native code for the
 cross-source proof, and keep the packages immutable during comparison/promotion.
 Fresh verification at installation and invocation remains mandatory.
+Comparison also rejects a downgrade from protected v2 storage to legacy v1,
+independently of signing-identity compatibility. Copy/extract into fresh
+staging and verify modes and ACLs there and at the final location; do not
+overlay or temporarily unlock sealed Products.
 
 ## Parent-owned native acceptance
 
@@ -281,6 +310,11 @@ second source at the same path with compatible identity and actual preflight
 `true`; then another normal guest restart and successful headless execution.
 Record any prompt as a setup/persistence failure, not a normal suite step.
 Only after this evidence may the prepared guest serve as an unattended baseline.
+Also verify actual same-UID file creation is denied in every protected
+container, archive/extraction preserve those modes, and the complete inventory
+stays unchanged across normal shutdown and cold boot. If an authorized
+write-denial probe unexpectedly creates a file, preserve that failed artifact;
+do not delete the evidence or reseal it to manufacture success.
 
 Each native Settings receipt records
 `discovery.screenCapturePreflightAccess` from the actual runner. This is a

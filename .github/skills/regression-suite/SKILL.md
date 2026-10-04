@@ -33,6 +33,10 @@ Read [the approved intent](intent.md), [worker contract](WORKER.md),
    capture, never a checkbox or an XCTest screenshot as a proxy. A known stale
    recording rule is a targeted setup blocker, not a reason to run the same
    blocked suite repeatedly or request consent for every source change.
+   The configured unattended baseline must be schema v2, accepted through
+   `verify --require-protected-products`. Legacy v1 inspection/migration is
+   not unattended readiness. V2 protection is rechecked during every prepared
+   invocation; metadata drift is still a failure, not an ignored file.
 2. Read `.local/vm-regression/AGENTS.md` when present, or the user's custom setup
    location. Inspect Tart configuration, the named VM and guest readiness.
    Installed Tart alone is insufficient. A stopped prepared VM is not missing

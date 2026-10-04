@@ -469,6 +469,60 @@ def build_command(tool, build, config):
     ]
 
 
+def product_containers(products, roles):
+    runner = canonical(products / roles["runner"]["path"])
+    if products not in runner.parents:
+        raise RunnerError("Runner is outside Products.")
+    containers = []
+    for parent in runner.parents:
+        containers.append(parent)
+        if parent == products:
+            break
+    return containers
+
+
+def container_modes(products, roles, run):
+    modes = {}
+    for path in product_containers(products, roles):
+        info = path.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+            raise RunnerError("Products containers must be owned directories.")
+        output, _ = run(["/bin/ls", "-ldeb", str(path)])
+        lines = output.decode().splitlines()
+        if (len(lines) != 1 or not re.match(r"^d[rwxstST-]{9}@?\s", lines[0])):
+            raise RunnerError("Products container ACLs are unsupported or could not be inspected.")
+        mode = stat.S_IMODE(info.st_mode)
+        if mode & 0o500 != 0o500:
+            raise RunnerError("Products containers require owner read and search access.")
+        modes["." if path == products else str(path.relative_to(products))] = mode
+    return modes
+
+
+def protect_containers(products, roles, entries, run):
+    before = container_modes(products, roles, run)
+    expected = {name: dict(entry) for name, entry in entries.items()}
+    for path in product_containers(products, roles):
+        name = "." if path == products else str(path.relative_to(products))
+        mode = before[name] & ~0o222
+        os.chmod(path, mode)
+        if name != ".":
+            expected[name]["mode"] = mode
+    if inventory(products) != expected:
+        raise RunnerError("Products changed beyond the declared container-mode transitions.")
+    after = container_modes(products, roles, run)
+    if after != {name: mode & ~0o222 for name, mode in before.items()}:
+        raise RunnerError("Products container protection did not match the declared modes.")
+    return expected, after["."]
+
+
+def verify_container_protection(products, roles, root_mode, run):
+    if type(root_mode) is not int:
+        raise RunnerError("Protected Products root mode must be an integer.")
+    modes = container_modes(products, roles, run)
+    if modes["."] != root_mode or any(mode & 0o222 for mode in modes.values()):
+        raise RunnerError("Prepared Products containers are no longer read-only.")
+
+
 def build(args):
     config = signing(args.identity, args.team, args.certificate_sha1, args.unsigned)
     path = new_build_path(args.build_dir)
@@ -491,9 +545,19 @@ def build(args):
         code = verify_code(products, roles, entries, config, run)
         if source != source_snapshot(args.source_revision, run) or entries != inventory(products):
             raise RunnerError("Source or Products changed during build/verification.")
+        root_mode = None
+        if config["mode"] == "stable":
+            entries, root_mode = protect_containers(products, roles, entries, run)
+            if source != source_snapshot(args.source_revision, run):
+                raise RunnerError("Source changed while protecting Products containers.")
         manifest = {"schemaVersion": 1, "signing": config, "source": source, "xcodeVersion": version,
                     "xctestrun": xctestrun, "roles": roles, "files": entries, "code": code,
                     "permissionReadiness": PERMISSION_READINESS}
+        if root_mode is not None:
+            manifest.update(schemaVersion=2, productsRootMode=root_mode)
+            verify_container_protection(products, roles, root_mode, run)
+            if entries != inventory(products):
+                raise RunnerError("Products changed before protected manifest publication.")
         output = path / "runner-manifest.json"
         with output.open("xb") as stream:
             stream.write(json_bytes(manifest))
@@ -527,21 +591,29 @@ def verify_source(snapshot, source):
             raise RunnerError("Guest test source differs from the exact prepared source.")
 
 
-def verify_prepared(products, manifest_path, expected_sha256, *, source=SOURCE, run=None):
+def verify_prepared(products, manifest_path, expected_sha256, *, source=SOURCE, run=None, require_protected=False):
     if not isinstance(expected_sha256, str) or not re.fullmatch(r"[a-f0-9]{64}", expected_sha256):
         raise RunnerError("Prepared runner requires the parent's approved manifest SHA-256.")
     data = canonical(manifest_path).read_bytes()
     if digest(data) != expected_sha256:
         raise RunnerError("Prepared runner manifest hash mismatch.")
     manifest = json.loads(data)
+    version = manifest.get("schemaVersion") if isinstance(manifest, dict) else None
+    fields = {"schemaVersion", "signing", "source", "xcodeVersion", "xctestrun",
+              "roles", "files", "code", "permissionReadiness"}
+    if version == 2:
+        fields.add("productsRootMode")
     if (not isinstance(manifest, dict)
-            or set(manifest) != {"schemaVersion", "signing", "source", "xcodeVersion", "xctestrun",
-                                 "roles", "files", "code", "permissionReadiness"}
-            or type(manifest["schemaVersion"]) is not int or manifest["schemaVersion"] != 1
+            or set(manifest) != fields
+            or type(version) is not int or version not in (1, 2)
             or not isinstance(manifest["signing"], dict) or manifest["signing"].get("mode") != "stable"
             or not isinstance(manifest["xcodeVersion"], str) or not manifest["xcodeVersion"]
             or manifest["permissionReadiness"] != PERMISSION_READINESS):
         raise RunnerError("Prepared permission-dependent runner requires stable signing.")
+    if require_protected and version != 2:
+        raise RunnerError("Unattended execution requires protected schema-v2 Products.")
+    if version == 2 and type(manifest["productsRootMode"]) is not int:
+        raise RunnerError("Protected Products root mode must be an integer.")
     config = manifest["signing"]
     if signing(config.get("identity"), config.get("team"), config.get("certificateSHA1")) != config:
         raise RunnerError("Invalid prepared signer contract.")
@@ -558,10 +630,14 @@ def verify_prepared(products, manifest_path, expected_sha256, *, source=SOURCE, 
         def run(command, timeout=30):
             return native(command, env=env, timeout=timeout)
 
+    if version == 2:
+        verify_container_protection(products, roles, manifest["productsRootMode"], run)
     code = verify_code(products, roles, entries, config, run)
     if json_bytes(code) != json_bytes(manifest["code"]) or entries != inventory(products):
         raise RunnerError("Prepared code requirements, hashes or entitlements changed.")
     verify_source(manifest["source"], source)
+    if version == 2:
+        verify_container_protection(products, roles, manifest["productsRootMode"], run)
     return manifest
 
 
@@ -590,6 +666,8 @@ def compare_prepared(before_root, before_sha256, after_root, after_sha256):
                              before_sha256, source=before_root)
     after = verify_prepared(after_root / "Products", after_root / "runner-manifest.json",
                             after_sha256, source=after_root)
+    if before["schemaVersion"] == 2 and after["schemaVersion"] != 2:
+        raise RunnerError("Prepared runner transition removes container protection.", storageProtectionChanged=True)
     for key in ("signing", "roles"):
         if json_bytes(before[key]) != json_bytes(after[key]):
             raise RunnerError("Prepared runner transition changes " + key + ".", identityChanged=True)
@@ -617,7 +695,9 @@ def compare_prepared(before_root, before_sha256, after_root, after_sha256):
         "beforeSourceRevision": before["source"]["revision"], "afterSourceRevision": after["source"]["revision"],
         "changedSourceFiles": sorted(name for name in names
                                     if before["source"]["files"].get(name) != after["source"]["files"].get(name)),
-        "roles": roles, "permissionReadiness": "UNVERIFIED", "nativeAcceptance": "NOT_PERFORMED",
+        "roles": roles,
+        "protectedContainers": {"before": before["schemaVersion"] == 2, "after": after["schemaVersion"] == 2},
+        "permissionReadiness": "UNVERIFIED", "nativeAcceptance": "NOT_PERFORMED",
     }
 
 
@@ -656,6 +736,8 @@ def main(argv=None):
     verifier.add_argument("--products", type=Path, required=True)
     verifier.add_argument("--runner-manifest", type=Path, required=True)
     verifier.add_argument("--runner-manifest-sha256", required=True)
+    verifier.add_argument("--require-protected-products", action="store_true",
+                          help="Require schema-v2 read-only containers for an unattended baseline.")
     comparison = commands.add_parser("compare", help="Verify two portable packages without launching or promoting them.")
     comparison.add_argument("--before-root", type=Path, required=True)
     comparison.add_argument("--before-sha256", required=True)
@@ -668,10 +750,12 @@ def main(argv=None):
         elif args.command == "compare":
             result = compare_prepared(args.before_root, args.before_sha256, args.after_root, args.after_sha256)
         else:
-            manifest = verify_prepared(args.products, args.runner_manifest, args.runner_manifest_sha256)
+            manifest = verify_prepared(args.products, args.runner_manifest, args.runner_manifest_sha256,
+                                       require_protected=args.require_protected_products)
             result = {"status": "VERIFIED", "source": manifest["source"], "roles": manifest["roles"],
                       "manifestSHA256": args.runner_manifest_sha256,
-                      "permissionReadiness": "UNVERIFIED"}
+                      "permissionReadiness": "UNVERIFIED",
+                      "protectedContainers": manifest["schemaVersion"] == 2}
         print(json.dumps(result))
         return 0
     except (OSError, ValueError, ExpatError, KeyError, TypeError, subprocess.SubprocessError) as error:
