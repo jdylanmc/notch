@@ -1,10 +1,16 @@
-"""Two fixed scrollable Settings removal cases; legacy single captures stay unchanged."""
+"""Fixed scrollable Settings removal cases; legacy single captures stay unchanged."""
 
 import math
 import re
 import uuid
 
 
+GENERAL_LABELS = {
+    "Show menu bar icon", "Launch at login", "Language", "Show on all displays",
+    "Preferred display", "Automatically switch displays",
+    "Notch height on notch displays", "Notch height on non-notch displays",
+    "Open notch on hover", "Remember last tab", "Notch animation", "Enable media gestures",
+}
 SCENARIOS = {
     "notifications-ai-replies-removed": {
         "pane": "Notifications", "test": "testInstalledNotificationsWithoutAIReplies",
@@ -12,12 +18,15 @@ SCENARIOS = {
     },
     "general-haptics-removed": {
         "pane": "General", "test": "testInstalledGeneralWithoutHaptics",
-        "labels": {
-            "Show menu bar icon", "Launch at login", "Language", "Show on all displays",
-            "Preferred display", "Automatically switch displays",
-            "Notch height on notch displays", "Notch height on non-notch displays",
-            "Open notch on hover", "Remember last tab", "Notch animation", "Compact mode", "Enable gestures",
-        }, "absence": "hapticControlAbsent",
+        "labels": GENERAL_LABELS, "absence": "hapticControlAbsent",
+    },
+    "general-panel-swipes-removed": {
+        "pane": "General", "test": "testInstalledGeneralWithoutPanelSwipes",
+        "labels": GENERAL_LABELS, "absence": "panelGestureControlsAbsent",
+    },
+    "general-compact-mode-removed": {
+        "pane": "General", "test": "testInstalledGeneralWithoutCompactMode",
+        "labels": GENERAL_LABELS, "absence": "compactModeControlAbsent",
     },
 }
 VERSION_KEYS = {"notificationsCaptureVersion", "generalCaptureVersion"}
@@ -125,7 +134,7 @@ def settings_captures(receipt):
             and number(discovery.get(prefix + "OverlapPoints"))
             and discovery[prefix + "ScrollOffsetPoints"] == offset
             and discovery[prefix + "OverlapPoints"] == overlap)
-    if scenario == "general-haptics-removed":
+    if pane == "General":
         require(discovery.get("generalNavigationObserved") is True
                 and receipt.get("originalPane") in {"closed", "General", "About"})
         if receipt["originalPane"] == "General":

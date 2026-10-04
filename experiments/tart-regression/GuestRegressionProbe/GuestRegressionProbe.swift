@@ -236,6 +236,18 @@ final class GuestRegressionProbe: XCTestCase {
     }
 
     @MainActor
+    func testInstalledGeneralWithoutPanelSwipes() {
+        runInstalledSettingsOutput(testName: "testInstalledGeneralWithoutPanelSwipes",
+                                   modes: ["general-panel-swipes-removed"])
+    }
+
+    @MainActor
+    func testInstalledGeneralWithoutCompactMode() {
+        runInstalledSettingsOutput(testName: "testInstalledGeneralWithoutCompactMode",
+                                   modes: ["general-compact-mode-removed"])
+    }
+
+    @MainActor
     private func settingsForm(_ settings: XCUIElement, scenario: SettingsRemovalScenario) throws -> XCUIElement {
         let scrollViews = settings.scrollViews.allElementsBoundByIndex
         let sidebars = scrollViews.filter { $0.outlines.count == 1 }
@@ -252,7 +264,7 @@ final class GuestRegressionProbe: XCTestCase {
         _ settings: XCUIElement, scenario: SettingsRemovalScenario, state: RunState, runID: String
     ) throws {
         let prefix = scenario.prefix
-        if scenario == .general {
+        if scenario.pane == "General" {
             if state.originalPane == "General" {
                 let originalForm = try settingsForm(settings, scenario: .general)
                 let frames = try originalForm.snapshot().children
@@ -350,7 +362,7 @@ final class GuestRegressionProbe: XCTestCase {
                 controls[label] = visible
                 if visible { labelFrames[label] = normalized(matches.firstMatch.frame) }
             }
-            controls[scenario.absenceKey] = !form.staticTexts[scenario.removedLabel].exists
+            controls[scenario.absenceKey] = scenario.removedLabelsAbsent { form.staticTexts[$0].exists }
             let capture = settings.screenshot()
             try require(try windowID() == identifier, "\(prefix)_capture_identity_changed")
             let after = try content()
@@ -372,7 +384,8 @@ final class GuestRegressionProbe: XCTestCase {
             try require(!observations.isEmpty, "ocr_unavailable")
             let observed = SettingsRemovalOutputOracle.evaluate(
                 observations, scenario: scenario, contentFrame: normalized(formFrame),
-                controls: controls, labelFrames: labelFrames, pixelWidth: image.width
+                controls: controls, labelFrames: labelFrames, pixelWidth: image.width,
+                windowWidthPoints: windowFrame.width
             )
             let name = "guest-public-\(prefix)-\(runID)-\(role)"
             let hash = SHA256.hash(data: capture.pngRepresentation).map { String(format: "%02x", $0) }.joined()

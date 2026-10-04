@@ -44,7 +44,7 @@ struct BatteryView: View {
     ///
     /// These were previously absolute: the fill height was
     /// `(batteryWidth - 2.75) - 18`, which only lands correctly at the
-    /// default 30pt — at compact mode's 24pt it collapses to ~3pt, a sliver
+    /// default 30pt — at 24pt it collapses to ~3pt, a sliver
     /// floating inside the outline. Expressing them relative to a reference
     /// width keeps the 30pt case numerically identical to before while
     /// making every other size correct.

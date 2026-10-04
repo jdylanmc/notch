@@ -3,7 +3,7 @@
 //  notchPocket
 //
 //  Lists the Mac's audio output devices and switches the system default
-//  between them, for the compact player's media-output button.
+//  between them, for the player's media-output button.
 //
 //  Adapted from Atoll's AudioRouteManager
 //  (https://github.com/Ebullioscopic/Atoll, GPL-3.0, itself a Notch Pocket
