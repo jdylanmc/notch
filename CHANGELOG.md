@@ -13,10 +13,13 @@ Product tags and distribution are documented in the [release guide](docs/release
 
 ### Fixed
 
-- Calendar authorization status no longer loses immediate access results to a
-  queued older status. Initial queries resolve stored selections first; stale or
-  unavailable selected IDs no longer silently broaden queries to all calendars.
-  The existing empty-selection fallback is preserved.
+- Calendar manager authorization state is published before awaiting provider
+  access, preventing immediate provider results from being overwritten by a
+  queued older status. This ordering fix is demonstrated with synthetic
+  providers, not a reproduced live EventKit failure.
+- Initial queries resolve stored selections first; stale or unavailable
+  selected IDs no longer silently broaden queries to all calendars. The
+  existing empty-selection fallback is preserved.
 
 Scoped to [PR #97](https://github.com/jdylanmc/notch/pull/97), extending the
 coverage and fixture work in [#7](https://github.com/jdylanmc/notch/issues/7) and
