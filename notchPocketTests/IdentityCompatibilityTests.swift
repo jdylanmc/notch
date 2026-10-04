@@ -344,6 +344,35 @@ final class IdentityCompatibilityTests: XCTestCase {
         XCTAssertEqual(decoded.display, 42)
     }
 
+    func testLunarEventDecodesIndependentPrimitiveWireFields() throws {
+        let archive = NSKeyedArchiver(requiringSecureCoding: true)
+        archive.encode(0.25, forKey: "brightness")
+        archive.encode(73, forKey: "display")
+        archive.finishEncoding()
+        let decoder = try NSKeyedUnarchiver(forReadingFrom: archive.encodedData)
+        decoder.requiresSecureCoding = true
+        defer { decoder.finishDecoding() }
+
+        let event = try XCTUnwrap(BNLunarBrightnessEvent(coder: decoder))
+        XCTAssertTrue(BNLunarBrightnessEvent.supportsSecureCoding)
+        XCTAssertEqual(event.brightness, 0.25)
+        XCTAssertEqual(event.display, 73)
+    }
+
+    func testLunarEventEncodesStablePrimitiveWireFields() throws {
+        let archive = NSKeyedArchiver(requiringSecureCoding: true)
+        BNLunarBrightnessEvent(brightness: 1, display: 0).encode(with: archive)
+        archive.finishEncoding()
+        let decoder = try NSKeyedUnarchiver(forReadingFrom: archive.encodedData)
+        decoder.requiresSecureCoding = true
+        defer { decoder.finishDecoding() }
+
+        XCTAssertTrue(decoder.containsValue(forKey: "brightness"))
+        XCTAssertTrue(decoder.containsValue(forKey: "display"))
+        XCTAssertEqual(decoder.decodeDouble(forKey: "brightness"), 1)
+        XCTAssertEqual(decoder.decodeInteger(forKey: "display"), 0)
+    }
+
     func testRenamedXPCProtocolsKeepMessageSelectors() {
         XCTAssertEqual(
             NSStringFromSelector(#selector(NotchPocketXPCHelperLunarListener.lunarEventDidUpdate(_:))),
@@ -356,6 +385,18 @@ final class IdentityCompatibilityTests: XCTestCase {
         XCTAssertEqual(
             NSStringFromSelector(#selector(NotchPocketXPCHelperProtocol.setNotchOpen(_:))),
             "setNotchOpen:"
+        )
+        XCTAssertEqual(
+            NSStringFromSelector(#selector(NotchPocketXPCHelperLunarListener.lunarStreamDidStop(_:))),
+            "lunarStreamDidStop:"
+        )
+        XCTAssertEqual(
+            NSStringFromSelector(#selector(NotchPocketXPCHelperProtocol.startLunarEventStream(with:))),
+            "startLunarEventStreamWith:"
+        )
+        XCTAssertEqual(
+            NSStringFromSelector(#selector(NotchPocketXPCHelperProtocol.stopLunarEventStream)),
+            "stopLunarEventStream"
         )
     }
 }
