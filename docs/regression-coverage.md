@@ -105,7 +105,7 @@ regression preservation, not a new player support commitment.
 | Notification capture/filter/queue/expiry/cycling, draft preservation; [manager](../notchPocket/managers/SystemNotificationManager.swift), [helper watcher](../notchPocketXPCHelper/NotificationWatcher.swift) | Bundle-ID normalization/cache tests; notification expanded-view pixel test is local rendering, not banner delivery. | Synthetic notification source/clock and state scenarios before controlled live banners; fresh XPC reconnect/queue cases. | Accessibility; controlled sender/account consent. Attribution follow-up [#12](https://github.com/jdylanmc/notch/issues/12). |
 | Notification reply/action/open, verification-code copy and debug window; [notification UI](../notchPocket/components/Notch/NotificationLiveActivity.swift), [debug UI](../notchPocket/components/NotificationDebugWindow.swift) | OTP DEBUG self-check is not a canonical XCTest gate. No end-to-end send evidence. | Mock send/clipboard/open sinks; verify drafts survive failures, failed sends never count as delivered, and diagnostics avoid private text. | Real message sending/clipboard changes are separately approved effects. Never dump personal notification trees. |
 | Contact avatars; [avatars](../notchPocket/managers/ContactAvatarManager.swift) | No dedicated contact-provider tests. AI reply suggestions are removed; Contacts remains shared with avatars and manual WhatsApp handoff. | Inject contacts and synthetic content; test unavailable/failed lookup and fallback rendering. | Contacts grant for live lookup. |
-| Calendar/day/week/reminders, filters, selection, completion and meeting links; [view](../notchPocket/components/Calendar/NotchPocketCalendar.swift), [service](../notchPocket/Providers/CalendarServiceProviding.swift) | [Meeting link detection](../notchPocketTests/MeetingLinkDetectorTests.swift); Graph core tests below are not EventKit integration. | Inject EventKit service/clock into manager; synthetic events/reminders, date boundaries and approved mutation sinks. | Calendar/reminder grants and account access; real completion/join actions separately approved. |
+| Calendar/day/week/reminders, filters, selection, completion and meeting links; [view](../notchPocket/components/Calendar/NotchPocketCalendar.swift), [service](../notchPocket/Providers/CalendarServiceProviding.swift) | [Manager/provider isolation](../notchPocketTests/CalendarManagerIsolationTests.swift) tests synthetic authorization, list partitioning, scoped date queries, selection and completion; [meeting link detection](../notchPocketTests/MeetingLinkDetectorTests.swift). Graph core tests below are not EventKit integration. | Provider injection exists for an explicit manager, not the live singleton/UI. EventStore change observation/debounce, rendered filtering and whole-profile lifecycle still need scenarios. | Calendar/reminder grants and account access; real completion/join actions separately approved. |
 | Battery status/popover/charging alerts; [model](../notchPocket/models/BatteryStatusViewModel.swift), [activity manager](../notchPocket/managers/BatteryActivityManager.swift) | No dedicated battery-provider tests. | Inject power readings/time; test transition/debounce/visibility and popover hover guard. | Real battery/adapter state and physical power changes. |
 | Volume/brightness/backlight indicators and media keys; [on-screen display settings](../notchPocket/components/Settings/Views/OSDSettingsView.swift), [interceptor](../notchPocket/observers/MediaKeyInterceptor.swift) | Presentation bus tests, not actual hardware adjustment or key interception. | Provider-level synthetic controls and bounded native scenarios preserving prior volume/brightness. | Accessibility and explicit device-setting changes. BetterDisplay/Lunar require their apps; do not change their settings for a test implicitly. |
 | Camera mirror, device/frame/flip and expanded preview; [WebcamManager](../notchPocket/managers/WebcamManager.swift), [view](../notchPocket/components/Webcam/WebcamView.swift) | No dedicated authorization/device/session suite. | Fake availability/session provider; view interaction and permission-denial tests without capturing a real camera. | Camera grant and hardware for live preview; no recording. |
@@ -135,7 +135,7 @@ true, haptic absence false), not fresh independent or NEW-candidate signoff.
 | [Appearance](../notchPocket/components/Settings/Views/AppearanceSettingsView.swift) | Tab visibility, settings icon, waveform, tinting/lighting and slider color; idle face removed (#50). | [Registered removal scenario](../experiments/tart-regression/scenarios/appearance-idle-face-removed.md): seven retained-label output assertions, face/section absence, structural pane/full-form/header-class proof. Source/oracle contracts and author diagnosis are not signoff: the first independent old-app run blocked before output; fresh independent old/new executable-hash and source-provenance proof remains pending. Preference-toggle/audio behavior is not covered. |
 | [Media](../notchPocket/components/Settings/Views/MediaSettingsView.swift) | Source, live activity, sneak peek, idle timing, lyrics and fallback retry. | Availability-model tests; no pane/controller/provider end-to-end suite. |
 | [Notifications](../notchPocket/components/Settings/Views/NotificationSettingsView.swift) | Enable watching and all-apps/allow-list selection; AI suggestions removed, manual replies retained. | [Registered removal scenario](../experiments/tart-regression/scenarios/notifications-ai-replies-removed.md): two retained-label output assertions, suggestion absence and bound top/bottom captures with stable endpoints and measured overlap at 1440x900. Disabled labels require geometry/pixels, not interaction eligibility. Source contracts preserve manual draft/focus/timeout/fallback call sites, not live behavior. Author diagnosis is not signoff; fresh independent old/new proof and NEW-only full-suite validation remain parent-owned. No preference changes or live capture/send coverage; `canReply` false positives remain out of scope. |
-| [Calendar](../notchPocket/components/Settings/Views/CalendarSettingsView.swift) | Visibility, completed/all-day filters, full titles, next event, week start, meeting tap, calendar/reminder lists and denied access. | Meeting-link parsing only; inject service/permission results and prevent real reminder mutations. |
+| [Calendar](../notchPocket/components/Settings/Views/CalendarSettingsView.swift) | Visibility, completed/all-day filters, full titles, next event, week start, meeting tap, calendar/reminder lists and denied access. | Meeting-link parsing and explicit-manager provider fixtures cover authorization, lists and selection without real reminder mutations. Pane rendering, preference propagation and live permission/UI restoration remain unverified; the pane still uses the production singleton. |
 | [On-screen display](../notchPocket/components/Settings/Views/OSDSettingsView.swift) | Replacement, inline display, source providers, authorization, color/shadow/percentage and Option-key behavior. | Event bus only; fake controls before live device changes, including provider restoration. |
 | [Battery](../notchPocket/components/Settings/Views/BatterySettingsView.swift) | Indicator, status notifications, percentage, icons and charging wattage. | No dedicated pane tests; synthetic battery readings needed. |
 | [Shelf](../notchPocket/components/Settings/Views/ShelfSettingsView.swift) | Enable/default tab, expanded drag target, copy-on-drag, auto-removal, ordering and quick-share provider. | Shelf policy/tab tests do not prove these settings; isolate files, preferences and external sharing. |
@@ -229,6 +229,57 @@ scripts/test.sh \
   -only-testing:notchPocketTests/DropInteractionStateTests \
   -only-testing:notchPocketTests/ShelfSummaryWidgetPolicyTests
 ```
+
+### Calendar component fixtures
+
+`CalendarManager(service:selectionKey:initialDate:)` requires all three
+dependencies explicitly and does no automatic reload or global EventKit
+observation. Tests invoke its operations deliberately. The production `shared`
+initializer still constructs the real service with the existing selection key,
+registers its observer, and starts the existing initial reload.
+
+[CalendarManagerIsolationTests](../notchPocketTests/CalendarManagerIsolationTests.swift)
+use a synthetic implementation of the existing service protocol and fresh
+UUID-named preferences suites. Authorization status and reminder completion
+now cross that same protocol rather than escaping into EventKit from the
+manager. These fixtures never instantiate the real provider, request OS
+permissions, fetch personal events or complete a real reminder. The ordinary
+XCTest app host remains unchanged; this is not whole-process isolation.
+
+Eighteen cases cover inert construction, event/reminder list partitioning,
+selection persistence/isolation and the existing all-calendars fallback, date
+query parameters, returned events, granted/denied/restricted/write-only/error
+authorization, already-granted access, and completion-before-refresh ordering.
+With immediate synthetic providers, main-queue-drain regressions reproduced an
+ordering failure in the old code: a queued `.notDetermined` assignment overwrote
+the newer grant or denial. This is provider-contract evidence, not an observed
+live EventKit failure. The already-main-actor manager now publishes the initial
+status synchronously, before awaiting the request. Request failures retain the
+existing `.notDetermined` outcome and are logged rather than silently swallowed.
+
+The fixture also reproduced selection broadening before the initial calendar
+list loaded and when stale IDs happened to match the available-calendar count.
+Date queries and first selection changes now resolve the initial list before
+computing selected IDs; a nonempty explicit selection
+with no available IDs returns no events instead of passing the provider's
+empty-ID wildcard. Converting selection to `.all` uses actual set membership,
+not counts. The existing empty-selection fallback is preserved. Synthetic query
+responses honor ID filtering, so an accidental all-calendar query changes the
+observed result as well as the captured request.
+
+```bash
+scripts/test.sh \
+  -only-testing:notchPocketTests/CalendarManagerIsolationTests \
+  -only-testing:notchPocketTests/MeetingLinkDetectorTests \
+  -only-testing:notchPocketTests/CalendarCoreIdentityTests
+```
+
+The real EventKit provider, reminder mutation implementation, date normalization,
+global observer and production initial reload remain in place. The selection and
+authorization ordering corrections above are intentional, regression-backed
+behavior fixes. Real permission dialogs, EventKit synchronization/debounce,
+overlapping asynchronous query completion, end-to-end meeting launches and UI
+restoration remain unverified.
 
 ### Shared JSON-lines and stream wire contracts (#7)
 
