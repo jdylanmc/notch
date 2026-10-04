@@ -8,9 +8,13 @@ import signal
 import subprocess
 import sys
 import uuid
+from xml.parsers.expat import ExpatError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from capture_contract import settings_captures, SCENARIOS, VERSION_KEYS
+from build_runner import (
+    add_prepared_arguments, prepared_arguments, prepared_output_path, prepared_test_manifest, verify_prepared,
+)
 
 
 def blocked(reason, **details):
@@ -25,7 +29,15 @@ def main():
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--xctestrun", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    add_prepared_arguments(parser)
     args = parser.parse_args()
+    prepared = prepared_arguments(args)
+    if prepared:
+        try:
+            prepared_output_path(args.output, args.xctestrun.resolve(strict=True).parent)
+        except (OSError, ValueError) as error:
+            return blocked("prepared_output_must_be_owned_outside_products", uiTestsStarted=False,
+                           errorType=type(error).__name__, message=str(error))
 
     if sys.platform != "darwin":
         return blocked("macos_guest_required")
@@ -52,10 +64,20 @@ def main():
                     "/Applications/notch-pocket.app"], check=True, capture_output=True, timeout=30)
 
     source = args.xctestrun.resolve(strict=True)
-    with source.open("rb") as stream:
-        manifest = plistlib.load(stream)
-    targets = [name for name in manifest if not name.startswith("__")]
-    if targets != ["GuestRegressionProbe"]:
+    runner_identity = None
+    if prepared:
+        artifact = verify_prepared(source.parent, args.runner_manifest, args.runner_manifest_sha256)
+        if source.name != artifact["xctestrun"]:
+            return blocked("prepared_runner_manifest_mismatch", uiTestsStarted=False)
+        manifest = prepared_test_manifest(source.parent, artifact)
+        runner_identity = {"manifestSHA256": args.runner_manifest_sha256,
+                           "source": artifact["source"]["sha256"], "roles": artifact["roles"]}
+    else:
+        with source.open("rb") as stream:
+            manifest = plistlib.load(stream)
+    if (not isinstance(manifest, dict)
+            or [name for name in manifest if not name.startswith("__")] != ["GuestRegressionProbe"]
+            or not isinstance(manifest["GuestRegressionProbe"], dict)):
         return blocked("unexpected_test_targets", uiTestsStarted=False)
     target = manifest["GuestRegressionProbe"]
     if target.get("UseUITargetAppProvidedByTests") is not True or target.get("UITargetAppPath"):
@@ -79,9 +101,7 @@ def main():
     })
     args.output.mkdir(mode=0o700, parents=False, exist_ok=False)
     output = args.output.resolve(strict=True)
-    configured = source.parent / f"guest-run-{run_id}.xctestrun"
-    with configured.open("xb") as stream:
-        plistlib.dump(manifest, stream)
+    configured = (output if prepared else source.parent) / f"guest-run-{run_id}.xctestrun"
     result_bundle = output / "result.xcresult"
     command = [
         "/usr/bin/xcodebuild", "test-without-building", "-xctestrun", str(configured),
@@ -91,7 +111,11 @@ def main():
         "-resultBundlePath", str(result_bundle),
     ]
     timed_out = False
+    configured_created = False
     try:
+        with configured.open("xb") as stream:
+            configured_created = True
+            plistlib.dump(manifest, stream)
         with (output / "execution.log").open("x") as log:
             process = subprocess.Popen(
                 command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
@@ -107,7 +131,8 @@ def main():
                     os.killpg(process.pid, signal.SIGKILL)
                     process.wait(timeout=15)
     finally:
-        configured.unlink()
+        if configured_created:
+            configured.unlink()
 
     (output / "invocation.json").write_text(json.dumps({
         "runID": run_id,
@@ -115,6 +140,7 @@ def main():
         "xcodeExit": process.returncode,
         "timedOut": timed_out,
         "temporaryManifestRemoved": not configured.exists(),
+        "preparedRunner": runner_identity,
     }, indent=2) + "\n")
     if timed_out:
         return blocked("framework_timeout", runID=run_id, cleanup="unverified")
@@ -181,5 +207,5 @@ def main():
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+    except (OSError, ValueError, ExpatError, KeyError, TypeError, subprocess.SubprocessError) as error:
         raise SystemExit(blocked("invocation_or_evidence_error", errorType=type(error).__name__))
