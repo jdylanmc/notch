@@ -1,0 +1,16 @@
+{
+  "provenance": "Read-only public codesign outputs from foundation-closure-20261002/stable-runner-native-a/result.json and native-inspection.json; Xcode 27.0 (27A266a), two arm64 Mach-O roles, zero copied frameworks. team and filesystem paths normalized; expression shape retained from observed Xcode27 output. This fixture is parser evidence, not native signature verification.",
+  "team": "ABCDEFGHIJ",
+  "roles": {
+    "runner": {
+      "identifier": "com.jdylanmc.NotchVMProof.xctrunner",
+      "stdout": "designated => anchor apple generic and identifier \"com.jdylanmc.NotchVMProof.xctrunner\" and (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"ABCDEFGHIJ\")\n",
+      "stderr": "Executable=/tmp/runner-fixture/Products/Debug/GuestRegressionProbe-Runner.app/Contents/MacOS/GuestRegressionProbe-Runner\n"
+    },
+    "testBundle": {
+      "identifier": "com.jdylanmc.NotchVMProof",
+      "stdout": "designated => anchor apple generic and identifier \"com.jdylanmc.NotchVMProof\" and (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"ABCDEFGHIJ\")\n",
+      "stderr": "Executable=/tmp/runner-fixture/Products/Debug/GuestRegressionProbe-Runner.app/Contents/PlugIns/GuestRegressionProbe.xctest/Contents/MacOS/GuestRegressionProbe\n"
+    }
+  }
+}

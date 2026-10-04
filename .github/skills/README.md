@@ -1,5 +1,24 @@
 # Repository-local macOS expertise
 
+## Owned installed-app regression workflows
+
+These repository-owned skills supplement the imported expertise and personal
+workflow packets; do not overwrite imported skills when updating them.
+
+- [`regression-test`](regression-test/SKILL.md): author executable scenarios and
+  request independent verification.
+- [`regression-suite`](regression-suite/SKILL.md): detect setup, dispatch a fresh
+  test worker, report evidence and route confirmed bugs through the main agent.
+- [`setup-regression-suite`](setup-regression-suite/SKILL.md): user-activated
+  walkthrough for a machine-local headless Tart environment.
+
+Approved intent files accompany each package. The
+[reconstruction guide](../../docs/agents/vm-regression.md) explains portable
+source versus ignored runtime state. Setup is human-only, including when an
+agent offers it: affirmative user acceptance is required before activation.
+
+## Imported expertise
+
 Vetted for [issue #59](https://github.com/jdylanmc/notch/issues/59) against
 `0c02bf46d09a36e69b8501e0bcdae9e4b50cacc1`. These are advisory expertise
 packages, not approval to execute their examples, modernize the app, or add

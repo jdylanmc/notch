@@ -33,3 +33,7 @@ jobs:
         run: python3 -B -m unittest discover -s scripts/tests -p 'test_notarize.py'
       - name: Test hosted release boundaries
         run: python3 -B -m unittest discover -s scripts/tests -p 'test_pocket_release.py'
+      - name: Test regression probe policy
+        run: python3 -B -m unittest discover -s scripts/tests -p 'test_regression_probe.py'
+      - name: Test stable regression runner contracts
+        run: python3 -B -m unittest discover -s scripts/tests -p 'test_regression_runner.py'

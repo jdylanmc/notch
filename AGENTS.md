@@ -25,6 +25,22 @@ Known traps: [inherited branch/CI policy](#branch-topology),
 [update isolation](#update-isolation).
 These are constraints to inspect, not claims that setup or runtime is solved.
 
+For the optional machine-local Tart regression experiment, read
+[the reconstruction guide](docs/agents/vm-regression.md). If
+`.local/vm-regression/AGENTS.md` exists, read it before operating that environment.
+The local directory contains ignored VM disks, runtime credentials, tools and
+evidence; never force-add it. A cloned repository does not contain a prepared VM.
+
+For app-behavior changes, use the owned
+[`regression-test`](.github/skills/regression-test/SKILL.md) contribution workflow
+and [`regression-suite`](.github/skills/regression-suite/SKILL.md) independent
+verification alongside the existing unit/build/lint gates. Missing required
+regression evidence is a readiness gap, not a pass. VM preparation uses the
+user-only [`setup-regression-suite`](.github/skills/setup-regression-suite/SKILL.md).
+These repository rules reinforce delivery without editing imported Ship, Patch
+or Refactor packages. A full suite covers its registered scenarios, not all app
+features; do not demand unrelated retrospective backfill.
+
 ## What this repository is
 
 **Notch Pocket** is an independent macOS app. Historical source and artwork
@@ -223,7 +239,8 @@ commands. The parent reconciles the actual diff before executing any gates.
 Require the human-supplied full existing **Developer ID Application** certificate
 name, explicit ten-character team ID and a new canonical absolute build
 directory beneath this checkout's existing `.build/`. Do not inspect Keychain,
-read/copy `local.env`, import/export certificates or embed personal selectors.
+read/copy `local.env`, import/export Keychain certificates or private keys, or
+embed personal selectors.
 No path reuse, overwriting, input-app mutation, installation or app launch:
 
 ```bash
@@ -232,6 +249,34 @@ python3 -B scripts/distribution.py \
   --team 'YOURTEAMID' \
   --build-dir "$PWD/.build/np9-signing-001"
 ```
+
+The canonical command retains existing full-name selection without an extra
+flag. **Optional variant for duplicate certificate names:**
+
+```bash
+python3 -B scripts/distribution.py \
+  --identity 'Developer ID Application: YOUR CERTIFICATE NAME (YOURTEAMID)' \
+  --team 'YOURTEAMID' \
+  --certificate-sha1 'PUBLIC_CERTIFICATE_SHA1_40_HEX_CHARACTERS' \
+  --build-dir "$PWD/.build/np9-signing-sha1-001"
+```
+
+`--certificate-sha1` belongs to **`scripts/distribution.py` only**.
+`scripts/notarize.py` DMG signing and the hosted release pipeline remain
+name-selected and unchanged; neither accepts or forwards this option.
+The optional public leaf fingerprint uses exactly 40 hexadecimal characters
+(either case, no separators or prefix). Name and team remain mandatory.
+Use a human-provided known certificate fingerprint, or the
+[README's artifact-only extraction example](README.md#local-developer-id-candidate-9-bounded-slice)
+with an explicit already-approved signed artifact:
+`codesign --extract-certificates` into a new task-owned temporary directory, then
+`openssl x509` for the public leaf's SHA-1 fingerprint. This is public artifact
+metadata only, not permission for Keychain inspection/enumeration, access
+changes, private-key export or artifact mutation. Extraction is not signature
+verification or proof that the signing identity is usable. The fingerprint
+selects Xcode/resource/outer-app signing and constrains every final bundle/Mach-O
+verification on all architectures; chain, name/team and all other signature
+checks remain required. No fallback to the common name on failure.
 
 The parent creates the `.build/` parent if needed and substitutes the approved
 selector/team; placeholders are not configured values. The command discovers

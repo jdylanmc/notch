@@ -35,11 +35,7 @@ struct ContentView: View {
     @State private var horizontalMediaGestureFeedback: CGFloat = .zero
     @State private var isHoveringMusicArea = false
 
-    @State private var haptics: Bool = false
-
     @Namespace var albumArtNamespace
-
-    @Default(.showNotHumanFace) var showNotHumanFace
 
     // Use standardized animations from StandardAnimations enum
     private let animationSpring = StandardAnimations.interactive
@@ -182,11 +178,6 @@ struct ContentView: View {
                     chinWidth += 2 * inlineMusicPeekLabelWidth
                 }
             }
-        } else if !coordinator.expandingView.show && vm.notchState == .closed
-            && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace]
-            && !vm.hideOnClosed
-        {
-            chinWidth += (2 * max(0, displayClosedNotchHeight - 12) + 20)
         }
 
         return chinWidth
@@ -355,7 +346,6 @@ struct ContentView: View {
                             }
                         }
                     }
-                    .sensoryFeedback(.alignment, trigger: haptics)
                     .contextMenu {
                         Button("Settings") {
                             DispatchQueue.main.async {
@@ -487,8 +477,6 @@ struct ContentView: View {
                                       .frame(alignment: .center)
                               }
                           }
-                      } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
-                          NotchPocketFaceAnimation()
                        } else if showsHeader {
                            // No tab bar over a notification: it's a glance,
                            // not a place to switch between home and shelf —
@@ -640,20 +628,6 @@ struct ContentView: View {
                 .announcement: announcement,
                 .priority: NSAccessibilityPriorityLevel.high.rawValue,
             ]
-        )
-    }
-
-    @ViewBuilder
-    func NotchPocketFaceAnimation() -> some View {
-        HStack {
-            Rectangle()
-                .fill(.black)
-                .frame(width: vm.closedNotchSize.width + 20)
-            let faceScale = min(1.0, displayClosedNotchHeight / 30.0)
-            AnimatedFace(height: 24.0 * faceScale, width: 30.0 * faceScale)
-        }.frame(
-            height: displayClosedNotchHeight,
-            alignment: .center
         )
     }
 
@@ -836,10 +810,6 @@ struct ContentView: View {
                 notificationManager.holdActive()
             }
 
-            if vm.notchState == .closed && Defaults[.enableHaptics] {
-                haptics.toggle()
-            }
-            
             guard vm.notchState == .closed,
                   !shouldDisplayNowPlayingFallbackNotice,
                   !coordinator.shouldShowSneakPeek(on: vm.screenUUID),
@@ -894,9 +864,6 @@ struct ContentView: View {
         }
 
         if translation > Defaults[.gestureSensitivity] {
-            if Defaults[.enableHaptics] {
-                haptics.toggle()
-            }
             withAnimation(animationSpring) {
                 gestureProgress = .zero
             }
@@ -924,10 +891,6 @@ struct ContentView: View {
             if !SharingStateManager.shared.preventNotchClose { 
                 gestureProgress = .zero
                 vm.close()
-            }
-
-            if Defaults[.enableHaptics] {
-                haptics.toggle()
             }
         }
     }
@@ -964,10 +927,6 @@ struct ContentView: View {
         horizontalMediaGestureTriggered = true
         triggerHorizontalMediaFeedback(feedback)
         action()
-
-        if Defaults[.enableHaptics] {
-            haptics.toggle()
-        }
     }
 
     private func resetHorizontalMediaGesture() {

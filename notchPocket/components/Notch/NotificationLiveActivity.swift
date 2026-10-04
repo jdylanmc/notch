@@ -13,7 +13,6 @@
 //  primitives.
 //
 
-import Defaults
 import SwiftUI
 
 /// Closed notch: app icon on the left, a status dot on the right that
@@ -114,7 +113,6 @@ struct NotificationExpandedView: View {
     @State private var didHandOff = false
     @FocusState private var replyFocused: Bool
     @State private var hostWindow: NotchPocketSkyLightWindow?
-    @State private var suggestions: [String] = []
     @State private var isComposing = false
     /// User-visible delivery failure — the draft is kept, the notch stays
     /// open, and the user can retry or handle the message themselves.
@@ -163,7 +161,7 @@ struct NotificationExpandedView: View {
             // Deliberately no auto-focus: mounting this view (hover, arrival,
             // cycle) used to grab key-window status and pre-focus the field,
             // which read as focus hijacking. Focus is pull-only — tapping the
-            // field or a suggestion chip sets replyFocused explicitly.
+            // field requests reply focus.
         }
         // The single teardown point for both the key-window grant and the
         // compose hold. Focus changes are too noisy to release on (see
@@ -187,9 +185,8 @@ struct NotificationExpandedView: View {
             guard focused else {
                 // Deliberately does NOT release key status or the compose
                 // hold. Focus flips constantly for reasons that have
-                // nothing to do with the user being done: the suggestion
-                // chips arriving restructure the view above the field and
-                // drop focus, and clicking Send blurs on mouse-down.
+                // nothing to do with the user being done: clicking Send
+                // blurs on mouse-down.
                 // Releasing on each of those resigned key status
                 // mid-typing and closed the notch out from under clicks.
                 // Both are released in onDisappear instead, which is the
@@ -398,9 +395,6 @@ struct NotificationExpandedView: View {
 
     private var replyRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if !suggestions.isEmpty {
-                suggestionChips
-            }
             replyField
             if let sendError {
                 Text(sendError)
@@ -408,39 +402,6 @@ struct NotificationExpandedView: View {
                     .foregroundStyle(.red)
                     .lineLimit(2)
                     .transition(.opacity)
-            }
-        }
-        .task(id: notification.id) {
-            guard Defaults[.smartRepliesEnabled], let body = notification.body else { return }
-            suggestions = await SmartReplyManager.suggestReplies(sender: notification.sender, body: body)
-        }
-    }
-
-    /// Tapping a chip fills the field rather than sending immediately — an
-    /// AI-drafted reply should get a glance before it goes out under your
-    /// name, not fire on a single tap.
-    private var suggestionChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                // Keyed by position, not by the string itself: two identical
-                // suggestions would collide as ForEach ids and render
-                // undefined. SmartReplyManager already dedupes, but the
-                // view shouldn't depend on model output being distinct.
-                ForEach(Array(suggestions.enumerated()), id: \.offset) { _, suggestion in
-                    Button {
-                        replyText = suggestion
-                        replyFocused = true
-                    } label: {
-                        Text(suggestion)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(.white.opacity(0.1), in: Capsule())
-                    }
-                    .buttonStyle(ScaleDownButtonStyle())
-                }
             }
         }
     }
@@ -477,9 +438,8 @@ struct NotificationExpandedView: View {
     /// panel a bare tap gesture needs a clean mouse-down/up pair in a window
     /// whose key status isn't changing — but clicking here blurs the text
     /// field, which flips key status mid-click and ate the tap. Enter
-    /// (onSubmit) worked the whole time, and the suggestion chips (already
-    /// Buttons) worked, which is what pointed at the gesture rather than at
-    /// send() itself. Buttons track the press properly across that change.
+    /// (onSubmit) worked the whole time. Buttons track the press properly
+    /// across that change.
     private var sendButton: some View {
         Button(action: send) {
             ZStack {
@@ -514,7 +474,6 @@ struct NotificationExpandedView: View {
         .animation(.smooth(duration: 0.25), value: isSending)
         .animation(.smooth(duration: 0.25), value: didSend)
         .animation(.smooth(duration: 0.25), value: didHandOff)
-        .sensoryFeedback(.success, trigger: didSend)
     }
 
     private var fillStyle: Color {
@@ -735,7 +694,6 @@ private struct CodeCopyButton: View {
         }
         .buttonStyle(ScaleDownButtonStyle())
         .animation(.smooth(duration: 0.25), value: didCopy)
-        .sensoryFeedback(.success, trigger: didCopy)
     }
 
     private func copy() {

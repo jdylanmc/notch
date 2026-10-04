@@ -56,3 +56,9 @@ build/
 
 # Machine-specific local build settings (signing identity)
 scripts/local.env
+
+# Machine-local macOS regression VMs, credentials, tools, and evidence
+/.local/vm-regression/
+
+# Shared scheme required to reproduce the source-only VM probe
+!/experiments/tart-regression/GuestRegressionProbe/GuestRegressionProbe.xcodeproj/xcshareddata/xcschemes/GuestRegressionProbe.xcscheme

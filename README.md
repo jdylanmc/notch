@@ -24,6 +24,22 @@ and the file shelf. **Spotify is the only committed player support.** Other
 inherited integrations remain in the source; their presence is not a broader
 support commitment or a roadmap for new features.
 
+**Idle appearance:** the decorative face and its Appearance setting are removed
+([#50](https://github.com/jdylanmc/notch/issues/50)). A previously stored
+`showNotHumanFace=true` is ignored, not migrated or deleted. Media, Shelf, the
+full panel and retained appearance customization are unchanged. Historical
+translations for the removed control remain in the owned string catalog;
+they do not enable a runtime feature.
+
+**Notification replies:** AI-generated reply suggestions and their Settings
+control are removed. Notifications and manual replies remain, including drafts,
+focus/compose holds, timeout errors and existing delivery/app/clipboard fallbacks.
+The separate `canReply` eligibility behavior is unchanged. A stored
+`smartRepliesEnabled=true` is ignored, not migrated or deleted; historical
+translations remain in the catalog. The
+[installed-app regression](experiments/tart-regression/scenarios/notifications-ai-replies-removed.md)
+checks Settings output, not live banner capture or message delivery.
+
 <p align="center">
   <img src="notchPocket/Assets.xcassets/logo2.imageset/NotchPocket%20icon.png" alt="Notch Pocket utility pocket icon" width="150" />
 </p>
@@ -220,6 +236,60 @@ python3 -B scripts/distribution.py \
   --build-dir "$PWD/.build/np9-signing-001"
 ```
 
+The canonical command above retains full-name selection without an extra flag.
+**Optional variant for duplicate certificate names:** when multiple certificates
+share the same common name, use `--certificate-sha1` with a new build directory:
+
+```bash
+python3 -B scripts/distribution.py \
+  --identity 'Developer ID Application: YOUR CERTIFICATE NAME (YOURTEAMID)' \
+  --team 'YOURTEAMID' \
+  --certificate-sha1 'PUBLIC_CERTIFICATE_SHA1_40_HEX_CHARACTERS' \
+  --build-dir "$PWD/.build/np9-signing-sha1-001"
+```
+
+This option belongs to **`scripts/distribution.py` only**.
+`scripts/notarize.py` DMG signing and the hosted release pipeline remain
+name-selected and unchanged; neither accepts or forwards this option.
+Supply the approved **public leaf certificate's SHA-1 fingerprint**, exactly
+40 hexadecimal characters, without spaces, colons or a `0x` prefix (either case
+is accepted).
+The full `--identity` and `--team` remain mandatory and are independently checked.
+The fingerprint selects the certificate for Xcode, the approved built resource
+and the outer app seal; every final bundle/Mach-O verification also requires
+that exact leaf on all architectures. It is not a private key or a replacement for the
+Developer ID chain, name/team, timestamp, runtime or entitlement checks.
+The command does not discover certificates or change Keychain access; an
+unavailable selector or mismatched signer fails without falling back to the name.
+
+Use a **human-provided known certificate fingerprint**, or derive it from the
+embedded **public certificate of an already-approved signed artifact** at an
+explicit approved path. Do not enumerate or inspect Keychain, export private
+keys, or search for another artifact. For the artifact-only method, the following
+creates a **new task-owned temporary directory** and reads the embedded public
+certificate chain without changing or signing the artifact:
+
+```bash
+(
+  umask 077 &&
+  certificate_dir="$(mktemp -d "${TMPDIR:-/tmp}/notch-public-certificate.XXXXXX")" &&
+  printf 'Public certificate scratch directory: %s\n' "$certificate_dir" &&
+  codesign --display --extract-certificates="$certificate_dir/cert-" \
+    '/absolute/path/to/already-approved/notch-pocket.app' &&
+  openssl x509 -inform DER -in "$certificate_dir/cert-0" \
+    -noout -fingerprint -sha1
+)
+```
+
+`cert-0` is the public leaf certificate. Remove only the displayed fingerprint's
+label and colon separators to obtain the required 40 hexadecimal characters.
+Extraction is not signature verification, approval of a new signer, or proof
+that the signing identity is usable. Stop on any failure; do not fall back to
+Keychain inspection. Retain the reported scratch path until its files are
+accounted for; clean up only this invocation's extracted public certificate files
+and then its empty directory. All signing and verification gates below remain
+required.
+
 Choose a **new** build directory beneath this checkout's `.build/`; its parent
 must already exist, be user-owned and not group/world-writable. Paths must be
 absolute, without symlink components or `..`. Existing directories, files and
@@ -275,6 +345,8 @@ Only a zero exit with `ok: true, status: "signed"` identifies the successful
 candidate. Its JSON includes the exact `app`, build directory, identities,
 version, developer directory and per-code/per-architecture signing evidence,
 with `notarization: "NOT YET NOTARIZED"` and `gatekeeper_assessed: false`.
+When supplied and successfully verified, `certificate_sha1` records the public
+fingerprint in uppercase; the field is absent for full-name-only selection.
 Native diagnostic logs and the supplied certificate name are not echoed.
 See the [failure/evidence contract](CONTRIBUTING.md#local-distribution-signing-outcome-and-evidence).
 
