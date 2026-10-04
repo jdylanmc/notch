@@ -190,7 +190,7 @@ class RegressionSuiteContractTests(unittest.TestCase):
         cases = SUITE.load_registry(ROOT / "experiments/tart-regression/suite.json")
         self.assertEqual([c["id"] for c in cases if c["kind"] == "regression"],
                          ["about-version", "appearance-idle-face-removed", "notifications-ai-replies-removed",
-                          "general-haptics-removed", "general-panel-swipes-removed"])
+                          "general-haptics-removed", "general-panel-swipes-removed", "pr106-panel", "pr106-media"])
         self.assertEqual([(c["id"], c["scenario"], c["expectedVerdict"], c["expectedReason"])
                           for c in cases if c["kind"] == "control"], [
             ("about-wrong-output", "visual-fail", "FAIL", "rendered_output_mismatch"),
@@ -198,8 +198,11 @@ class RegressionSuiteContractTests(unittest.TestCase):
             ("about-missing-reveal", "visual-no-reveal", "FAIL", "rendered_output_mismatch"),
             ("abort-after-settings-open", "native-abort-after-open", "BLOCKED", "native_interaction_aborted"),
             ("abort-after-about-selection", "native-abort-after-about", "BLOCKED", "native_interaction_aborted"),
+            ("pr106-panel-wrong-tab", "pr106-panel-wrong-tab", "FAIL", "rendered_output_mismatch"),
+            ("pr106-media-wrong-direction", "pr106-media-wrong-direction", "FAIL", "rendered_output_mismatch"),
+            ("pr106-media-wrong-pulse", "pr106-media-wrong-pulse", "FAIL", "rendered_output_mismatch"),
         ])
-        self.assertEqual(len(cases), 10)
+        self.assertEqual(len(cases), 15)
 
     def general_receipt(self, scenario="general-haptics-removed"):
         _, receipt = self.notifications_receipt()

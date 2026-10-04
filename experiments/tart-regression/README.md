@@ -1,8 +1,11 @@
 # Source-only installed-app probe
 
 This is the initial **registered installed-app regression suite**, built from the
-XCTest/Vision Tart experiment. It currently covers five application journeys and
-five explicit oracle/restoration controls, not the whole app. See the
+XCTest/Vision Tart experiment. Its registry contains seven application journeys
+and eight explicit oracle/restoration controls, not the whole app. The five
+[PR106 native supplement entries](scenarios/pr106-retained-interactions.md) are
+authored but **not yet built or natively accepted**; preserve the original ten
+cases and their evidence. See the
 [VM reconstruction recipe](../../docs/agents/vm-regression.md) first.
 
 No VM, candidate app, Xcode package, credential, capture or result bundle belongs
@@ -138,8 +141,9 @@ labeled in the report. Unknown/duplicate IDs and
 empty or malformed registration fail rather than silently reducing scope.
 The optional case field `requiresPreparedRunner` must be a JSON boolean.
 Only selected cases declaring `true` require the parent's paired
-`--runner-manifest` and `--runner-manifest-sha256`; the nine current entries are
-unchanged. Direct callers carry that requirement with
+`--runner-manifest` and `--runner-manifest-sha256`; the original ten entries are
+unchanged. The new PR106 selectors enforce it even for direct callers.
+Other direct callers carry that requirement with
 `--requires-prepared-runner`. It gates fresh artifact evidence, not OS consent.
 Every prepared invocation rechecks source, whole Products and native signatures;
 neither a prior run nor a cached verification substitutes for that check.
@@ -148,6 +152,15 @@ terminate its owner just to start another run.
 Uncertain bootstrap, job cleanup or native-process termination retains that lock
 and reports recovery required. Confirm the owned processes have stopped, or
 restore a clean guest, before explicitly recovering ownership.
+
+The five `pr106-*` cases additionally require independently pinned
+`--interaction-fixture` / `--interaction-fixture-sha256` and an
+`--interaction-worker` matching the actual independent worker. They require
+schema-2 protected Products, an actually attested synthetic profile, native
+Settings values, and parent-owned snapshot restoration after media history
+changes. Their separate producer is not part of the runner's Products or the
+candidate; its source is sealed with the harness, and its binary is independently
+pinned. Do not infer fixture readiness from the previous Settings runs.
 
 `report.json` returns candidate/test identity, scope, raw and interpreted case
 outcomes, local capture paths, cleanup, and **unverified potential bugs** to the
@@ -175,6 +188,11 @@ panes are an explicit unsupported fixture, not silently replaced.
 | `notifications-ai-replies-removed` | PASS / 0 on new candidate | Retained notification labels render; suggestion control is absent in Accessibility and pixels |
 | `general-haptics-removed` | PASS / 0 on new candidate | Thirteen retained General labels render; haptic option is absent in Accessibility and pixels |
 | `general-panel-swipes-removed` | PASS / 0 on new candidate | Thirteen retained labels including the media gesture master render; panel gesture controls/instructions are absent in Accessibility and both endpoint pixels |
+| `pr106-panel` | PASS / 0 | Retained hover/click/keyboard transitions and rendered Dashboard/Shelf |
+| `pr106-panel-wrong-tab` | FAIL / 10 | Real Shelf selection rejected by the unchanged Dashboard oracle |
+| `pr106-media` | PASS / 0 | Real horizontal input, advancing engine, rendered track changes and settled transport pixels |
+| `pr106-media-wrong-direction` | FAIL / 10 | Actual reverse command produces Charlie instead of Bravo |
+| `pr106-media-wrong-pulse` | FAIL / 10 | Real button hover paints a wrong settled transport region |
 
 Do not convert the two negative controls into passing application tests.
 `runs/<name>/` holds invocation/framework/result receipts, log and `.xcresult`;
@@ -187,6 +205,10 @@ Notifications uses `notificationsCaptureVersion: 1`; both General removals use
 top/bottom captures rather than `screenshotSHA256`; the suite's `captures` report
 field binds both native attachment names/hashes/dimensions. Other cases retain
 their single `capture` contract.
+The PR106 supplement uses `interactionCaptureVersion: 1`: exactly three named
+panel or five named media captures, with independently checked identity,
+dimensions, OCR/native labels, producer observations and eight restoration
+gates. Export retains the same exact attachment-count/name/hash/dimension checks.
 Retained automatic system attachments are disabled.
 
 ## Limits

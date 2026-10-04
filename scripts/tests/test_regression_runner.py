@@ -1049,11 +1049,24 @@ class RunnerContracts(unittest.TestCase):
                          ["--runner-manifest", str(manifest), "--runner-manifest-sha256", sha,
                           "--requires-prepared-runner"])
 
-    def test_registry_optional_gate_is_strict_and_preserves_nine_existing_cases(self):
+    def test_registry_gate_preserves_legacy_cases_and_requires_pr106_runner(self):
         suite = load_script("run-suite.py")
         original = json.loads((SOURCE / "suite.json").read_text())["cases"]
-        self.assertEqual(len(original), 9)
-        self.assertTrue(all("requiresPreparedRunner" not in case for case in original))
+        original_nine_ids = [
+            "about-version", "about-wrong-output", "about-stale-evidence", "about-missing-reveal",
+            "abort-after-settings-open", "abort-after-about-selection", "appearance-idle-face-removed",
+            "notifications-ai-replies-removed", "general-haptics-removed",
+        ]
+        self.assertEqual([case["id"] for case in original[:9]], original_nine_ids)
+        self.assertEqual(original[9]["id"], "general-panel-swipes-removed")
+        self.assertTrue(all("requiresPreparedRunner" not in case for case in original[:10]))
+        self.assertEqual([case["id"] for case in original[10:]], [
+            "pr106-panel", "pr106-panel-wrong-tab", "pr106-media",
+            "pr106-media-wrong-direction", "pr106-media-wrong-pulse",
+        ])
+        for registered in original[10:]:
+            with self.subTest(case=registered["id"]):
+                self.assertIs(registered.get("requiresPreparedRunner"), True)
         self.assertEqual(suite.load_registry(SOURCE / "suite.json"), original)
         registry = self.root / "suite.json"
         (self.root / "notes.md").write_text("Test-only registry.")

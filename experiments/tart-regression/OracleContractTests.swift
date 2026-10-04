@@ -45,6 +45,34 @@ enum OracleContractTests {
         try checkSettingsRemoval(.panelSwipes)
         try checkGeneralNativeLabelGeometry(.general)
         try checkGeneralNativeLabelGeometry(.panelSwipes)
+        try checkFixtureAudio()
+    }
+
+    private static func checkFixtureAudio() throws {
+        let wave = [UInt8](GeneratedAudio.wave())
+        func unsigned(_ offset: Int, _ size: Int) -> UInt32 {
+            (0..<size).reduce(UInt32(0)) { $0 | UInt32(wave[offset + $1]) << (8 * $1) }
+        }
+        let expectedBytes = 30 * 22_050 * 2
+        guard wave.count == expectedBytes + 44,
+              String(decoding: wave[0..<4], as: UTF8.self) == "RIFF",
+              String(decoding: wave[8..<16], as: UTF8.self) == "WAVEfmt ",
+              String(decoding: wave[36..<40], as: UTF8.self) == "data",
+              unsigned(4, 4) == UInt32(expectedBytes + 36), unsigned(16, 4) == 16,
+              unsigned(20, 2) == 1, unsigned(22, 2) == 1,
+              unsigned(24, 4) == 22_050, unsigned(28, 4) == 44_100,
+              unsigned(32, 2) == 2, unsigned(34, 2) == 16,
+              unsigned(40, 4) == UInt32(expectedBytes) else {
+            throw NSError(domain: "FixtureAudioContract", code: 1)
+        }
+        let samples = stride(from: 44, to: wave.count, by: 2).map {
+            Int(Int16(bitPattern: UInt16(unsigned($0, 2))))
+        }
+        guard samples.first == 0, samples.last == 0, samples.contains(where: { $0 > 1000 }),
+              samples.contains(where: { $0 < -1000 }), samples.allSatisfy({ abs($0) <= 4000 }) else {
+            throw NSError(domain: "FixtureAudioContract", code: 2)
+        }
+        print("Fixture audio: real generated PCM structure and bounded samples verified; no playback performed.")
     }
 
     private static func checkSettingsRemoval(_ scenario: SettingsRemovalScenario) throws {

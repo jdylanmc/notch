@@ -12,6 +12,7 @@ from xml.parsers.expat import ExpatError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from capture_contract import settings_captures, SCENARIOS, VERSION_KEYS
+import interaction_contract as interactions
 from build_runner import (
     add_prepared_arguments, prepared_arguments, prepared_output_path, prepared_test_manifest, verify_prepared,
 )
@@ -30,8 +31,9 @@ def main():
     parser.add_argument("--xctestrun", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     add_prepared_arguments(parser)
+    interactions.add_arguments(parser)
     args = parser.parse_args()
-    prepared = prepared_arguments(args)
+    prepared = prepared_arguments(args, required=args.scenario in interactions.TESTS)
     if prepared:
         try:
             prepared_output_path(args.output, args.xctestrun.resolve(strict=True).parent)
@@ -60,13 +62,25 @@ def main():
         return blocked("candidate_manifest_values_invalid", uiTestsStarted=False)
     if not re.fullmatch(r"[a-f0-9]{64}", candidate["executableSHA256"]):
         return blocked("candidate_hash_invalid", uiTestsStarted=False)
+    interaction_args = interactions.arguments(args, args.scenario, args.test, candidate["executableSHA256"])
+    interaction_fixture = None
+    if interaction_args:
+        interaction_fixture = interactions.load_fixture(
+            args.interaction_fixture, args.interaction_fixture_sha256, candidate["executableSHA256"], args.interaction_worker)
+        if args.scenario.startswith("pr106-media"):
+            producer = Path(interaction_fixture["producerPath"])
+            if producer.resolve(strict=True) != producer or producer.is_symlink():
+                return blocked("producer_path_redirected", uiTestsStarted=False)
+            subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(producer)],
+                           check=True, capture_output=True, timeout=30)
     subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict",
                     "/Applications/notch-pocket.app"], check=True, capture_output=True, timeout=30)
 
     source = args.xctestrun.resolve(strict=True)
     runner_identity = None
     if prepared:
-        artifact = verify_prepared(source.parent, args.runner_manifest, args.runner_manifest_sha256)
+        artifact = verify_prepared(source.parent, args.runner_manifest, args.runner_manifest_sha256,
+                                   **({"require_protected": True} if interaction_args else {}))
         if source.name != artifact["xctestrun"]:
             return blocked("prepared_runner_manifest_mismatch", uiTestsStarted=False)
         manifest = prepared_test_manifest(source.parent, artifact)
@@ -91,6 +105,12 @@ def main():
         "NOTCH_VM_EXPECTED_VERSION": candidate["version"],
         "NOTCH_VM_EXPECTED_BUILD": candidate["build"],
     })
+    if interaction_args:
+        target["EnvironmentVariables"].update({
+            "NOTCH_VM_INTERACTION_FIXTURE": json.dumps(interaction_fixture, sort_keys=True),
+            "NOTCH_VM_INTERACTION_WORKER": args.interaction_worker,
+            "NOTCH_VM_PREPARED_INTERACTIONS": "1",
+        })
     target.update({
         "SystemAttachmentLifetime": "keepNever",
         "UserAttachmentLifetime": "keepAlways",
@@ -167,10 +187,15 @@ def main():
             or receipt.get("testIdentifier") != args.test
             or receipt.get("expectedCandidateSHA256") != candidate["executableSHA256"]):
         return blocked("run_identity_mismatch", runID=run_id)
+    if interaction_args and (receipt.get("interactionFixture") != interaction_fixture
+                             or receipt.get("interactionWorker") != args.interaction_worker):
+        return blocked("interaction_fixture_identity_mismatch", runID=run_id)
     if summary.get("totalTestCount") != 1 or summary.get("skippedTests") != 0 or summary.get("expectedFailures") != 0:
         return blocked("execution_count_or_skip_mismatch", runID=run_id)
 
     verdict = receipt.get("verdict")
+    if args.scenario not in interactions.TESTS and "interactionCaptureVersion" in receipt:
+        return blocked("unexpected_capture_schema", runID=run_id)
     if verdict == "PASS":
         framework_matches = process.returncode == 0 and summary.get("passedTests") == 1 and summary.get("failedTests") == 0
     else:
@@ -181,13 +206,18 @@ def main():
         if (not receipt.get("candidateVerified")
                 or receipt.get("cleanup") not in ["restored_general", "restored_closed_settings", "restored_original_state"]):
             return blocked("required_evidence_or_cleanup_missing", runID=run_id)
-        if args.scenario in SCENARIOS:
+        if args.scenario in interactions.TESTS:
+            try:
+                interactions.captures(receipt)
+            except (ValueError, TypeError, KeyError):
+                return blocked("interaction_assertions_unverified", runID=run_id)
+        elif args.scenario in SCENARIOS:
             try:
                 settings_captures(receipt)
             except (ValueError, TypeError, KeyError):
                 return blocked(SCENARIOS[args.scenario]["pane"].lower() + "_assertions_unverified", runID=run_id)
         else:
-            if "captures" in receipt or VERSION_KEYS.intersection(receipt):
+            if "captures" in receipt or VERSION_KEYS.intersection(receipt) or "interactionCaptureVersion" in receipt:
                 return blocked("unexpected_capture_schema", runID=run_id)
             if not receipt.get("screenshotSHA256"):
                 return blocked("required_evidence_or_cleanup_missing", runID=run_id)
@@ -195,6 +225,9 @@ def main():
                 return blocked("capture_digest_invalid", runID=run_id)
     subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict",
                     "/Applications/notch-pocket.app"], check=True, capture_output=True, timeout=30)
+    if interaction_args and args.scenario.startswith("pr106-media"):
+        subprocess.run(["/usr/bin/codesign", "--verify", "--strict", interaction_fixture["producerPath"]],
+                       check=True, capture_output=True, timeout=30)
     exits = {"PASS": 0, "FAIL": 10, "BLOCKED": 20}
     if verdict not in exits:
         return blocked("unknown_verdict", runID=run_id)

@@ -90,6 +90,56 @@
       "expectedVerdict": "PASS",
       "expectedReason": "rendered_output_verified",
       "notes": "scenarios/general-panel-swipes-removed.md"
+    },
+    {
+      "id": "pr106-panel",
+      "kind": "regression",
+      "scenario": "pr106-panel",
+      "test": "GuestRegressionProbe/PR106Probe/testPanel",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/pr106-retained-interactions.md",
+      "requiresPreparedRunner": true
+    },
+    {
+      "id": "pr106-panel-wrong-tab",
+      "kind": "control",
+      "scenario": "pr106-panel-wrong-tab",
+      "test": "GuestRegressionProbe/PR106Probe/testPanel",
+      "expectedVerdict": "FAIL",
+      "expectedReason": "rendered_output_mismatch",
+      "notes": "scenarios/pr106-retained-interactions.md",
+      "requiresPreparedRunner": true
+    },
+    {
+      "id": "pr106-media",
+      "kind": "regression",
+      "scenario": "pr106-media",
+      "test": "GuestRegressionProbe/PR106Probe/testMedia",
+      "expectedVerdict": "PASS",
+      "expectedReason": "rendered_output_verified",
+      "notes": "scenarios/pr106-retained-interactions.md",
+      "requiresPreparedRunner": true
+    },
+    {
+      "id": "pr106-media-wrong-direction",
+      "kind": "control",
+      "scenario": "pr106-media-wrong-direction",
+      "test": "GuestRegressionProbe/PR106Probe/testMedia",
+      "expectedVerdict": "FAIL",
+      "expectedReason": "rendered_output_mismatch",
+      "notes": "scenarios/pr106-retained-interactions.md",
+      "requiresPreparedRunner": true
+    },
+    {
+      "id": "pr106-media-wrong-pulse",
+      "kind": "control",
+      "scenario": "pr106-media-wrong-pulse",
+      "test": "GuestRegressionProbe/PR106Probe/testMedia",
+      "expectedVerdict": "FAIL",
+      "expectedReason": "rendered_output_mismatch",
+      "notes": "scenarios/pr106-retained-interactions.md",
+      "requiresPreparedRunner": true
     }
   ]
 }
