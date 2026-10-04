@@ -74,11 +74,13 @@ def select_cases(cases, requested):
 def evaluate(case, receipt, framework, command_exit, candidate_hash):
     if not isinstance(receipt, dict) or not isinstance(framework, dict):
         return "BLOCKED", "missing_evidence"
+    if "launcherError" in receipt:
+        return "BLOCKED", "launcher_diagnostic_not_native"
     if receipt.get("scenario") != case["scenario"] or receipt.get("testIdentifier") != case["test"]:
         return "BLOCKED", "scenario_identity_mismatch"
-    if receipt.get("expectedCandidateSHA256") != candidate_hash or not receipt.get("candidateVerified"):
+    if receipt.get("expectedCandidateSHA256") != candidate_hash:
         return "BLOCKED", "candidate_unverified"
-    if not receipt.get("frameworkCountVerified") or receipt.get("cleanup") not in RESTORED:
+    if receipt.get("frameworkCountVerified") is not True:
         return "BLOCKED", "framework_or_restoration_unverified"
     for field in ["totalTestCount", "passedTests", "failedTests", "skippedTests", "expectedFailures"]:
         if type(framework.get(field)) is not int:
@@ -86,14 +88,33 @@ def evaluate(case, receipt, framework, command_exit, candidate_hash):
     if framework["totalTestCount"] != 1 or framework["skippedTests"] or framework["expectedFailures"]:
         return "BLOCKED", "missing_or_skipped_test"
     raw = receipt.get("verdict")
-    if raw not in EXITS or receipt.get("suiteExit") != EXITS[raw] or command_exit != EXITS[raw]:
+    if (not isinstance(raw, str) or raw not in EXITS or type(receipt.get("suiteExit")) is not int
+            or receipt["suiteExit"] != EXITS[raw] or command_exit != EXITS[raw]):
         return "BLOCKED", "raw_exit_mismatch"
     if (framework["passedTests"], framework["failedTests"]) != ((1, 0) if raw == "PASS" else (0, 1)):
         return "BLOCKED", "raw_framework_mismatch"
-    if receipt.get("xcodeExit") != (0 if raw == "PASS" else 65):
+    if type(receipt.get("xcodeExit")) is not int or receipt["xcodeExit"] != (0 if raw == "PASS" else 65):
         return "BLOCKED", "raw_xctest_exit_mismatch"
     scrollable = case["scenario"] in SCENARIOS
     interactive = case["scenario"] in interactions.TESTS
+    if interactive and raw == "BLOCKED":
+        try:
+            interactions.fixture(receipt.get("interactionFixture"), candidate_hash, receipt.get("interactionWorker"))
+        except (ValueError, TypeError, KeyError):
+            return "BLOCKED", "interaction_fixture_identity_mismatch"
+        if (type(receipt.get("candidateVerified")) is not bool
+                or receipt.get("cleanup") not in (*RESTORED, "not_needed", "blocked")
+                or receipt.get("primaryVerdict") not in ("PASS", "FAIL", "BLOCKED")
+                or any(not isinstance(receipt.get(key), str)
+                       or not re.fullmatch(r"[a-z][a-z0-9_]{0,99}", receipt[key])
+                       for key in ("reason", "primaryReason"))):
+            return "BLOCKED", "invalid_blocked_diagnostic"
+        # An input-bound refusal is a diagnostic, not candidate/UI/restoration acceptance.
+        return "BLOCKED", receipt["reason"]
+    if receipt.get("candidateVerified") is not True:
+        return "BLOCKED", "candidate_unverified"
+    if receipt.get("cleanup") not in RESTORED:
+        return "BLOCKED", "framework_or_restoration_unverified"
     if not interactive and "interactionCaptureVersion" in receipt:
         return "BLOCKED", "unexpected_capture_schema"
     if not scrollable and not interactive and (
@@ -140,6 +161,35 @@ def evaluate(case, receipt, framework, command_exit, candidate_hash):
             or receipt.get("primaryReason") != case["expectedReason"]):
         return "BLOCKED", "negative_control_did_not_reach_expected_outcome"
     return "PASS", "expected_control_outcome_verified"
+
+
+def observe_termination(records, invocation, case, name, command_exit, candidate_hash,
+                        prepared_pin, interaction_fixture, worker):
+    jobs = [record for record in records if "jobUnloaded" in record]
+    observed = [record["invocation"] for record in records if "invocation" in record]
+    if (len(jobs) != 1 or jobs[0].get("jobUnloaded") is not True
+            or jobs[0].get("job") != "com.jdylanmc.notch-vm-proof." + name
+            or jobs[0].get("scenario") != case["scenario"] or jobs[0].get("status") != "finished"
+            or type(jobs[0].get("jobExit")) is not int or jobs[0]["jobExit"] != command_exit):
+        raise ValueError("Job termination identity or exit is unverified")
+    if (not isinstance(invocation, dict) or len(observed) != 1
+            or json.dumps(observed[0], sort_keys=True) != json.dumps(invocation, sort_keys=True)):
+        raise ValueError("Missing or mismatched native process observation")
+    if (invocation.get("scenario") != case["scenario"] or invocation.get("testIdentifier") != case["test"]
+            or invocation.get("expectedCandidateSHA256") != candidate_hash
+            or invocation.get("timedOut") is not False or type(invocation.get("xcodeExit")) is not int):
+        raise ValueError("Native process termination is unverified")
+    interactions.uuid_string(invocation.get("runID"))
+    if interaction_fixture is not None:
+        actual = interactions.fixture(invocation.get("interactionFixture"), candidate_hash, worker)
+        if invocation.get("interactionWorker") != worker or actual != interaction_fixture:
+            raise ValueError("Invocation fixture ownership is unverified")
+    if prepared_pin is not None:
+        runner = invocation.get("preparedRunner")
+        if not isinstance(runner, dict) or runner.get("manifestSHA256") != prepared_pin:
+            raise ValueError("Prepared runner identity is unverified")
+    if invocation.get("temporaryManifestRemoved") is not True:
+        raise ValueError("Prepared per-run manifest cleanup is unverified")
 
 
 def export_capture(run, destination, receipt):
@@ -228,12 +278,15 @@ def run(args):
         raise ValueError("Explicit candidate manifest required")
     cases = load_registry(args.registry)
     selected, full = select_cases(cases, args.scenario)
+    interaction_fixture = None
     for case in selected:
         prepared_arguments(args, required=case.get("requiresPreparedRunner", False) or case["scenario"] in interactions.TESTS)
         interactions.arguments(args, case["scenario"], case["test"], candidate["executableSHA256"])
     if any(case["scenario"] in interactions.TESTS for case in selected):
         if args.interaction_worker != args.worker_id:
             raise ValueError("Fixture ownership must match the actual independent worker")
+        interaction_fixture = interactions.load_fixture(
+            args.interaction_fixture, args.interaction_fixture_sha256, candidate["executableSHA256"], args.worker_id)
     args.output.mkdir(mode=0o700, parents=False, exist_ok=False)
     output = args.output.resolve()
     report = {
@@ -270,40 +323,66 @@ def run(args):
                            *interactions.arguments(args, case["scenario"], case["test"], candidate["executableSHA256"])]
                 result = subprocess.run(command, capture_output=True, text=True, timeout=270)
                 (output / (case["id"] + ".log")).write_text(result.stdout + result.stderr)
-                records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
-                jobs = [record for record in records if record.get("jobUnloaded")]
-                receipts = [record for record in records if "verdict" in record]
-                if len(jobs) != 1 or len(receipts) != 1:
-                    raise ValueError("Missing unique scenario/job receipt")
-                receipt = receipts[0]
-                if jobs[0].get("jobExit") != result.returncode:
-                    raise ValueError("Job exit mismatch")
                 native_run = ROOT / "runs" / name
-                persisted = json.loads((native_run / "result.json").read_text())
-                framework = json.loads((native_run / "framework-summary.json").read_text())
+                records, malformed = [], []
+                for line in result.stdout.splitlines():
+                    if line.startswith("{"):
+                        try:
+                            record = json.loads(line)
+                        except ValueError:
+                            malformed.append(line)
+                            continue
+                        if isinstance(record, dict):
+                            records.append(record)
+                        else:
+                            malformed.append(line)
                 invocation = json.loads((native_run / "invocation.json").read_text())
-                if persisted != receipt:
+                observe_termination(
+                    records, invocation, case, name, result.returncode, candidate["executableSHA256"],
+                    args.runner_manifest_sha256 if prepared else None,
+                    interaction_fixture if case["scenario"] in interactions.TESTS else None, args.worker_id)
+                termination_verified = True
+                row.update(jobUnloaded=True, invocation=invocation, evidenceDirectory=str(native_run))
+                if prepared:
+                    row["preparedRunner"] = invocation["preparedRunner"]
+                if malformed:
+                    raise ValueError("Malformed scenario output after verified termination")
+                receipts = [record for record in records if "verdict" in record]
+                if len(receipts) != 1:
+                    raise ValueError("Missing unique scenario receipt")
+                receipt = receipts[0]
+                persisted = json.loads((native_run / "result.json").read_text())
+                if json.dumps(persisted, sort_keys=True) != json.dumps(receipt, sort_keys=True):
                     raise ValueError("Printed and persisted receipts differ")
-                if case["scenario"] in interactions.TESTS and (
-                    receipt.get("interactionWorker") != args.worker_id
-                    or receipt.get("interactionFixture") != interactions.load_fixture(
+                if (any(receipt.get(key) != invocation[key] for key in (
+                        "runID", "scenario", "testIdentifier", "expectedCandidateSHA256"))
+                        or type(receipt.get("xcodeExit")) is not int or receipt["xcodeExit"] != invocation["xcodeExit"]):
+                    raise ValueError("Scenario receipt invocation identity is unverified")
+                if case["scenario"] in interactions.TESTS:
+                    actual = interactions.fixture(receipt.get("interactionFixture"),
+                                                  candidate["executableSHA256"], args.worker_id)
+                    expected_fixture = interactions.load_fixture(
                         args.interaction_fixture, args.interaction_fixture_sha256,
                         candidate["executableSHA256"], args.worker_id)
-                ):
-                    raise ValueError("Independent fixture ownership is unverified")
-                if invocation.get("timedOut") is not False or invocation.get("xcodeExit") != receipt.get("xcodeExit"):
-                    raise ValueError("Native process termination is unverified")
-                termination_verified = True
-                if prepared:
-                    runner_identity = invocation.get("preparedRunner")
-                    if (not isinstance(runner_identity, dict)
-                            or runner_identity.get("manifestSHA256") != args.runner_manifest_sha256):
-                        raise ValueError("Prepared runner identity is unverified")
-                    if invocation.get("temporaryManifestRemoved") is not True:
-                        raise ValueError("Prepared per-run manifest cleanup is unverified")
-                    row["preparedRunner"] = runner_identity
-                status, reason = evaluate(case, receipt, framework, result.returncode, candidate["executableSHA256"])
-                row.update(status=status, reason=reason, rawVerdict=receipt.get("verdict"),
+                    if receipt.get("interactionWorker") != args.worker_id or actual != expected_fixture:
+                        raise ValueError("Independent fixture ownership is unverified")
+                raw_receipt = receipt
+                if "launcherError" in receipt:
+                    if (receipt["launcherError"] is not True or receipt.get("verdict") != "BLOCKED"
+                            or type(receipt.get("suiteExit")) is not int or receipt["suiteExit"] != 20
+                            or result.returncode != 20 or not isinstance(receipt.get("reason"), str)
+                            or not re.fullmatch(r"[a-z][a-z0-9_]{0,99}", receipt["reason"])):
+                        raise ValueError("Invalid launcher diagnostic")
+                    status, reason = "BLOCKED", receipt["reason"]
+                    row["launcherError"] = True
+                    raw_path = native_run / "native-result.json"
+                    raw_receipt = json.loads(raw_path.read_text()) if raw_path.is_file() else None
+                    row["unverifiedNativeReceipt"] = raw_receipt
+                else:
+                    framework = json.loads((native_run / "framework-summary.json").read_text())
+                    status, reason = evaluate(case, receipt, framework, result.returncode, candidate["executableSHA256"])
+                row.update(status=status, reason=reason,
+                           rawVerdict=raw_receipt.get("verdict") if isinstance(raw_receipt, dict) else None,
                            rawXcodeExit=receipt.get("xcodeExit"), rawScenarioExit=result.returncode,
                            receipt=receipt, evidenceDirectory=str(native_run), jobUnloaded=True)
                 if status in {"PASS", "FAIL"}:

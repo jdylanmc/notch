@@ -59,7 +59,7 @@ enum SettingsRemovalScenario: String {
     }
     var leadingOCRPaddingPixels: [String: Int] {
         // Guest Vision boxes begin four pixels before these verified static-text AXValue frames.
-        pane == "General" ? ["Launch at login": 4, "Remember last tab": 4] : [:]
+        pane == "General" ? ["Launch at login": 4, "Remember last tab": 4, "Notch animation": 4] : [:]
     }
 }
 

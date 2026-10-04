@@ -93,7 +93,8 @@ enum OracleContractTests {
                 } == .performed
                 let result = Policy.Outcome().result(nativeFailures: 0, touched: true,
                                                      restored: restoration.values.allSatisfy { $0 }, hasErrors: true,
-                                                     captureBefore: true, captureAfter: true)
+                                                     captureBefore: true, captureAfter: true,
+                                                     accessibilityBefore: true, accessibilityAfter: true)
                 try check(activate == .identityChanged && input == .identityChanged && activations == 0 && inputs == 0,
                           "\(role): disappeared/replaced identity must prevent activation and input")
                 try check(restoration[role] == false && safeCleanup == 1 && restoration["independentCleanup"] == true
@@ -125,13 +126,15 @@ enum OracleContractTests {
                 outcome.transition(qualified: false, matched: false)
                 outcome.complete(passed: true)
                 let result = outcome.result(nativeFailures: 0, touched: true, restored: restored, hasErrors: true,
-                                            captureBefore: true, captureAfter: true)
+                                            captureBefore: true, captureAfter: true,
+                                            accessibilityBefore: true, accessibilityAfter: true)
                 try check(outcome.verdict == "FAIL" && outcome.reason == "rendered_output_mismatch"
                           && result.verdict == "BLOCKED"
                           && result.reason == (restored ? "incomplete_native_journey" : "restoration_unverified"),
                           "\(transition): cleanup/capture must not overwrite the primary failure")
                 let aborted = outcome.result(nativeFailures: 1, touched: true, restored: restored, hasErrors: false,
-                                             captureBefore: true, captureAfter: true)
+                                             captureBefore: true, captureAfter: true,
+                                             accessibilityBefore: true, accessibilityAfter: true)
                 try check(aborted.verdict == "BLOCKED" && outcome.verdict == "FAIL",
                           "\(transition): a native abort cannot qualify incomplete evidence")
             }
@@ -139,7 +142,8 @@ enum OracleContractTests {
             unavailable.transition(qualified: false, matched: false)
             unavailable.refuse("existing_capture_and_accessibility_grants_required")
             let result = unavailable.result(nativeFailures: 0, touched: false, restored: false, hasErrors: true,
-                                            captureBefore: false, captureAfter: false)
+                                            captureBefore: false, captureAfter: false,
+                                            accessibilityBefore: false, accessibilityAfter: false)
             try check(unavailable.verdict == "BLOCKED" && result.verdict == "BLOCKED"
                       && result.reason == "existing_capture_and_accessibility_grants_required",
                       "\(transition): unavailable capabilities are not product failures")
@@ -147,7 +151,8 @@ enum OracleContractTests {
         var missingFocus = Policy.Outcome()
         missingFocus.refuse("candidate_focus_unavailable")
         let unfocused = missingFocus.result(nativeFailures: 0, touched: true, restored: true, hasErrors: true,
-                                            captureBefore: true, captureAfter: true)
+                                            captureBefore: true, captureAfter: true,
+                                            accessibilityBefore: true, accessibilityAfter: true)
         try check(unfocused.verdict == "BLOCKED" && unfocused.reason == "candidate_focus_unavailable"
                   && missingFocus.verdict == "BLOCKED", "Missing keyboard focus is a prerequisite refusal")
         let permissions: [Bool?] = [nil, false, true]
@@ -157,7 +162,8 @@ enum OracleContractTests {
             for before in permissions {
                 for after in permissions {
                     let result = outcome.result(nativeFailures: 0, touched: true, restored: true, hasErrors: false,
-                                                captureBefore: before, captureAfter: after)
+                                                captureBefore: before, captureAfter: after,
+                                                accessibilityBefore: true, accessibilityAfter: true)
                     let qualified = before == true && after == true
                     try check(result.verdict == (qualified ? outcome.verdict : "BLOCKED")
                               && result.reason == (qualified ? outcome.reason : "screen_capture_permission_unverified")
@@ -165,10 +171,47 @@ enum OracleContractTests {
                               && outcome.reason == (passed ? "rendered_output_verified" : "rendered_output_mismatch"),
                               "Both actual capture grants are required without overwriting the primary outcome")
                     let cleanupFailed = outcome.result(nativeFailures: 0, touched: true, restored: false, hasErrors: true,
-                                                       captureBefore: before, captureAfter: after)
+                                                       captureBefore: before, captureAfter: after,
+                                                       accessibilityBefore: true, accessibilityAfter: true)
                     try check(cleanupFailed.verdict == "BLOCKED" && cleanupFailed.reason == "restoration_unverified"
                               && outcome.verdict == (passed ? "PASS" : "FAIL"),
                               "Permission loss must not mask failed restoration or the original output failure")
+                }
+            }
+        }
+        for (capture, accessibility, expected) in [
+            (true, false, "existing_accessibility_grant_required"),
+            (false, true, "existing_screen_capture_grant_required"),
+            (false, false, "existing_capture_and_accessibility_grants_required")
+        ] {
+            let refusal = Policy.permissionRefusal(capture: capture, accessibility: accessibility)
+            try check(refusal == expected, "Report the actual missing permission, not a combined guess")
+            var outcome = Policy.Outcome()
+            outcome.refuse(refusal ?? "missing_refusal")
+            let result = outcome.result(nativeFailures: 0, touched: false, restored: false, hasErrors: true,
+                                        captureBefore: capture, captureAfter: capture,
+                                        accessibilityBefore: accessibility, accessibilityAfter: accessibility)
+            try check(result.verdict == "BLOCKED" && result.reason == expected && outcome.reason == expected,
+                      "Early permission refusal survives without fabricated candidate or restoration evidence")
+        }
+        try check(Policy.permissionRefusal(capture: true, accessibility: true) == nil,
+                  "Both direct native grants are required")
+        for passed in [true, false] {
+            var outcome = Policy.Outcome()
+            outcome.complete(passed: passed)
+            for before in permissions {
+                for after in permissions {
+                    for restored in [true, false] {
+                        let result = outcome.result(nativeFailures: 0, touched: true, restored: restored, hasErrors: false,
+                                                    captureBefore: true, captureAfter: true,
+                                                    accessibilityBefore: before, accessibilityAfter: after)
+                        let qualified = before == true && after == true
+                        let reason = !restored ? "restoration_unverified"
+                            : qualified ? outcome.reason : "accessibility_permission_unverified"
+                        try check(result.verdict == (restored && qualified ? outcome.verdict : "BLOCKED")
+                                  && result.reason == reason && outcome.verdict == (passed ? "PASS" : "FAIL"),
+                                  "Direct AX trust is distinct from recording and preserves sticky primary failure")
+                    }
                 }
             }
         }
@@ -354,7 +397,11 @@ enum OracleContractTests {
             ("Remember last tab",
              CGRect(x: 0.34, y: 0.5716666666666667, width: 114.0 / 700, height: 16.0 / 600),
              CGRect(x: 0.33428571214285724, y: 0.56999999983333338,
-                    width: 0.17142857142857143, height: 0.026666666666666616))
+                    width: 0.17142857142857143, height: 0.026666666666666616)),
+            ("Notch animation",
+             CGRect(x: 0.34, y: 0.5116666666666667, width: 0.14285714285714285, height: 0.02666666666666667),
+             CGRect(x: 0.3342857123928572, y: 0.5066666665416666,
+                    width: 0.1514285714285714, height: 0.030000000000000027))
         ]
         var count = 0
         for (label, frame, pixels) in cases {
@@ -376,6 +423,7 @@ enum OracleContractTests {
             try check("missing native frame", label, pixels, expected: false, frames: [:])
             try check("missing pixels", "", pixels, expected: false)
             try check("near text", label + "x", pixels, expected: false)
+            try check("prefixed text", "Wrong " + label, pixels, expected: false)
             try check("wrong row", label, pixels.offsetBy(dx: 0, dy: -0.05), expected: false)
             try check("wrong right-hand label", label, pixels.offsetBy(dx: 0.3, dy: 0), expected: false)
             try check("five pixels left is outside measured allowance", label,
@@ -385,6 +433,19 @@ enum OracleContractTests {
             try check("same fraction is eight pixels at double resolution", label, pixels, expected: false, width: 1400)
             try check("clipped label frame", label, pixels, expected: false,
                       frames: [label: frame.offsetBy(dx: 0, dy: 1)])
+            for removed in scenario.removedLabels + scenario.forbiddenText {
+                let output = SettingsRemovalOutputOracle.evaluate(
+                    [Observation(text: label, frame: pixels),
+                     Observation(text: removed, frame: CGRect(x: 0.4, y: 0.1, width: 0.5, height: 0.03))],
+                    scenario: scenario, contentFrame: content,
+                    controls: [label: true, scenario.absenceKey: true],
+                    labelFrames: [label: frame], pixelWidth: 700
+                )
+                guard output[label] == true, output[scenario.absenceKey] == false else {
+                    throw NSError(domain: "GeneralNativeLabelRemovedText", code: 1)
+                }
+                count += 1
+            }
         }
         for (scenario, label) in [
             (SettingsRemovalScenario.general, "Show menu bar icon"),

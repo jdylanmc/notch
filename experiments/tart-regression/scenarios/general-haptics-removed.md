@@ -75,14 +75,29 @@ left edge, four pixels before the native label frame: its existing normalized
 0.005 alignment allowance is only 3.5 pixels in the actual 700x600 capture.
 Vertical midpoints aligned. Local bound screenshots show both exact labels.
 
-The fixed General descriptor permits **four leading OCR pixels for only these
-two labels**, using actual capture width and nearest integer pixel edges to
+The original General remediation permitted **four leading OCR pixels for only
+these two labels**, using actual capture width and nearest integer pixel edges to
 remove Vision's subpixel serialization noise. Typed unique static-text lookup,
 unaltered native label frames, full viewport containment, vertical alignment
 and exact same-row text remain required. Five-pixel displacement, wrong rows,
 missing labels/frames/pixels and near text still fail. No global OCR allowance,
 checkbox fallback, scroll/frame float tolerance or missing-output BLOCKED gate
-was added; Notifications and the other General labels keep their prior policy.
+was added; Notifications and the other General labels kept their prior policy.
+
+PR106 correction 5/5 applies that same per-label policy to **Notch animation**
+in both General scenarios, and no other label. The parent replayed Vision
+accurate/en-US with language correction disabled on the genuine 700x600 capture
+SHA-256 `2178ffc6bb818c93db054e402918f9bf9a33cbcd279b31599025d488af9490cb`.
+The normalized native static-text frame was
+`(0.34, 0.5116666666666667, 0.14285714285714285, 0.02666666666666667)`;
+Vision returned
+`(0.3342857123928572, 0.5066666665416666, 0.1514285714285714, 0.030000000000000027)`.
+These are again quantized leading edges x=238 versus x=234, with aligned
+vertical midpoints. `OracleContractTests.swift` uses those actual coordinates
+for both scenarios, alongside five-pixel displacement, wrong row, missing
+native label/frame/pixels, prefixed/near text and removed-text controls.
+This source correction is not a replacement for the original raw FAIL receipts
+or fresh parent-owned validation. Raw images/reports stay local-only.
 
 Current fixture measurements: 492x548-point form, 353-point endpoint translation,
 195-point overlap (**131 points above the 64-point minimum**). The owner-set

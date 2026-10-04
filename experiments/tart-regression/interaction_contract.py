@@ -177,6 +177,8 @@ def captures(receipt):
     require(isinstance(discovery, dict) and discovery.get("setupQualified") is True)
     require(discovery.get("screenCapturePreflightAccess") is True
             and discovery.get("screenCapturePreflightAccessAfterTest") is True)
+    require(discovery.get("accessibilityProcessTrusted") is True
+            and discovery.get("accessibilityProcessTrustedAfterTest") is True)
     preferences = {
         "General:Open notch on hover": True, "General:Compact mode": False,
         "Appearance:Always show tabs": True, "Shelf:Enable shelf": True,

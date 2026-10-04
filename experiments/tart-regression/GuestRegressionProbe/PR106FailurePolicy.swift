@@ -10,6 +10,13 @@ enum PR106FailurePolicy {
 
     enum ActionResult: Equatable { case performed, identityChanged, actionRejected }
 
+    static func permissionRefusal(capture: Bool, accessibility: Bool) -> String? {
+        if !capture && !accessibility { return "existing_capture_and_accessibility_grants_required" }
+        if !capture { return "existing_screen_capture_grant_required" }
+        if !accessibility { return "existing_accessibility_grant_required" }
+        return nil
+    }
+
     static func perform(
         expected: ProcessIdentity, current: ProcessIdentity?, action: () -> Bool
     ) -> ActionResult {
@@ -40,13 +47,16 @@ enum PR106FailurePolicy {
 
         func result(
             nativeFailures: Int, touched: Bool, restored: Bool, hasErrors: Bool,
-            captureBefore: Bool?, captureAfter: Bool?
+            captureBefore: Bool?, captureAfter: Bool?, accessibilityBefore: Bool?, accessibilityAfter: Bool?
         ) -> (verdict: String, reason: String) {
             if touched && !restored { return ("BLOCKED", "restoration_unverified") }
             if nativeFailures > 0 { return ("BLOCKED", "native_interaction_aborted") }
             if hasErrors && verdict != "BLOCKED" { return ("BLOCKED", "incomplete_native_journey") }
             if verdict != "BLOCKED" && (captureBefore != true || captureAfter != true) {
                 return ("BLOCKED", "screen_capture_permission_unverified")
+            }
+            if verdict != "BLOCKED" && (accessibilityBefore != true || accessibilityAfter != true) {
+                return ("BLOCKED", "accessibility_permission_unverified")
             }
             return (verdict, reason)
         }

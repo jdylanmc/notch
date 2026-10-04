@@ -4,8 +4,9 @@ This is the initial **registered installed-app regression suite**, built from th
 XCTest/Vision Tart experiment. Its registry contains seven application journeys
 and eight explicit oracle/restoration controls, not the whole app. The five
 [PR106 native supplement entries](scenarios/pr106-retained-interactions.md) are
-authored but **not yet built or natively accepted**; preserve the original ten
-cases and their evidence. See the
+authored but **not natively accepted**; the source correction does not clear
+the prior full attempt, which remains BLOCKED. Preserve the original
+ten cases and all raw evidence. See the
 [VM reconstruction recipe](../../docs/agents/vm-regression.md) first.
 
 No VM, candidate app, Xcode package, credential, capture or result bundle belongs
@@ -152,6 +153,14 @@ terminate its owner just to start another run.
 Uncertain bootstrap, job cleanup or native-process termination retains that lock
 and reports recovery required. Confirm the owned processes have stopped, or
 restore a clean guest, before explicitly recovering ownership.
+Termination is evaluated before assertion/fixture/framework parsing: one exact
+finished scoped job with its actual exit and unload, and matching printed and
+persisted `invocation.json` with run/scenario/selector/candidate bindings,
+integer Xcode exit, `timedOut: false`, removed temporary manifest and the
+supplied prepared-runner pin are required. Interactive invocations also bind
+the parent-pinned fixture and actual worker. Missing or malformed termination
+evidence still retains ownership; a missing/malformed assertion receipt alone
+does not stop remaining cases or retain the lock once termination is proven.
 
 The five `pr106-*` cases additionally require independently pinned
 `--interaction-fixture` / `--interaction-fixture-sha256` and an
@@ -198,6 +207,15 @@ Do not convert the two negative controls into passing application tests.
 `runs/<name>/` holds invocation/framework/result receipts, log and `.xcresult`;
 `jobs/` holds the bounded launcher receipts. Missing receipts, wrong test counts,
 skips, unexpected outcomes or unverified restoration are non-success.
+The launcher preserves `native-receipts.log` before parsing and, for one decoded
+receipt, `native-result.json` before validation. Post-invocation errors persist
+a separately identified `launcherError: true` BLOCKED `result.json`, bound to
+the validated inputs and actual Xcode exit, without inventing native candidate,
+capture or cleanup evidence. The original native bytes and primary failures
+remain separate, including malformed/aborted output. This is diagnostic
+persistence, not weaker PASS/FAIL acceptance. A launcher-error report row keeps
+any decoded native receipt as `unverifiedNativeReceipt`; its `rawVerdict` remains
+the native verdict (or null if undecodable), not the launcher's BLOCKED verdict.
 Export attachments with `xcrun xcresulttool export attachments`, verify the named
 public image hashes against the receipt, and inspect the pixels locally.
 Notifications uses `notificationsCaptureVersion: 1`; both General removals use
@@ -240,8 +258,8 @@ Retained automatic system attachments are disabled.
   combine with OR, removed-control absence with AND. Existing restoration is
   unchanged; General additionally records and verifies a pre-existing General
   form's scroll position through teardown, including failed assertions.
-  General's Launch at login and Remember last tab were empirically confirmed as
-  static-text AXValue, not checkbox titles. Their measured four-pixel leading
+  General's Launch at login, Remember last tab and Notch animation were empirically
+  confirmed against static-text AXValue frames. Their measured four-pixel leading
   Vision-box allowance is label-specific; native frames, exact text, vertical
   alignment and other labels' policies remain unchanged. See the
   [diagnosis and failure-boundary evidence](scenarios/general-haptics-removed.md#measured-native-label-remediation).

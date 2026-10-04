@@ -165,6 +165,24 @@ final class PR106Probe: XCTestCase {
 
     @MainActor
     private func setup(_ journey: Journey, media: Bool) throws {
+        let modes = media ? ["pr106-media", "pr106-media-wrong-direction", "pr106-media-wrong-pulse"]
+            : ["pr106-panel", "pr106-panel-wrong-tab"]
+        try require(UUID(uuidString: environment["NOTCH_VM_RUN_ID"] ?? "") != nil
+                    && modes.contains(environment["NOTCH_VM_SCENARIO"] ?? "")
+                    && environment["NOTCH_VM_PREPARED_INTERACTIONS"] == "1", "prepared_invocation_required")
+        guard let data = environment["NOTCH_VM_INTERACTION_FIXTURE"]?.data(using: .utf8),
+              let fixture = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              fixture["profile"] as? String == "synthetic-empty-light-v1",
+              fixture["candidateSHA256"] as? String == expectedHash,
+              fixture["guestUser"] as? String == "notch",
+              fixture["ownerID"] as? String == environment["NOTCH_VM_INTERACTION_WORKER"],
+              fixture["restorationPlan"] as? String == "parent-restore-owned-snapshot-after-media",
+              UUID(uuidString: fixture["fixtureID"] as? String ?? "") != nil,
+              UUID(uuidString: fixture["snapshotID"] as? String ?? "") != nil else {
+            throw Refusal.reason("owned_synthetic_profile_attestation_required")
+        }
+        // Bind launcher-validated input even on early refusal; this is not native fixture qualification.
+        journey.fixture = fixture
         var size = 0
         try require(sysctlbyname("hw.model", nil, &size, nil, 0) == 0 && size > 0 && size < 256,
                     "hardware_model_unavailable")
@@ -182,12 +200,11 @@ final class PR106Probe: XCTestCase {
                     && session[kCGSessionLoginDoneKey as String] as? Bool == true, "guest_session_unavailable")
         let screenCaptureAccess = CGPreflightScreenCaptureAccess()
         journey.discovery["screenCapturePreflightAccess"] = screenCaptureAccess
-        try require(screenCaptureAccess && AXIsProcessTrusted(), "existing_capture_and_accessibility_grants_required")
-        let modes = media ? ["pr106-media", "pr106-media-wrong-direction", "pr106-media-wrong-pulse"]
-            : ["pr106-panel", "pr106-panel-wrong-tab"]
-        try require(UUID(uuidString: environment["NOTCH_VM_RUN_ID"] ?? "") != nil
-                    && modes.contains(environment["NOTCH_VM_SCENARIO"] ?? "")
-                    && environment["NOTCH_VM_PREPARED_INTERACTIONS"] == "1", "prepared_invocation_required")
+        let accessibilityAccess = AXIsProcessTrusted()
+        journey.discovery["accessibilityProcessTrusted"] = accessibilityAccess
+        if let reason = PR106FailurePolicy.permissionRefusal(capture: screenCaptureAccess, accessibility: accessibilityAccess) {
+            throw Refusal.reason(reason)
+        }
         let bundle = Bundle(url: candidate)
         try require(try fileHash(candidate.appendingPathComponent("Contents/MacOS/notch-pocket")) == expectedHash
                     && bundle?.bundleIdentifier == "com.jdylanmc.notchpocket"
@@ -195,18 +212,6 @@ final class PR106Probe: XCTestCase {
                         == environment["NOTCH_VM_EXPECTED_VERSION"]
                     && bundle?.object(forInfoDictionaryKey: "CFBundleVersion") as? String
                         == environment["NOTCH_VM_EXPECTED_BUILD"], "candidate_identity_mismatch")
-        guard let data = environment["NOTCH_VM_INTERACTION_FIXTURE"]?.data(using: .utf8),
-              let fixture = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              fixture["profile"] as? String == "synthetic-empty-light-v1",
-              fixture["candidateSHA256"] as? String == expectedHash,
-              fixture["guestUser"] as? String == "notch",
-              fixture["ownerID"] as? String == environment["NOTCH_VM_INTERACTION_WORKER"],
-              fixture["restorationPlan"] as? String == "parent-restore-owned-snapshot-after-media",
-              UUID(uuidString: fixture["fixtureID"] as? String ?? "") != nil,
-              UUID(uuidString: fixture["snapshotID"] as? String ?? "") != nil else {
-            throw Refusal.reason("owned_synthetic_profile_attestation_required")
-        }
-        journey.fixture = fixture
         guard let pid = running(candidate, identifier: "com.jdylanmc.notchpocket"),
               let pointer = CGEvent(source: nil)?.location,
               let foreground = NSWorkspace.shared.frontmostApplication else {
@@ -285,7 +290,11 @@ final class PR106Probe: XCTestCase {
     @MainActor
     private func qualify(_ journey: Journey) throws {
         try originalAction(journey) { _ in true }
-        try require(CGPreflightScreenCaptureAccess() && AXIsProcessTrusted(), "existing_capture_and_accessibility_grants_required")
+        if let reason = PR106FailurePolicy.permissionRefusal(
+            capture: CGPreflightScreenCaptureAccess(), accessibility: AXIsProcessTrusted()
+        ) {
+            throw Refusal.reason(reason)
+        }
         guard let panel = journey.panel else { throw Refusal.reason("panel_unavailable") }
         try require(running(candidate, identifier: "com.jdylanmc.notchpocket") == journey.pid
                     && panel.identifier == marker + "window.\(journey.windowID)" && journey.windowID > 0
@@ -971,11 +980,16 @@ final class PR106Probe: XCTestCase {
         if journey.discovery["screenCapturePreflightAccess"] is Bool {
             journey.discovery["screenCapturePreflightAccessAfterTest"] = CGPreflightScreenCaptureAccess()
         }
+        if journey.discovery["accessibilityProcessTrusted"] is Bool {
+            journey.discovery["accessibilityProcessTrustedAfterTest"] = AXIsProcessTrusted()
+        }
         let restored = journey.restoration.count == 8 && journey.restoration.values.allSatisfy { $0 }
         let (verdict, reason) = journey.outcome.result(
             nativeFailures: nativeFailures, touched: journey.touched, restored: restored, hasErrors: !journey.errors.isEmpty,
             captureBefore: journey.discovery["screenCapturePreflightAccess"] as? Bool,
-            captureAfter: journey.discovery["screenCapturePreflightAccessAfterTest"] as? Bool)
+            captureAfter: journey.discovery["screenCapturePreflightAccessAfterTest"] as? Bool,
+            accessibilityBefore: journey.discovery["accessibilityProcessTrusted"] as? Bool,
+            accessibilityAfter: journey.discovery["accessibilityProcessTrustedAfterTest"] as? Bool)
         let receipt: [String: Any] = [
             "runID": environment["NOTCH_VM_RUN_ID"] ?? "", "scenario": environment["NOTCH_VM_SCENARIO"] ?? "",
             "testIdentifier": "GuestRegressionProbe/PR106Probe/" + (media ? "testMedia" : "testPanel"),

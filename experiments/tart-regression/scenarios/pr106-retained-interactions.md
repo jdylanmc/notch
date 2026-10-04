@@ -1,6 +1,6 @@
 # PR106 retained native interactions (issue #50)
 
-**Author-only supplement; not built or natively accepted.** The original ten
+**Native acceptance remains blocked; source corrections alone do not clear it.** The original ten
 cases, all their controls and reader gates remain. This adds two functional
 journeys and three raw-FAIL controls, bringing registration to **15**.
 Nothing changes panel gestures, compact mode (#107), media/Shelf code or app
@@ -138,15 +138,54 @@ cleared/zero elapsed/no error. Only the original hover boolean is temporarily
 changed by the tests, using its real native control/value, and restored.
 No stored preference, Shelf, history or profile is deleted.
 
-Permission evidence uses the established canonical discovery fields:
+Permission evidence uses separate non-prompting native observations:
 `screenCapturePreflightAccess` records the actual non-prompting
 `CGPreflightScreenCaptureAccess()` result at setup, before its permission guard.
 If that observation was reached (even when false), finish samples the API again
 **after restoration** into `screenCapturePreflightAccessAfterTest`. It does not
-copy the first value or infer permission from successful capture. Both fields
+copy the first value or infer permission from successful capture.
+`accessibilityProcessTrusted` and `accessibilityProcessTrustedAfterTest`
+likewise record actual `AXIsProcessTrusted()` results before the guard and after
+restoration. The calls are independent, not short-circuited. All four fields
 must be actual boolean `true` for full-capture acceptance, including negative
 control clearance. Missing, false or nonboolean evidence is BLOCKED; a later
 permission/evidence failure never overwrites an earlier primary FAIL.
+Recording-only failure reports `existing_screen_capture_grant_required`;
+direct Accessibility-only failure reports `existing_accessibility_grant_required`;
+both missing retain `existing_capture_and_accessibility_grants_required`.
+Recording `true` is not proof of direct Accessibility trust. The direct guard
+remains mandatory for real `CGEvent.post` and `AXUIElement` reads in the 140-ms
+race. A missing direct grant is a separate one-time human guest prerequisite,
+not permission to change identities, entitlements, API proof, privacy state
+or retry the invocation.
+
+Native setup now binds the launcher-validated fixture input before guest and
+permission preflight. That binding does not qualify native UI/setup or verify
+the candidate. An early refusal can truthfully have `candidateVerified: false`,
+empty captures/restoration, no `setupQualified`, and `cleanup: not_needed`.
+Matching run/scenario/selector/candidate-input/fixture/worker plus exactly one
+failed XCTest (exit 65, no skips) permits retaining its original BLOCKED reason,
+never PASS or control clearance. Invalid/missing identities are not accepted
+even on BLOCKED diagnostics: the launcher persists its own input-bound error
+separately from the rejected native receipt. Full PASS/FAIL gates are unchanged
+apart from the additional strict direct-Accessibility observations.
+
+Suite ownership release is independent of assertion parsing. It first requires
+the actual scoped job's finished exit/unload and equal printed/persisted native
+invocation observations, exact requested bindings, integer Xcode exit,
+`timedOut: false`, the prepared manifest pin and temporary-manifest removal.
+Only then may a blocked/malformed assertion allow remaining cases to run.
+Missing or malformed process/job evidence retains the lock and stops the suite;
+no inferred process death, retry, automatic recovery or fixture repair is used.
+
+The prior `pr106-native-full-001` report remains **immutable BLOCKED**:
+SHA-256 `41d743de8d6d61cbf78ac6d3661dbb92fe570557206dbfc1b942b8d3d5eed3fb`.
+Admission plus 11/15 suite cases produced 12 native results: raw 4 PASS,
+4 FAIL, 4 BLOCKED, zero skips/retries; the final four cases did not run.
+All 12 before/after recording observations were true. The first PR106 panel
+case refused direct Accessibility before the old fixture binding, and its
+launcher then masked that reason. This correction does not relabel that report
+or prove the missing permission, the remaining journeys or snapshot recovery.
 
 Candidate/producer activation uses only the retained original
 `NSRunningApplication`, freshly resolved by original PID and checked for
@@ -179,7 +218,11 @@ tests separately retain strict capture/restoration rejection for incomplete
 primary-FAIL receipts and missing/false/nonboolean before/after permission
 receipts across all five cases. The shared failure policy also exercises
 missing/lost before/after grants with prior PASS/FAIL and successful/failed
-restoration. These are failure-path contracts, not native acceptance.
+restoration. Executable mocked launcher/suite contracts cover early/aborted
+receipts, input/selector/worker tampering, invalid framework counts, malformed
+native output, assertion failures after proven termination, and retained locks
+for missing/tampered termination. These are failure-path contracts, not native
+acceptance.
 
 **External gate:** normal playback may update Notch's remembered media history.
 The test cannot honestly undo that through public UI. Every receipt explicitly

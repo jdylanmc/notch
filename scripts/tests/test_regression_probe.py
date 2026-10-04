@@ -620,7 +620,8 @@ class RegressionSuiteContractTests(unittest.TestCase):
     def test_raw_success_requires_all_evidence_and_exact_framework_counts(self):
         receipt = self.receipt()
         self.assertEqual(SUITE.evaluate(self.case, receipt, self.framework(), 0, "a" * 64)[0], "PASS")
-        for change in [{"candidateVerified": False}, {"cleanup": "blocked"}, {"cleanup": "not_needed"}, {"screenshotSHA256": "wrong"},
+        for change in [{"candidateVerified": False}, {"candidateVerified": 1}, {"cleanup": "blocked"},
+                       {"cleanup": "not_needed"}, {"screenshotSHA256": "wrong"},
                        {"expectedCandidateSHA256": "c" * 64}, {"scenario": "other"},
                        {"testIdentifier": "Other/test"}, {"reason": "dispatch_only"},
                        {"xcodeExit": 65}, {"frameworkCountVerified": False}]:
@@ -736,10 +737,16 @@ class RegressionSuiteContractTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "VirtualMac2,1\n", "")
             run = self.root / "runs" / command[2]
             run.mkdir(parents=True)
+            receipt["runID"] = "33333333-3333-4333-8333-333333333333"
             (run / "result.json").write_text(json.dumps(receipt))
             (run / "framework-summary.json").write_text(json.dumps(self.framework(False)))
-            (run / "invocation.json").write_text(json.dumps({"timedOut": False, "xcodeExit": 65}))
-            output = json.dumps({"jobUnloaded": True, "jobExit": 10}) + "\n" + json.dumps(receipt)
+            invocation = {key: receipt[key] for key in (
+                "runID", "scenario", "testIdentifier", "expectedCandidateSHA256", "xcodeExit")}
+            invocation.update(timedOut=False, temporaryManifestRemoved=True)
+            (run / "invocation.json").write_text(json.dumps(invocation))
+            job = {"jobUnloaded": True, "jobExit": 10, "status": "finished",
+                   "job": "com.jdylanmc.notch-vm-proof." + command[2], "scenario": self.case["scenario"]}
+            output = "\n".join(json.dumps(item) for item in (job, {"invocation": invocation}, receipt))
             return subprocess.CompletedProcess(command, 10, output + "\n", "")
 
         args = self.args()
@@ -1085,7 +1092,7 @@ class HapticRemovalSourceContractTests(unittest.TestCase):
     def test_measured_general_labels_keep_static_text_query_and_scoped_pixel_allowance(self):
         root = ROOT / "experiments/tart-regression/GuestRegressionProbe"
         oracle = (root / "SettingsRemovalOutputOracle.swift").read_text()
-        self.assertIn('pane == "General" ? ["Launch at login": 4, "Remember last tab": 4] : [:]', oracle)
+        self.assertIn('pane == "General" ? ["Launch at login": 4, "Remember last tab": 4, "Notch animation": 4] : [:]', oracle)
         self.assertIn("leadingPixels <= CGFloat(padding)", oracle)
         native = (root / "GuestRegressionProbe.swift").read_text()
         output = native.split("var controls: [String: Bool]", 1)[1].split("let capture =", 1)[0]

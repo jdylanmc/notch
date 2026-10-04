@@ -23,6 +23,18 @@ def blocked(reason, **details):
     return 20
 
 
+def persist_launcher_error(output, invocation, reason, **details):
+    identity = {key: invocation[key] for key in (
+        "runID", "scenario", "testIdentifier", "expectedCandidateSHA256",
+        "interactionFixture", "interactionWorker", "xcodeExit",
+    ) if key in invocation}
+    receipt = dict(identity, verdict="BLOCKED", reason=reason, suiteExit=20,
+                   launcherError=True, **details)
+    (output / "result.json").write_text(json.dumps(receipt, indent=2) + "\n")
+    print(json.dumps(receipt), flush=True)
+    return 20
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--scenario", required=True)
@@ -154,18 +166,48 @@ def main():
         if configured_created:
             configured.unlink()
 
-    (output / "invocation.json").write_text(json.dumps({
+    invocation = {
         "runID": run_id,
         "scenario": args.scenario,
+        "testIdentifier": args.test,
+        "expectedCandidateSHA256": candidate["executableSHA256"],
         "xcodeExit": process.returncode,
         "timedOut": timed_out,
         "temporaryManifestRemoved": not configured.exists(),
         "preparedRunner": runner_identity,
-    }, indent=2) + "\n")
+    }
+    if interaction_args:
+        invocation.update(interactionFixture=interaction_fixture, interactionWorker=args.interaction_worker)
+    (output / "invocation.json").write_text(json.dumps(invocation, indent=2) + "\n")
+    # This process-wait observation must survive assertion/fixture/summary parsing failures.
+    print(json.dumps({"invocation": invocation}), flush=True)
+    try:
+        return collect_result(output, invocation)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        return persist_launcher_error(output, invocation, "invocation_or_evidence_error",
+                                      errorType=type(error).__name__)
+
+
+def collect_result(output, invocation):
+    def reject(reason, **details):
+        return persist_launcher_error(output, invocation, reason, **details)
+
+    scenario = invocation["scenario"]
+    interaction_fixture = invocation.get("interactionFixture")
+    xcode_exit = invocation["xcodeExit"]
+    result_bundle = output / "result.xcresult"
+    lines = [line for line in (output / "execution.log").read_text().splitlines()
+             if line.startswith("NOTCH_VM_RESULT ")]
+    # Preserve the original native output even if it is malformed or fails a binding gate.
+    (output / "native-receipts.log").write_text("".join(line + "\n" for line in lines))
+    receipts = [json.loads(line.removeprefix("NOTCH_VM_RESULT ")) for line in lines]
+    if len(receipts) == 1:
+        (output / "native-result.json").write_text(json.dumps(receipts[0], indent=2) + "\n")
+    timed_out = invocation["timedOut"]
     if timed_out:
-        return blocked("framework_timeout", runID=run_id, cleanup="unverified")
+        return reject("framework_timeout")
     if not result_bundle.is_dir():
-        return blocked("framework_result_missing", runID=run_id, xcodeExit=process.returncode)
+        return reject("framework_result_missing")
     summary_result = subprocess.run(
         ["/usr/bin/xcrun", "xcresulttool", "get", "test-results", "summary",
          "--path", str(result_bundle), "--compact"],
@@ -173,65 +215,68 @@ def main():
     )
     summary = json.loads(summary_result.stdout)
     (output / "framework-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    receipts = []
-    for line in (output / "execution.log").read_text().splitlines():
-        if line.startswith("NOTCH_VM_RESULT "):
-            receipts.append(json.loads(line.removeprefix("NOTCH_VM_RESULT ")))
     if len(receipts) != 1:
-        return blocked(
-            "exactly_one_receipt_required", runID=run_id, count=len(receipts),
-            xcodeExit=process.returncode, frameworkResult=summary.get("result"),
-        )
+        return reject("exactly_one_receipt_required", count=len(receipts))
     receipt = receipts[0]
-    if (receipt.get("runID") != run_id or receipt.get("scenario") != args.scenario
-            or receipt.get("testIdentifier") != args.test
-            or receipt.get("expectedCandidateSHA256") != candidate["executableSHA256"]):
-        return blocked("run_identity_mismatch", runID=run_id)
-    if interaction_args and (receipt.get("interactionFixture") != interaction_fixture
-                             or receipt.get("interactionWorker") != args.interaction_worker):
-        return blocked("interaction_fixture_identity_mismatch", runID=run_id)
-    if summary.get("totalTestCount") != 1 or summary.get("skippedTests") != 0 or summary.get("expectedFailures") != 0:
-        return blocked("execution_count_or_skip_mismatch", runID=run_id)
+    if not isinstance(receipt, dict) or any(receipt.get(key) != invocation[key] for key in (
+        "runID", "scenario", "testIdentifier", "expectedCandidateSHA256",
+    )):
+        return reject("run_identity_mismatch")
+    if "launcherError" in receipt:
+        return reject("unexpected_launcher_error_in_native_receipt")
+    if interaction_fixture is not None and (
+        receipt.get("interactionFixture") != interaction_fixture
+        or receipt.get("interactionWorker") != invocation["interactionWorker"]
+    ):
+        return reject("interaction_fixture_identity_mismatch")
+    if interaction_fixture is not None:
+        interactions.fixture(receipt["interactionFixture"], invocation["expectedCandidateSHA256"],
+                             invocation["interactionWorker"])
+    if (not isinstance(summary, dict)
+            or any(type(summary.get(key)) is not int for key in (
+                "totalTestCount", "passedTests", "failedTests", "skippedTests", "expectedFailures"))
+            or summary["totalTestCount"] != 1 or summary["skippedTests"] != 0 or summary["expectedFailures"] != 0):
+        return reject("execution_count_or_skip_mismatch")
 
     verdict = receipt.get("verdict")
-    if args.scenario not in interactions.TESTS and "interactionCaptureVersion" in receipt:
-        return blocked("unexpected_capture_schema", runID=run_id)
+    exits = {"PASS": 0, "FAIL": 10, "BLOCKED": 20}
+    if not isinstance(verdict, str) or verdict not in exits:
+        return reject("unknown_verdict")
+    if scenario not in interactions.TESTS and "interactionCaptureVersion" in receipt:
+        return reject("unexpected_capture_schema")
     if verdict == "PASS":
-        framework_matches = process.returncode == 0 and summary.get("passedTests") == 1 and summary.get("failedTests") == 0
+        framework_matches = xcode_exit == 0 and summary["passedTests"] == 1 and summary["failedTests"] == 0
     else:
-        framework_matches = process.returncode != 0 and summary.get("passedTests") == 0 and summary.get("failedTests") == 1
+        framework_matches = xcode_exit == 65 and summary["passedTests"] == 0 and summary["failedTests"] == 1
     if not framework_matches:
-        return blocked("framework_verdict_mismatch", runID=run_id)
+        return reject("framework_verdict_mismatch")
     if verdict in ["PASS", "FAIL"]:
-        if (not receipt.get("candidateVerified")
+        if (receipt.get("candidateVerified") is not True
                 or receipt.get("cleanup") not in ["restored_general", "restored_closed_settings", "restored_original_state"]):
-            return blocked("required_evidence_or_cleanup_missing", runID=run_id)
-        if args.scenario in interactions.TESTS:
+            return reject("required_evidence_or_cleanup_missing")
+        if scenario in interactions.TESTS:
             try:
                 interactions.captures(receipt)
             except (ValueError, TypeError, KeyError):
-                return blocked("interaction_assertions_unverified", runID=run_id)
-        elif args.scenario in SCENARIOS:
+                return reject("interaction_assertions_unverified")
+        elif scenario in SCENARIOS:
             try:
                 settings_captures(receipt)
             except (ValueError, TypeError, KeyError):
-                return blocked(SCENARIOS[args.scenario]["pane"].lower() + "_assertions_unverified", runID=run_id)
+                return reject(SCENARIOS[scenario]["pane"].lower() + "_assertions_unverified")
         else:
             if "captures" in receipt or VERSION_KEYS.intersection(receipt) or "interactionCaptureVersion" in receipt:
-                return blocked("unexpected_capture_schema", runID=run_id)
+                return reject("unexpected_capture_schema")
             if not receipt.get("screenshotSHA256"):
-                return blocked("required_evidence_or_cleanup_missing", runID=run_id)
+                return reject("required_evidence_or_cleanup_missing")
             if not isinstance(receipt["screenshotSHA256"], str) or not re.fullmatch(r"[a-f0-9]{64}", receipt["screenshotSHA256"]):
-                return blocked("capture_digest_invalid", runID=run_id)
+                return reject("capture_digest_invalid")
     subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict",
                     "/Applications/notch-pocket.app"], check=True, capture_output=True, timeout=30)
-    if interaction_args and args.scenario.startswith("pr106-media"):
+    if interaction_fixture is not None and scenario.startswith("pr106-media"):
         subprocess.run(["/usr/bin/codesign", "--verify", "--strict", interaction_fixture["producerPath"]],
                        check=True, capture_output=True, timeout=30)
-    exits = {"PASS": 0, "FAIL": 10, "BLOCKED": 20}
-    if verdict not in exits:
-        return blocked("unknown_verdict", runID=run_id)
-    receipt.update({"xcodeExit": process.returncode, "suiteExit": exits[verdict], "frameworkCountVerified": True})
+    receipt.update({"xcodeExit": xcode_exit, "suiteExit": exits[verdict], "frameworkCountVerified": True})
     (output / "result.json").write_text(json.dumps(receipt, indent=2) + "\n")
     print(json.dumps(receipt), flush=True)
     return exits[verdict]
