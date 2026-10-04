@@ -2,6 +2,8 @@
 """Build the standalone XCTest harness; verify and compare prepared packages without keys."""
 
 import argparse
+import ctypes
+import errno
 import hashlib
 import json
 import os
@@ -481,16 +483,44 @@ def product_containers(products, roles):
     return containers
 
 
-def container_modes(products, roles, run):
+def require_no_acl(fd):
+    if sys.platform != "darwin":
+        raise RunnerError("Protected Products require native macOS ACL inspection.")
+    library = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+    library.acl_get_fd_np.argtypes = [ctypes.c_int, ctypes.c_int]
+    library.acl_get_fd_np.restype = ctypes.c_void_p
+    library.acl_free.argtypes = [ctypes.c_void_p]
+    library.acl_free.restype = ctypes.c_int
+    ctypes.set_errno(0)
+    acl = library.acl_get_fd_np(fd, 0x100)  # ACL_TYPE_EXTENDED
+    error = ctypes.get_errno()
+    if not acl:
+        # On an open, valid descriptor, ENOENT denotes an absent extended ACL.
+        if error == errno.ENOENT:
+            return
+        raise RunnerError("Unable to inspect Products container ACL.", nativeErrno=error)
+    try:
+        # Even an explicitly empty ACL is unsupported; no enumeration errors can become absence.
+        raise RunnerError("Products container ACLs are unsupported.")
+    finally:
+        if library.acl_free(acl) != 0:
+            raise RunnerError("Unable to release Products ACL inspection buffer.", nativeErrno=ctypes.get_errno())
+
+
+def container_modes(products, roles):
     modes = {}
     for path in product_containers(products, roles):
-        info = path.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
-            raise RunnerError("Products containers must be owned directories.")
-        output, _ = run(["/bin/ls", "-ldeb", str(path)])
-        lines = output.decode().splitlines()
-        if (len(lines) != 1 or not re.match(r"^d[rwxstST-]{9}@?\s", lines[0])):
-            raise RunnerError("Products container ACLs are unsupported or could not be inspected.")
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid():
+                raise RunnerError("Products containers must be owned directories.")
+            require_no_acl(fd)
+            current = path.lstat()
+            if (info.st_dev, info.st_ino, info.st_mode) != (current.st_dev, current.st_ino, current.st_mode):
+                raise RunnerError("Products container changed during ACL inspection.")
+        finally:
+            os.close(fd)
         mode = stat.S_IMODE(info.st_mode)
         if mode & 0o500 != 0o500:
             raise RunnerError("Products containers require owner read and search access.")
@@ -498,8 +528,8 @@ def container_modes(products, roles, run):
     return modes
 
 
-def protect_containers(products, roles, entries, run):
-    before = container_modes(products, roles, run)
+def protect_containers(products, roles, entries):
+    before = container_modes(products, roles)
     expected = {name: dict(entry) for name, entry in entries.items()}
     for path in product_containers(products, roles):
         name = "." if path == products else str(path.relative_to(products))
@@ -509,16 +539,16 @@ def protect_containers(products, roles, entries, run):
             expected[name]["mode"] = mode
     if inventory(products) != expected:
         raise RunnerError("Products changed beyond the declared container-mode transitions.")
-    after = container_modes(products, roles, run)
+    after = container_modes(products, roles)
     if after != {name: mode & ~0o222 for name, mode in before.items()}:
         raise RunnerError("Products container protection did not match the declared modes.")
     return expected, after["."]
 
 
-def verify_container_protection(products, roles, root_mode, run):
+def verify_container_protection(products, roles, root_mode):
     if type(root_mode) is not int:
         raise RunnerError("Protected Products root mode must be an integer.")
-    modes = container_modes(products, roles, run)
+    modes = container_modes(products, roles)
     if modes["."] != root_mode or any(mode & 0o222 for mode in modes.values()):
         raise RunnerError("Prepared Products containers are no longer read-only.")
 
@@ -547,7 +577,7 @@ def build(args):
             raise RunnerError("Source or Products changed during build/verification.")
         root_mode = None
         if config["mode"] == "stable":
-            entries, root_mode = protect_containers(products, roles, entries, run)
+            entries, root_mode = protect_containers(products, roles, entries)
             if source != source_snapshot(args.source_revision, run):
                 raise RunnerError("Source changed while protecting Products containers.")
         manifest = {"schemaVersion": 1, "signing": config, "source": source, "xcodeVersion": version,
@@ -555,7 +585,7 @@ def build(args):
                     "permissionReadiness": PERMISSION_READINESS}
         if root_mode is not None:
             manifest.update(schemaVersion=2, productsRootMode=root_mode)
-            verify_container_protection(products, roles, root_mode, run)
+            verify_container_protection(products, roles, root_mode)
             if entries != inventory(products):
                 raise RunnerError("Products changed before protected manifest publication.")
         output = path / "runner-manifest.json"
@@ -631,13 +661,13 @@ def verify_prepared(products, manifest_path, expected_sha256, *, source=SOURCE, 
             return native(command, env=env, timeout=timeout)
 
     if version == 2:
-        verify_container_protection(products, roles, manifest["productsRootMode"], run)
+        verify_container_protection(products, roles, manifest["productsRootMode"])
     code = verify_code(products, roles, entries, config, run)
     if json_bytes(code) != json_bytes(manifest["code"]) or entries != inventory(products):
         raise RunnerError("Prepared code requirements, hashes or entitlements changed.")
     verify_source(manifest["source"], source)
     if version == 2:
-        verify_container_protection(products, roles, manifest["productsRootMode"], run)
+        verify_container_protection(products, roles, manifest["productsRootMode"])
     return manifest
 
 

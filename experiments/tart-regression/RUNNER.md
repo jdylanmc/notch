@@ -137,8 +137,12 @@ The manifest binds Products' root mode explicitly; the full inventory already
 binds the other protected directory modes. Only those declared mode changes
 are permitted during protection; newly appearing files fail the build.
 
-Protected containers must have no ACL entries. ACL inspection errors or ACLs
-are explicit failures, not permission normalization. Verification checks the
+Protected containers must have no extended ACL. Checked native
+`acl_get_fd_np` retrieval uses an open, no-follow directory descriptor; only
+the absent-ACL result is accepted. Every returned ACL object, including an
+explicitly empty one, is rejected and released. Other retrieval or release
+failures block; no listing output or enumeration failure becomes absence.
+Verification checks the
 root mode, all protected containers and their ACLs before and after native
 signature inspection. This prevents incidental directory-entry writes such as
 `.DS_Store` creation in those containers; it is not protection against a

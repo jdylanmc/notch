@@ -1,6 +1,8 @@
 import argparse
 import contextlib
 import copy
+import ctypes
+import errno
 import importlib.util
 import io
 import json
@@ -55,7 +57,10 @@ class RunnerContracts(unittest.TestCase):
         self.signature_error = False
         self.ad_hoc = False
         self.leaf = LEAF
-        self.acl_output = b"drwxr-xr-x 2 owner group 64 Jan 1 00:00 container\n"
+        self.acl_failure = None
+        acl_patch = patch.object(RUNNER, "require_no_acl", side_effect=self.check_acl)
+        acl_patch.start()
+        self.addCleanup(acl_patch.stop)
         self.write_products(self.products)
 
     def tearDown(self):
@@ -110,11 +115,13 @@ class RunnerContracts(unittest.TestCase):
         (framework / "Example").symlink_to("Versions/Current/Example")
         return binary
 
+    def check_acl(self, fd):
+        os.fstat(fd)
+        if self.acl_failure:
+            raise RUNNER.RunnerError(self.acl_failure)
+
     def native(self, command, **kwargs):
         self.calls.append(command)
-        if command[0] == "/bin/ls":
-            self.assertEqual(command[1], "-ldeb")
-            return self.acl_output, b""
         if command[0] == "/usr/bin/lipo":
             return self.arches, b""
         if command[0] != "/usr/bin/codesign":
@@ -516,7 +523,7 @@ class RunnerContracts(unittest.TestCase):
         manifest, _ = self.artifact()
         data = json.loads(manifest.read_bytes())
         entries, root_mode = RUNNER.protect_containers(
-            self.products, data["roles"], data["files"], self.native)
+            self.products, data["roles"], data["files"])
         data.update(schemaVersion=2, productsRootMode=root_mode, files=entries)
         manifest.write_bytes(RUNNER.json_bytes(data))
         return manifest, RUNNER.digest(manifest.read_bytes())
@@ -526,7 +533,7 @@ class RunnerContracts(unittest.TestCase):
         _, roles = RUNNER.product_roles(self.products)
         containers = RUNNER.product_containers(self.products, roles)
         self.assertEqual(containers, [self.runner.parent, self.products])
-        entries, root_mode = RUNNER.protect_containers(self.products, roles, before, self.native)
+        entries, root_mode = RUNNER.protect_containers(self.products, roles, before)
         self.assertEqual(root_mode, 0o555)
         expected = copy.deepcopy(before)
         expected["Debug"]["mode"] = 0o555
@@ -535,14 +542,13 @@ class RunnerContracts(unittest.TestCase):
         self.assertEqual(self.runner.stat().st_mode & 0o777, 0o755)
         self.assertEqual(self.bundle.stat().st_mode & 0o777, 0o755)
 
-    def test_container_acl_or_unreadable_listing_is_not_ignored(self):
+    def test_container_acl_failures_are_not_ignored(self):
         _, roles = RUNNER.product_roles(self.products)
         before = RUNNER.inventory(self.products)
-        for output in (b"", b"unexpected\n", b"drwxr-xr-x+ 2 owner group 64 container\n",
-                       b"drwxr-xr-x@ 2 owner group 64 container\n 0: everyone allow add_file\n"):
-            self.acl_output = output
-            with self.subTest(output=output), self.assertRaisesRegex(RUNNER.RunnerError, "ACL"):
-                RUNNER.protect_containers(self.products, roles, before, self.native)
+        for failure in ("ACL retrieval failed", "ACL is present", "ACL buffer release failed"):
+            self.acl_failure = failure
+            with self.subTest(failure=failure), self.assertRaisesRegex(RUNNER.RunnerError, "ACL"):
+                RUNNER.protect_containers(self.products, roles, before)
             self.assertEqual(RUNNER.inventory(self.products), before)
             self.assertEqual(self.products.stat().st_mode & 0o777, 0o755)
 
@@ -558,7 +564,7 @@ class RunnerContracts(unittest.TestCase):
 
         with patch.object(RUNNER.os, "chmod", side_effect=change), \
                 self.assertRaisesRegex(RUNNER.RunnerError, "beyond the declared"):
-            RUNNER.protect_containers(self.products, roles, before, self.native)
+            RUNNER.protect_containers(self.products, roles, before)
         self.assertTrue((self.products / "unexpected").exists())
 
     def test_protected_manifest_binds_root_mode_outside_regular_inventory(self):
@@ -600,7 +606,7 @@ class RunnerContracts(unittest.TestCase):
 
         def run(command, **kwargs):
             if command[0] == "/usr/bin/codesign":
-                self.acl_output = b"dr-xr-xr-x+ 2 owner group 64 container\n"
+                self.acl_failure = "ACL changed after signature verification"
             return self.native(command, **kwargs)
 
         with self.assertRaisesRegex(RUNNER.RunnerError, "ACL"):
@@ -1388,7 +1394,7 @@ class RunnerContracts(unittest.TestCase):
                 return b"", b""
             return self.native(command, **kwargs)
 
-        self.acl_output = b"drwxr-xr-x+ 2 owner group 64 container\n"
+        self.acl_failure = "ACL is present"
         with patch.object(RUNNER, "new_build_path", return_value=args.build_dir), \
                 patch.object(RUNNER, "find_xcode", return_value=("/xcodebuild", "Xcode 27.0")), \
                 patch.object(RUNNER, "source_snapshot", return_value={"sha256": "a"}), \
@@ -1422,6 +1428,62 @@ class RunnerContracts(unittest.TestCase):
             self.assertNotIn("productsRootMode", manifest)
             self.assertEqual((args.build_dir / "Products").stat().st_mode & 0o777, 0o755)
             self.assertEqual((args.build_dir / "Products/Debug").stat().st_mode & 0o777, 0o755)
+
+
+class NativeACLContracts(unittest.TestCase):
+    def library(self, result, error=0, release=0):
+        library = Mock()
+
+        def retrieve(fd, kind):
+            self.assertEqual(fd, 7)
+            self.assertEqual(kind, 0x100)
+            ctypes.set_errno(error)
+            return result
+
+        library.acl_get_fd_np.side_effect = retrieve
+        library.acl_free.return_value = release
+        return library
+
+    def test_absent_acl_is_only_accepted_for_native_no_acl_result(self):
+        library = self.library(None, errno.ENOENT)
+        with patch.object(RUNNER.sys, "platform", "darwin"), \
+                patch.object(RUNNER.ctypes, "CDLL", return_value=library):
+            RUNNER.require_no_acl(7)
+        library.acl_free.assert_not_called()
+
+    def test_retrieval_errors_cannot_become_absence(self):
+        for error in (0, errno.EACCES, errno.EBADF, errno.EINVAL, errno.EIO, errno.ENOTSUP):
+            library = self.library(None, error)
+            with self.subTest(error=error), patch.object(RUNNER.sys, "platform", "darwin"), \
+                    patch.object(RUNNER.ctypes, "CDLL", return_value=library), \
+                    self.assertRaises(RUNNER.RunnerError) as failed:
+                RUNNER.require_no_acl(7)
+            self.assertEqual(failed.exception.details["nativeErrno"], error)
+            library.acl_free.assert_not_called()
+
+    def test_any_returned_acl_is_rejected_and_released_without_enumeration(self):
+        library = self.library(123)
+        with patch.object(RUNNER.sys, "platform", "darwin"), \
+                patch.object(RUNNER.ctypes, "CDLL", return_value=library), \
+                self.assertRaisesRegex(RUNNER.RunnerError, "ACLs are unsupported"):
+            RUNNER.require_no_acl(7)
+        library.acl_free.assert_called_once_with(123)
+        library.acl_get_entry.assert_not_called()
+
+    def test_release_failure_is_explicit(self):
+        library = self.library(123, release=-1)
+        with patch.object(RUNNER.sys, "platform", "darwin"), \
+                patch.object(RUNNER.ctypes, "CDLL", return_value=library), \
+                self.assertRaisesRegex(RUNNER.RunnerError, "release Products ACL"):
+            RUNNER.require_no_acl(7)
+        library.acl_free.assert_called_once_with(123)
+
+    def test_non_macos_inspection_is_not_a_success_fallback(self):
+        with patch.object(RUNNER.sys, "platform", "linux"), \
+                patch.object(RUNNER.ctypes, "CDLL") as load, \
+                self.assertRaisesRegex(RUNNER.RunnerError, "macOS ACL inspection"):
+            RUNNER.require_no_acl(7)
+        load.assert_not_called()
 
 
 if __name__ == "__main__":
