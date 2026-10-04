@@ -42,7 +42,207 @@ enum OracleContractTests {
         try checkAppearance()
         try checkSettingsRemoval(.notifications)
         try checkSettingsRemoval(.general)
-        try checkGeneralNativeLabelGeometry()
+        try checkSettingsRemoval(.panelSwipes)
+        try checkGeneralNativeLabelGeometry(.general)
+        try checkGeneralNativeLabelGeometry(.panelSwipes)
+        try checkFixtureAudio()
+        try checkPR106FailurePaths()
+    }
+
+    private static func checkPR106FailurePaths() throws {
+        typealias Policy = PR106FailurePolicy
+        typealias Identity = Policy.ProcessIdentity
+        func check(_ condition: Bool, _ message: String) throws {
+            guard condition else {
+                throw NSError(domain: "PR106FailureContracts", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: message])
+            }
+        }
+        for (role, pid, path, identifier) in [
+            ("candidate", Int32(42), "/Applications/notch-pocket.app", "com.jdylanmc.notchpocket"),
+            ("producer", Int32(43), "/Users/notch/fixture/NotchMediaFixture.app",
+             "com.jdylanmc.notchpocket.regression.mediafixture")
+        ] {
+            let expected = Identity(pid: pid, bundleURL: URL(fileURLWithPath: path), bundleID: identifier)
+            let independent = Identity(pid: 84, bundleURL: URL(fileURLWithPath: "/Test/Independent.app"),
+                                       bundleID: "test.independent.cleanup")
+            // The native adapter projects terminated/unavailable applications to nil.
+            let rejected: [Identity?] = [
+                nil,
+                .init(pid: pid + 100, bundleURL: expected.bundleURL, bundleID: identifier),
+                .init(pid: pid, bundleURL: URL(fileURLWithPath: "/Applications/Other.app"), bundleID: identifier),
+                .init(pid: pid, bundleURL: expected.bundleURL, bundleID: "different.identity")
+            ]
+            for current in rejected {
+                var activations = 0
+                var inputs = 0
+                var restoration: [String: Bool] = [:]
+                let activate = Policy.perform(expected: expected, current: current) {
+                    activations += 1
+                    return true
+                }
+                let input = Policy.perform(expected: expected, current: current) {
+                    inputs += 1
+                    return true
+                }
+                restoration[role] = activate == .performed && input == .performed
+                var safeCleanup = 0
+                restoration["independentCleanup"] = Policy.perform(expected: independent, current: independent) {
+                    safeCleanup += 1
+                    return true
+                } == .performed
+                let result = Policy.Outcome().result(nativeFailures: 0, touched: true,
+                                                     restored: restoration.values.allSatisfy { $0 }, hasErrors: true,
+                                                     captureBefore: true, captureAfter: true,
+                                                     accessibilityBefore: true, accessibilityAfter: true)
+                try check(activate == .identityChanged && input == .identityChanged && activations == 0 && inputs == 0,
+                          "\(role): disappeared/replaced identity must prevent activation and input")
+                try check(restoration[role] == false && safeCleanup == 1 && restoration["independentCleanup"] == true
+                          && result.verdict == "BLOCKED" && result.reason == "restoration_unverified",
+                          "\(role): failed restoration stays explicit and independent cleanup continues")
+            }
+            for afterActivation in rejected {
+                var activations = 0
+                var inputs = 0
+                let activated = Policy.perform(expected: expected, current: expected) { activations += 1; return true }
+                let stoppedBeforeInput = Policy.perform(expected: expected, current: afterActivation) { inputs += 1; return true }
+                try check(activated == .performed && stoppedBeforeInput == .identityChanged && activations == 1 && inputs == 0,
+                          "\(role): recheck ownership after activation and before input")
+            }
+            var inputs = 0
+            try check(Policy.perform(expected: expected, current: expected) { inputs += 1; return true } == .performed
+                      && inputs == 1, "\(role): original live identity permits input")
+            try check(Policy.perform(expected: expected, current: expected) { false } == .actionRejected,
+                      "\(role): failed native activation is not success")
+        }
+        for transition in ["panel_hover_open_not_observed", "panel_open_not_observed", "panel_close_not_observed"] {
+            for restored in [true, false] {
+                var outcome = Policy.Outcome()
+                outcome.transition(qualified: true, matched: false)
+                try check(outcome.verdict == "FAIL" && outcome.reason == "rendered_output_mismatch",
+                          "\(transition): record the witnessed failure before throwing")
+                outcome.refuse(transition)
+                outcome.refuse("later_capture_unavailable")
+                outcome.transition(qualified: false, matched: false)
+                outcome.complete(passed: true)
+                let result = outcome.result(nativeFailures: 0, touched: true, restored: restored, hasErrors: true,
+                                            captureBefore: true, captureAfter: true,
+                                            accessibilityBefore: true, accessibilityAfter: true)
+                try check(outcome.verdict == "FAIL" && outcome.reason == "rendered_output_mismatch"
+                          && result.verdict == "BLOCKED"
+                          && result.reason == (restored ? "incomplete_native_journey" : "restoration_unverified"),
+                          "\(transition): cleanup/capture must not overwrite the primary failure")
+                let aborted = outcome.result(nativeFailures: 1, touched: true, restored: restored, hasErrors: false,
+                                             captureBefore: true, captureAfter: true,
+                                             accessibilityBefore: true, accessibilityAfter: true)
+                try check(aborted.verdict == "BLOCKED" && outcome.verdict == "FAIL",
+                          "\(transition): a native abort cannot qualify incomplete evidence")
+            }
+            var unavailable = Policy.Outcome()
+            unavailable.transition(qualified: false, matched: false)
+            unavailable.refuse("existing_capture_and_accessibility_grants_required")
+            let result = unavailable.result(nativeFailures: 0, touched: false, restored: false, hasErrors: true,
+                                            captureBefore: false, captureAfter: false,
+                                            accessibilityBefore: false, accessibilityAfter: false)
+            try check(unavailable.verdict == "BLOCKED" && result.verdict == "BLOCKED"
+                      && result.reason == "existing_capture_and_accessibility_grants_required",
+                      "\(transition): unavailable capabilities are not product failures")
+        }
+        var missingFocus = Policy.Outcome()
+        missingFocus.refuse("candidate_focus_unavailable")
+        let unfocused = missingFocus.result(nativeFailures: 0, touched: true, restored: true, hasErrors: true,
+                                            captureBefore: true, captureAfter: true,
+                                            accessibilityBefore: true, accessibilityAfter: true)
+        try check(unfocused.verdict == "BLOCKED" && unfocused.reason == "candidate_focus_unavailable"
+                  && missingFocus.verdict == "BLOCKED", "Missing keyboard focus is a prerequisite refusal")
+        let permissions: [Bool?] = [nil, false, true]
+        for passed in [true, false] {
+            var outcome = Policy.Outcome()
+            outcome.complete(passed: passed)
+            for before in permissions {
+                for after in permissions {
+                    let result = outcome.result(nativeFailures: 0, touched: true, restored: true, hasErrors: false,
+                                                captureBefore: before, captureAfter: after,
+                                                accessibilityBefore: true, accessibilityAfter: true)
+                    let qualified = before == true && after == true
+                    try check(result.verdict == (qualified ? outcome.verdict : "BLOCKED")
+                              && result.reason == (qualified ? outcome.reason : "screen_capture_permission_unverified")
+                              && outcome.verdict == (passed ? "PASS" : "FAIL")
+                              && outcome.reason == (passed ? "rendered_output_verified" : "rendered_output_mismatch"),
+                              "Both actual capture grants are required without overwriting the primary outcome")
+                    let cleanupFailed = outcome.result(nativeFailures: 0, touched: true, restored: false, hasErrors: true,
+                                                       captureBefore: before, captureAfter: after,
+                                                       accessibilityBefore: true, accessibilityAfter: true)
+                    try check(cleanupFailed.verdict == "BLOCKED" && cleanupFailed.reason == "restoration_unverified"
+                              && outcome.verdict == (passed ? "PASS" : "FAIL"),
+                              "Permission loss must not mask failed restoration or the original output failure")
+                }
+            }
+        }
+        for (capture, accessibility, expected) in [
+            (true, false, "existing_accessibility_grant_required"),
+            (false, true, "existing_screen_capture_grant_required"),
+            (false, false, "existing_capture_and_accessibility_grants_required")
+        ] {
+            let refusal = Policy.permissionRefusal(capture: capture, accessibility: accessibility)
+            try check(refusal == expected, "Report the actual missing permission, not a combined guess")
+            var outcome = Policy.Outcome()
+            outcome.refuse(refusal ?? "missing_refusal")
+            let result = outcome.result(nativeFailures: 0, touched: false, restored: false, hasErrors: true,
+                                        captureBefore: capture, captureAfter: capture,
+                                        accessibilityBefore: accessibility, accessibilityAfter: accessibility)
+            try check(result.verdict == "BLOCKED" && result.reason == expected && outcome.reason == expected,
+                      "Early permission refusal survives without fabricated candidate or restoration evidence")
+        }
+        try check(Policy.permissionRefusal(capture: true, accessibility: true) == nil,
+                  "Both direct native grants are required")
+        for passed in [true, false] {
+            var outcome = Policy.Outcome()
+            outcome.complete(passed: passed)
+            for before in permissions {
+                for after in permissions {
+                    for restored in [true, false] {
+                        let result = outcome.result(nativeFailures: 0, touched: true, restored: restored, hasErrors: false,
+                                                    captureBefore: true, captureAfter: true,
+                                                    accessibilityBefore: before, accessibilityAfter: after)
+                        let qualified = before == true && after == true
+                        let reason = !restored ? "restoration_unverified"
+                            : qualified ? outcome.reason : "accessibility_permission_unverified"
+                        try check(result.verdict == (restored && qualified ? outcome.verdict : "BLOCKED")
+                                  && result.reason == reason && outcome.verdict == (passed ? "PASS" : "FAIL"),
+                                  "Direct AX trust is distinct from recording and preserves sticky primary failure")
+                    }
+                }
+            }
+        }
+        print("PR106 failure paths: original-process action guards and sticky transition failures verified without UI.")
+    }
+
+    private static func checkFixtureAudio() throws {
+        let wave = [UInt8](GeneratedAudio.wave())
+        func unsigned(_ offset: Int, _ size: Int) -> UInt32 {
+            (0..<size).reduce(UInt32(0)) { $0 | UInt32(wave[offset + $1]) << (8 * $1) }
+        }
+        let expectedBytes = 30 * 22_050 * 2
+        guard wave.count == expectedBytes + 44,
+              String(decoding: wave[0..<4], as: UTF8.self) == "RIFF",
+              String(decoding: wave[8..<16], as: UTF8.self) == "WAVEfmt ",
+              String(decoding: wave[36..<40], as: UTF8.self) == "data",
+              unsigned(4, 4) == UInt32(expectedBytes + 36), unsigned(16, 4) == 16,
+              unsigned(20, 2) == 1, unsigned(22, 2) == 1,
+              unsigned(24, 4) == 22_050, unsigned(28, 4) == 44_100,
+              unsigned(32, 2) == 2, unsigned(34, 2) == 16,
+              unsigned(40, 4) == UInt32(expectedBytes) else {
+            throw NSError(domain: "FixtureAudioContract", code: 1)
+        }
+        let samples = stride(from: 44, to: wave.count, by: 2).map {
+            Int(Int16(bitPattern: UInt16(unsigned($0, 2))))
+        }
+        guard samples.first == 0, samples.last == 0, samples.contains(where: { $0 > 1000 }),
+              samples.contains(where: { $0 < -1000 }), samples.allSatisfy({ abs($0) <= 4000 }) else {
+            throw NSError(domain: "FixtureAudioContract", code: 2)
+        }
+        print("Fixture audio: real generated PCM structure and bounded samples verified; no playback performed.")
     }
 
     private static func checkSettingsRemoval(_ scenario: SettingsRemovalScenario) throws {
@@ -69,6 +269,36 @@ enum OracleContractTests {
             count += 1
         }
         try check("retained controls and pixels", rendered, controls, passes: true)
+        if scenario == .panelSwipes {
+            for label in ["Change media with horizontal gestures", "Gesture sensitivity", "Normalize gesture direction"] {
+                try check("media configuration is not panel copy: \(label)", rendered + [
+                    Observation(text: label, frame: CGRect(x: 0.4, y: 0.1, width: 0.5, height: 0.03))
+                ], controls, passes: true)
+            }
+            let footerSource = "Two-finger swipe up on notch to close, two-finger swipe down on notch to open when **Open notch on hover** option is disabled"
+            let footer = footerSource.replacingOccurrences(of: "**", with: "")
+            for sourceTrue in [false, true] {
+                for visible in [false, true] {
+                    var accessible = controls
+                    accessible[absence] = scenario.removedLabelsAbsent { $0 == footer && sourceTrue }
+                    let pixels = rendered + (visible ? [
+                        Observation(text: footer, frame: CGRect(x: 0.4, y: 0.1, width: 0.5, height: 0.03))
+                    ] : [])
+                    let result = SettingsRemovalOutputOracle.evaluate(
+                        pixels, scenario: scenario, contentFrame: content, controls: accessible,
+                        labelFrames: labelFrames, pixelWidth: 700
+                    )
+                    guard accessible[absence] == !sourceTrue,
+                          result[absence] == (!sourceTrue && !visible),
+                          labels.allSatisfy({ result[$0] == true }) else {
+                        throw NSError(domain: "PanelFooterOnly", code: 1, userInfo: [
+                            NSLocalizedDescriptionKey: "sourceTrue=\(sourceTrue), visible=\(visible): \(result)"
+                        ])
+                    }
+                    count += 1
+                }
+            }
+        }
         try check("empty pixels cannot prove removal", [], controls, passes: false)
         try check("missing accessibility cannot prove removal", rendered, [:], passes: false)
         for (index, label) in labels.enumerated() {
@@ -97,11 +327,11 @@ enum OracleContractTests {
         var old = controls
         old[absence] = false
         try check("old app control rejected even if OCR misses it", rendered, old, passes: false)
-        for text in [scenario.removedLabel] + scenario.forbiddenText {
+        for text in scenario.removedLabels + scenario.forbiddenText {
             let remnant = Observation(text: text, frame: CGRect(x: 0.4, y: 0.1, width: 0.5, height: 0.03))
             try check("old app pixels: \(text)", rendered + [remnant], controls, passes: false)
         }
-        let removedWords = scenario.removedLabel.split(separator: " ", maxSplits: 1).map(String.init)
+        let removedWords = scenario.removedLabels[0].split(separator: " ", maxSplits: 1).map(String.init)
         let splitRemoved = [
             Observation(text: removedWords[0], frame: CGRect(x: 0.4, y: 0.1, width: 0.1, height: 0.03)),
             Observation(text: removedWords[1], frame: CGRect(x: 0.51, y: 0.1, width: 0.35, height: 0.03))
@@ -120,7 +350,7 @@ enum OracleContractTests {
         }
         count += 1
         try check("clipped remnant still rejects absence", rendered + [
-            Observation(text: scenario.removedLabel, frame: CGRect(x: 0.4, y: 0.99, width: 0.3, height: 0.03))
+            Observation(text: scenario.removedLabels[0], frame: CGRect(x: 0.4, y: 0.99, width: 0.3, height: 0.03))
         ], controls, passes: false)
         for frames in [[:], [labels[0]: rendered[0].frame],
                        labelFrames.mapValues { $0.offsetBy(dx: 0, dy: -0.1) },
@@ -153,10 +383,10 @@ enum OracleContractTests {
             }
             count += 1
         }
-        print("\(scenario.pane) output oracle: \(count) cases passed.")
+        print("\(scenario.rawValue) output oracle: \(count) cases passed.")
     }
 
-    private static func checkGeneralNativeLabelGeometry() throws {
+    private static func checkGeneralNativeLabelGeometry(_ scenario: SettingsRemovalScenario) throws {
         typealias Observation = AboutOutputOracle.Observation
         let content = CGRect(x: 208.0 / 700, y: 0, width: 492.0 / 700, height: 548.0 / 600)
         let cases: [(String, CGRect, CGRect)] = [
@@ -167,18 +397,22 @@ enum OracleContractTests {
             ("Remember last tab",
              CGRect(x: 0.34, y: 0.5716666666666667, width: 114.0 / 700, height: 16.0 / 600),
              CGRect(x: 0.33428571214285724, y: 0.56999999983333338,
-                    width: 0.17142857142857143, height: 0.026666666666666616))
+                    width: 0.17142857142857143, height: 0.026666666666666616)),
+            ("Notch animation",
+             CGRect(x: 0.34, y: 0.5116666666666667, width: 0.14285714285714285, height: 0.02666666666666667),
+             CGRect(x: 0.3342857123928572, y: 0.5066666665416666,
+                    width: 0.1514285714285714, height: 0.030000000000000027))
         ]
         var count = 0
         for (label, frame, pixels) in cases {
             func check(_ name: String, _ text: String, _ box: CGRect, expected: Bool,
                        present: Bool = true, frames: [String: CGRect]? = nil, width: Int = 700) throws {
                 let output = SettingsRemovalOutputOracle.evaluate(
-                    [Observation(text: text, frame: box)], scenario: .general, contentFrame: content,
-                    controls: [label: present, "hapticControlAbsent": false],
+                    [Observation(text: text, frame: box)], scenario: scenario, contentFrame: content,
+                    controls: [label: present, scenario.absenceKey: false],
                     labelFrames: frames ?? [label: frame], pixelWidth: width
                 )
-                guard output[label] == expected, output["hapticControlAbsent"] == false, output.count == 14 else {
+                guard output[label] == expected, output[scenario.absenceKey] == false, output.count == 14 else {
                     throw NSError(domain: "GeneralNativeLabelGeometry", code: 1,
                                   userInfo: [NSLocalizedDescriptionKey: "\(label) \(name): \(output)"])
                 }
@@ -189,6 +423,7 @@ enum OracleContractTests {
             try check("missing native frame", label, pixels, expected: false, frames: [:])
             try check("missing pixels", "", pixels, expected: false)
             try check("near text", label + "x", pixels, expected: false)
+            try check("prefixed text", "Wrong " + label, pixels, expected: false)
             try check("wrong row", label, pixels.offsetBy(dx: 0, dy: -0.05), expected: false)
             try check("wrong right-hand label", label, pixels.offsetBy(dx: 0.3, dy: 0), expected: false)
             try check("five pixels left is outside measured allowance", label,
@@ -198,6 +433,19 @@ enum OracleContractTests {
             try check("same fraction is eight pixels at double resolution", label, pixels, expected: false, width: 1400)
             try check("clipped label frame", label, pixels, expected: false,
                       frames: [label: frame.offsetBy(dx: 0, dy: 1)])
+            for removed in scenario.removedLabels + scenario.forbiddenText {
+                let output = SettingsRemovalOutputOracle.evaluate(
+                    [Observation(text: label, frame: pixels),
+                     Observation(text: removed, frame: CGRect(x: 0.4, y: 0.1, width: 0.5, height: 0.03))],
+                    scenario: scenario, contentFrame: content,
+                    controls: [label: true, scenario.absenceKey: true],
+                    labelFrames: [label: frame], pixelWidth: 700
+                )
+                guard output[label] == true, output[scenario.absenceKey] == false else {
+                    throw NSError(domain: "GeneralNativeLabelRemovedText", code: 1)
+                }
+                count += 1
+            }
         }
         for (scenario, label) in [
             (SettingsRemovalScenario.general, "Show menu bar icon"),
@@ -212,7 +460,7 @@ enum OracleContractTests {
             guard output[label] == false else { throw NSError(domain: "UnchangedLabelAlignment", code: 1) }
             count += 1
         }
-        print("General measured native label geometry: \(count) cases passed.")
+        print("\(scenario.rawValue) measured native label geometry: \(count) cases passed.")
     }
 
     private static func checkAppearance() throws {

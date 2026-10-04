@@ -181,6 +181,7 @@ python3 -B -m unittest discover -s scripts/tests -p 'test_package.py'
 python3 -B -m unittest discover -s scripts/tests -p 'test_distribution.py'
 python3 -B -m unittest discover -s scripts/tests -p 'test_notarize.py'
 python3 -B -m unittest discover -s scripts/tests -p 'test_pocket_release.py'
+python3 -B -m unittest discover -s scripts/tests -p 'test_regression_interactions.py'
 ```
 
 Python packaging tests require only Python 3.9+ and its standard library on

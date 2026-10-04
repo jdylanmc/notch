@@ -123,15 +123,22 @@ authored but still need independent old/new proof; they do not extend the helper
 navigation/restoration remains an engineering gap, not a demand for routine
 human clicks. Preference writes need a whole-app fixture profile first.
 
-General's thirteen retained-label assertions apply to this haptic removal;
-planned compact-mode/panel-swipe PRs deliberately revise their own behavior and
-evidence. The measured static-text/Vision alignment correction has targeted
+The scoped [panel-swipe removal](../experiments/tart-regression/scenarios/general-panel-swipes-removed.md)
+changes only the prior General master-label expectation from **Enable gestures**
+to **Enable media gestures**; compact mode and the other twelve labels remain.
+The measured static-text/Vision alignment correction has targeted
 failure-boundary contracts and one author OLD-only check (13 retained labels
 true, haptic absence false), not fresh independent or NEW-candidate signoff.
+That historical check used a pre-rename harness; the current haptic case must
+not be applied to the older baseline's **Enable gestures** label. Panel-swipe
+remediation 1/5 adds synthetic footer-only Accessibility/OCR matching cases and
+an unconditional media-pulse cleanup source contract, not executed gesture
+proof. Candidate `03f9` predates the product fix and is stale; parent-owned fresh
+full validation and independent native evidence require a rebuild.
 
 | Pane / source | Important controls and journeys | Existing evidence / remaining work |
 | --- | --- | --- |
-| [General](../notchPocket/components/Settings/Views/GeneralSettingsView.swift) | Menu icon, launch at login, language/restart, display selection/height, hover, gestures, animation, compact/remembered tabs; haptic feedback removed. | [Registered haptic-removal scenario](../experiments/tart-regression/scenarios/general-haptics-removed.md): thirteen retained labels, haptic-option absence, real pane navigation, bound top/bottom pixels and scroll restoration. Source contracts preserve surrounding handlers; independent OLD/NEW Tart proof remains parent-owned and pending. No preference-toggle or physical actuator coverage. |
+| [General](../notchPocket/components/Settings/Views/GeneralSettingsView.swift) | Menu icon, launch at login, language/restart, display selection/height, hover/click/keyboard, media gestures, animation, compact/remembered tabs; haptics and vertical panel swipes removed. | [Haptic removal](../experiments/tart-regression/scenarios/general-haptics-removed.md) and [panel-swipe removal](../experiments/tart-regression/scenarios/general-panel-swipes-removed.md): thirteen retained labels including the media master, scoped removed-control absence, real pane navigation, bound top/bottom pixels and scroll restoration. Source contracts preserve media keys/gates and independent opening routes; fresh independent OLD/NEW Tart proof is parent-owned and pending. Conditional media settings, preference propagation, actual gestures and static transport still need runtime proof. |
 | [Appearance](../notchPocket/components/Settings/Views/AppearanceSettingsView.swift) | Tab visibility, settings icon, waveform, tinting/lighting and slider color; idle face removed (#50). | [Registered removal scenario](../experiments/tart-regression/scenarios/appearance-idle-face-removed.md): seven retained-label output assertions, face/section absence, structural pane/full-form/header-class proof. Source/oracle contracts and author diagnosis are not signoff: the first independent old-app run blocked before output; fresh independent old/new executable-hash and source-provenance proof remains pending. Preference-toggle/audio behavior is not covered. |
 | [Media](../notchPocket/components/Settings/Views/MediaSettingsView.swift) | Source, live activity, sneak peek, idle timing, lyrics and fallback retry. | Availability-model tests; no pane/controller/provider end-to-end suite. |
 | [Notifications](../notchPocket/components/Settings/Views/NotificationSettingsView.swift) | Enable watching and all-apps/allow-list selection; AI suggestions removed, manual replies retained. | [Registered removal scenario](../experiments/tart-regression/scenarios/notifications-ai-replies-removed.md): two retained-label output assertions, suggestion absence and bound top/bottom captures with stable endpoints and measured overlap at 1440x900. Disabled labels require geometry/pixels, not interaction eligibility. Source contracts preserve manual draft/focus/timeout/fallback call sites, not live behavior. Author diagnosis is not signoff; fresh independent old/new proof and NEW-only full-suite validation remain parent-owned. No preference changes or live capture/send coverage; `canReply` false positives remain out of scope. |

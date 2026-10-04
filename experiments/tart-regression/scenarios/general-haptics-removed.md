@@ -29,11 +29,19 @@ label geometry plus aligned OCR in at least one capture:
 - Preferred display; Automatically switch displays.
 - Notch height on notch displays; Notch height on non-notch displays.
 - Open notch on hover; Remember last tab; Notch animation.
-- Compact mode; Enable gestures.
+- Compact mode; Enable media gestures.
 
-These thirteen labels are unchanged in **this haptic removal**, not permanent
-product requirements. Planned compact-mode and panel-swipe PRs deliberately
-revise their own behavior and must update their own contracts and evidence.
+The original haptic-removal revision required **Enable gestures**. The scoped
+[panel-swipe removal](general-panel-swipes-removed.md) now replaces only that
+retained label with **Enable media gestures**, preserving its stored master
+value for media. This implements the owner's separate removal decision, not an
+exception to a failing haptic assertion. The other twelve labels and all haptic,
+capture and restoration requirements remain. Compact mode is still retained
+pending its own scoped change. The historical evidence below describes the
+original label set and does not establish proof for the new panel-swipe candidate.
+The current case is for the post-rename candidate, not an older pre-rename
+baseline: its missing **Enable media gestures** label would be an expected
+version mismatch, not evidence about haptic removal.
 
 Disabled labels still exist and render: presence never requires `isHittable`.
 Conditional controls (hover delay, custom heights, animation speed, expanded
@@ -67,14 +75,29 @@ left edge, four pixels before the native label frame: its existing normalized
 0.005 alignment allowance is only 3.5 pixels in the actual 700x600 capture.
 Vertical midpoints aligned. Local bound screenshots show both exact labels.
 
-The fixed General descriptor permits **four leading OCR pixels for only these
-two labels**, using actual capture width and nearest integer pixel edges to
+The original General remediation permitted **four leading OCR pixels for only
+these two labels**, using actual capture width and nearest integer pixel edges to
 remove Vision's subpixel serialization noise. Typed unique static-text lookup,
 unaltered native label frames, full viewport containment, vertical alignment
 and exact same-row text remain required. Five-pixel displacement, wrong rows,
 missing labels/frames/pixels and near text still fail. No global OCR allowance,
 checkbox fallback, scroll/frame float tolerance or missing-output BLOCKED gate
-was added; Notifications and the other General labels keep their prior policy.
+was added; Notifications and the other General labels kept their prior policy.
+
+PR106 correction 5/5 applies that same per-label policy to **Notch animation**
+in both General scenarios, and no other label. The parent replayed Vision
+accurate/en-US with language correction disabled on the genuine 700x600 capture
+SHA-256 `2178ffc6bb818c93db054e402918f9bf9a33cbcd279b31599025d488af9490cb`.
+The normalized native static-text frame was
+`(0.34, 0.5116666666666667, 0.14285714285714285, 0.02666666666666667)`;
+Vision returned
+`(0.3342857123928572, 0.5066666665416666, 0.1514285714285714, 0.030000000000000027)`.
+These are again quantized leading edges x=238 versus x=234, with aligned
+vertical midpoints. `OracleContractTests.swift` uses those actual coordinates
+for both scenarios, alongside five-pixel displacement, wrong row, missing
+native label/frame/pixels, prefixed/near text and removed-text controls.
+This source correction is not a replacement for the original raw FAIL receipts
+or fresh parent-owned validation. Raw images/reports stay local-only.
 
 Current fixture measurements: 492x548-point form, 353-point endpoint translation,
 195-point overlap (**131 points above the 64-point minimum**). The owner-set
@@ -106,9 +129,18 @@ require exact frame equality in teardown. A failure/abort still runs restoration
 an unverified scroll restore blocks the result. No stored data is migrated or
 deleted, and the obsolete `enableHaptics` preference is simply no longer read.
 
-The parent must identify and record an actual OLD haptic-bearing executable,
+### Historical haptic comparison harness
+
+The following nine-case comparison belongs to the pre-panel-rename haptic
+removal. Use its own recorded test-source revision, such as the corrected
+pre-rename harness at `3c94d451c806024d83ac6ce25cd8b2f6641634a2`, which requires
+**Enable gestures**. Preserve the actual harness identity in each historical
+receipt; do not relabel evidence with the current revision or rerun the current
+**Enable media gestures** expectation against that older baseline.
+
+For that comparison, the parent must identify and record an actual OLD haptic-bearing executable,
 its SHA-256 and source/build provenance; the source base alone is **not** a
-candidate identity. Run this one unchanged scenario on OLD and require **FAIL**
+candidate identity. Run the historical scenario unchanged on OLD and require **FAIL**
 because the haptic option is actually found with complete valid evidence.
 An environment/scroll block is not negative proof. Then run the full **nine-case**
 registry on the exact NEW candidate across closed, General and About fixtures.
@@ -133,8 +165,9 @@ Independent OLD/NEW execution is parent-owned and pending. No VM, host UI,
 consent, signing, credentials, stored-user-data or remote changes are needed
 for authoring this scenario.
 
-This remediation changes only **HAP-NATIVE** (measured General OCR alignment and
+The historical haptic remediation changed only **HAP-NATIVE** (measured General OCR alignment and
 scenario documentation) and **HAP-CONTRACT** (targeted oracle/policy cases).
 Product source, the nine-entry registry/eight prior cases, generic capture
 schema, receipt/export boundaries, fixture preferences, exact scroll restoration
-and signing/CI configuration are unchanged.
+and signing/CI configuration were unchanged at that revision. The later
+panel-swipe removal has its own tenth case and fresh-candidate validation.

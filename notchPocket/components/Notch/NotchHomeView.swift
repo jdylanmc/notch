@@ -451,9 +451,6 @@ struct NotchHomeView: View {
             if Defaults[.showCalendar] {
                 CalendarView()
                     .frame(width: shouldShowCamera ? 170 : 215)
-                    .onHover { isHovering in
-                        vm.isHoveringCalendar = isHovering
-                    }
                     .environmentObject(vm)
                     .transition(.opacity)
             }

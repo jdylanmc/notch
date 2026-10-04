@@ -17,7 +17,7 @@ requirement independent of the executable hash. It does **not** establish
 Accessibility, Screen Recording, UI-testing authorization, or guaranteed reuse
 of Transparency, Consent, and Control (TCC) consent.
 
-The nine existing registry cases retain their unchanged default/ad-hoc CLI.
+The original ten registry cases retain their unchanged default/ad-hoc CLI.
 New panel/ScreenCapture-dependent scenarios declare `"requiresPreparedRunner":
 true` in their registry entry and require parent-prepared stable Products and
 a separately verified human grant. This optional field accepts only JSON
@@ -25,6 +25,10 @@ booleans; absent/false preserves the existing behavior, and unknown fields fail.
 Only selected cases impose their declared requirement. Direct callers forward
 `--requires-prepared-runner` to `run-gui-probe.py` or `run-guest.py`; all three
 entrypoints refuse a required invocation without the paired manifest arguments.
+The five PR106 native supplement selectors enforce stable prepared identity
+even for direct callers; their guest execution also requires protected schema-2
+Products. Their standalone Swift file is explicitly registered without changing
+the two runner role identities, project signing inputs or entitlements.
 The flag is an **evidence gate**, not a security boundary or OS authorization.
 Do not use an old authorized test binary to claim coverage of changed source.
 

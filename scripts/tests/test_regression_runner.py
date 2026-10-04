@@ -1049,11 +1049,24 @@ class RunnerContracts(unittest.TestCase):
                          ["--runner-manifest", str(manifest), "--runner-manifest-sha256", sha,
                           "--requires-prepared-runner"])
 
-    def test_registry_optional_gate_is_strict_and_preserves_nine_existing_cases(self):
+    def test_registry_gate_preserves_legacy_cases_and_requires_pr106_runner(self):
         suite = load_script("run-suite.py")
         original = json.loads((SOURCE / "suite.json").read_text())["cases"]
-        self.assertEqual(len(original), 9)
-        self.assertTrue(all("requiresPreparedRunner" not in case for case in original))
+        original_nine_ids = [
+            "about-version", "about-wrong-output", "about-stale-evidence", "about-missing-reveal",
+            "abort-after-settings-open", "abort-after-about-selection", "appearance-idle-face-removed",
+            "notifications-ai-replies-removed", "general-haptics-removed",
+        ]
+        self.assertEqual([case["id"] for case in original[:9]], original_nine_ids)
+        self.assertEqual(original[9]["id"], "general-panel-swipes-removed")
+        self.assertTrue(all("requiresPreparedRunner" not in case for case in original[:10]))
+        self.assertEqual([case["id"] for case in original[10:]], [
+            "pr106-panel", "pr106-panel-wrong-tab", "pr106-media",
+            "pr106-media-wrong-direction", "pr106-media-wrong-pulse",
+        ])
+        for registered in original[10:]:
+            with self.subTest(case=registered["id"]):
+                self.assertIs(registered.get("requiresPreparedRunner"), True)
         self.assertEqual(suite.load_registry(SOURCE / "suite.json"), original)
         registry = self.root / "suite.json"
         (self.root / "notes.md").write_text("Test-only registry.")
@@ -1111,6 +1124,7 @@ class RunnerContracts(unittest.TestCase):
             native_run = self.root / "runs" / command[2]
             native_run.mkdir(parents=True)
             receipt = {
+                "runID": "33333333-3333-4333-8333-333333333333",
                 "scenario": original["scenario"], "testIdentifier": original["test"],
                 "expectedCandidateSHA256": "a" * 64, "candidateVerified": True,
                 "frameworkCountVerified": True, "cleanup": "restored_general",
@@ -1121,13 +1135,15 @@ class RunnerContracts(unittest.TestCase):
             (native_run / "framework-summary.json").write_text(json.dumps({
                 "totalTestCount": 1, "passedTests": 1, "failedTests": 0, "skippedTests": 0, "expectedFailures": 0,
             }))
-            (native_run / "invocation.json").write_text(json.dumps({
-                "timedOut": False, "xcodeExit": 0,
-                "temporaryManifestRemoved": cleaned,
-                "preparedRunner": {"manifestSHA256": sha} if provide_identity else None,
-            }))
-            return Mock(returncode=0, stderr="", stdout=json.dumps({"jobUnloaded": True, "jobExit": 0})
-                        + "\n" + json.dumps(receipt))
+            invocation = {key: receipt[key] for key in (
+                "runID", "scenario", "testIdentifier", "expectedCandidateSHA256", "xcodeExit")}
+            invocation.update(timedOut=False, temporaryManifestRemoved=cleaned,
+                              preparedRunner={"manifestSHA256": sha} if provide_identity else None)
+            (native_run / "invocation.json").write_text(json.dumps(invocation))
+            job = {"jobUnloaded": True, "jobExit": 0, "status": "finished",
+                   "job": "com.jdylanmc.notch-vm-proof." + command[2], "scenario": original["scenario"]}
+            return Mock(returncode=0, stderr="",
+                        stdout="\n".join(json.dumps(item) for item in (job, {"invocation": invocation}, receipt)))
 
         args = argparse.Namespace(
             registry=registry, candidate=candidate, output=self.root / "missing-prepared", context="ad-hoc",
@@ -1160,12 +1176,17 @@ class RunnerContracts(unittest.TestCase):
             self.assertEqual(suite.run(args), 20)
             report = json.loads((args.output / "report.json").read_text())
             self.assertIn("Prepared runner identity is unverified", report["cases"][0]["error"])
+            self.assertFalse(report["exclusiveLockReleased"])
+            (self.root / ".notch-regression-suite.lock").unlink()  # Only this mocked, process-free test's lock.
             provide_identity = True
             cleaned = False
             args.output = self.root / "missing-cleanup-output"
             self.assertEqual(suite.run(args), 20)
             report = json.loads((args.output / "report.json").read_text())
             self.assertIn("Prepared per-run manifest cleanup is unverified", report["cases"][0]["error"])
+            self.assertFalse(report["exclusiveLockReleased"])
+            (self.root / ".notch-regression-suite.lock").unlink()
+            cleaned = True
             alias = self.root / "legacy-products"
             alias.symlink_to(self.products, target_is_directory=True)
             args.scenario = ["legacy"]

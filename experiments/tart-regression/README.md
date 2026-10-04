@@ -1,8 +1,12 @@
 # Source-only installed-app probe
 
 This is the initial **registered installed-app regression suite**, built from the
-XCTest/Vision Tart experiment. It currently covers four application journeys and
-five explicit oracle/restoration controls, not the whole app. See the
+XCTest/Vision Tart experiment. Its registry contains seven application journeys
+and eight explicit oracle/restoration controls, not the whole app. The five
+[PR106 native supplement entries](scenarios/pr106-retained-interactions.md) are
+authored but **not natively accepted**; the source correction does not clear
+the prior full attempt, which remains BLOCKED. Preserve the original
+ten cases and all raw evidence. See the
 [VM reconstruction recipe](../../docs/agents/vm-regression.md) first.
 
 No VM, candidate app, Xcode package, credential, capture or result bundle belongs
@@ -86,6 +90,16 @@ The General haptic-removal comparison requires its own identified OLD
 haptic-bearing artifact, not an inferred base build or another removal's proof.
 Run only its new scenario on OLD, then all nine registered cases on NEW across
 the existing fixtures; see the [General scenario](scenarios/general-haptics-removed.md).
+That is the historical haptic-removal registry. The scoped
+[panel-swipe removal](scenarios/general-panel-swipes-removed.md) adds a tenth case:
+run its new scenario on an identified OLD panel-swipe candidate, then all **ten**
+on NEW. The prior General scenario now requires **Enable media gestures**
+instead of the deliberately removed **Enable gestures** panel master; its
+other retained labels, haptic absence and measured OCR policy are unchanged.
+Do not apply that current General expectation to an older pre-rename haptic
+baseline. Historical negative evidence has its own recorded harness revision
+requiring **Enable gestures**; see the
+[historical haptic comparison](scenarios/general-haptics-removed.md#historical-haptic-comparison-harness).
 
 ## Exercise the installed app in the guest
 
@@ -128,8 +142,9 @@ labeled in the report. Unknown/duplicate IDs and
 empty or malformed registration fail rather than silently reducing scope.
 The optional case field `requiresPreparedRunner` must be a JSON boolean.
 Only selected cases declaring `true` require the parent's paired
-`--runner-manifest` and `--runner-manifest-sha256`; the nine current entries are
-unchanged. Direct callers carry that requirement with
+`--runner-manifest` and `--runner-manifest-sha256`; the original ten entries are
+unchanged. The new PR106 selectors enforce it even for direct callers.
+Other direct callers carry that requirement with
 `--requires-prepared-runner`. It gates fresh artifact evidence, not OS consent.
 Every prepared invocation rechecks source, whole Products and native signatures;
 neither a prior run nor a cached verification substitutes for that check.
@@ -138,6 +153,23 @@ terminate its owner just to start another run.
 Uncertain bootstrap, job cleanup or native-process termination retains that lock
 and reports recovery required. Confirm the owned processes have stopped, or
 restore a clean guest, before explicitly recovering ownership.
+Termination is evaluated before assertion/fixture/framework parsing: one exact
+finished scoped job with its actual exit and unload, and matching printed and
+persisted `invocation.json` with run/scenario/selector/candidate bindings,
+integer Xcode exit, `timedOut: false`, removed temporary manifest and the
+supplied prepared-runner pin are required. Interactive invocations also bind
+the parent-pinned fixture and actual worker. Missing or malformed termination
+evidence still retains ownership; a missing/malformed assertion receipt alone
+does not stop remaining cases or retain the lock once termination is proven.
+
+The five `pr106-*` cases additionally require independently pinned
+`--interaction-fixture` / `--interaction-fixture-sha256` and an
+`--interaction-worker` matching the actual independent worker. They require
+schema-2 protected Products, an actually attested synthetic profile, native
+Settings values, and parent-owned snapshot restoration after media history
+changes. Their separate producer is not part of the runner's Products or the
+candidate; its source is sealed with the harness, and its binary is independently
+pinned. Do not infer fixture readiness from the previous Settings runs.
 
 `report.json` returns candidate/test identity, scope, raw and interpreted case
 outcomes, local capture paths, cleanup, and **unverified potential bugs** to the
@@ -164,18 +196,37 @@ panes are an explicit unsupported fixture, not silently replaced.
 | `native-abort-after-about` | BLOCKED / 20; XCTest 65 | A real XCTest failure after About selection still restores the fixture |
 | `notifications-ai-replies-removed` | PASS / 0 on new candidate | Retained notification labels render; suggestion control is absent in Accessibility and pixels |
 | `general-haptics-removed` | PASS / 0 on new candidate | Thirteen retained General labels render; haptic option is absent in Accessibility and pixels |
+| `general-panel-swipes-removed` | PASS / 0 on new candidate | Thirteen retained labels including the media gesture master render; panel gesture controls/instructions are absent in Accessibility and both endpoint pixels |
+| `pr106-panel` | PASS / 0 | Retained hover/click/keyboard transitions and rendered Dashboard/Shelf |
+| `pr106-panel-wrong-tab` | FAIL / 10 | Real Shelf selection rejected by the unchanged Dashboard oracle |
+| `pr106-media` | PASS / 0 | Real horizontal input, advancing engine, rendered track changes and settled transport pixels |
+| `pr106-media-wrong-direction` | FAIL / 10 | Actual reverse command produces Charlie instead of Bravo |
+| `pr106-media-wrong-pulse` | FAIL / 10 | Real button hover paints a wrong settled transport region |
 
 Do not convert the two negative controls into passing application tests.
 `runs/<name>/` holds invocation/framework/result receipts, log and `.xcresult`;
 `jobs/` holds the bounded launcher receipts. Missing receipts, wrong test counts,
 skips, unexpected outcomes or unverified restoration are non-success.
+The launcher preserves `native-receipts.log` before parsing and, for one decoded
+receipt, `native-result.json` before validation. Post-invocation errors persist
+a separately identified `launcherError: true` BLOCKED `result.json`, bound to
+the validated inputs and actual Xcode exit, without inventing native candidate,
+capture or cleanup evidence. The original native bytes and primary failures
+remain separate, including malformed/aborted output. This is diagnostic
+persistence, not weaker PASS/FAIL acceptance. A launcher-error report row keeps
+any decoded native receipt as `unverifiedNativeReceipt`; its `rawVerdict` remains
+the native verdict (or null if undecodable), not the launcher's BLOCKED verdict.
 Export attachments with `xcrun xcresulttool export attachments`, verify the named
 public image hashes against the receipt, and inspect the pixels locally.
-Notifications uses `notificationsCaptureVersion: 1`; General haptic removal uses
+Notifications uses `notificationsCaptureVersion: 1`; both General removals use
 `generalCaptureVersion: 1`. Each requires exactly two named
 top/bottom captures rather than `screenshotSHA256`; the suite's `captures` report
 field binds both native attachment names/hashes/dimensions. Other cases retain
 their single `capture` contract.
+The PR106 supplement uses `interactionCaptureVersion: 1`: exactly three named
+panel or five named media captures, with independently checked identity,
+dimensions, OCR/native labels, producer observations and eight restoration
+gates. Export retains the same exact attachment-count/name/hash/dimension checks.
 Retained automatic system attachments are disabled.
 
 ## Limits
@@ -185,7 +236,8 @@ Retained automatic system attachments are disabled.
 - It covers About version/build,
   [Appearance idle-face removal](scenarios/appearance-idle-face-removed.md) and
   [Notifications AI-reply removal](scenarios/notifications-ai-replies-removed.md) and
-  [General haptic removal](scenarios/general-haptics-removed.md), not
+  [General haptic removal](scenarios/general-haptics-removed.md) and
+  [General panel-swipe removal](scenarios/general-panel-swipes-removed.md), not
   all retained features. New features need their own independent scenarios.
 - Appearance uses typed static-text value lookup, row-scoped sidebar navigation,
   and structural form mapping. Its single screenshot requires positive full-form
@@ -193,7 +245,7 @@ Retained automatic system attachments are disabled.
   for General/Media and the removed section. Missing retained controls are
   output failures after pane setup, never setup guards. OCR shares About's
   same-row fragment geometry; this does not authorize offscreen absence claims.
-- Notifications and General share a bounded capture helper with two fixed
+- Notifications and General share a bounded capture helper with three fixed
   scenario descriptors, not an arbitrary UI service. They use row-scoped
   navigation, typed static-text value lookup and
   structural form mapping at the existing 1440x900 display. Two actual endpoint
@@ -206,14 +258,21 @@ Retained automatic system attachments are disabled.
   combine with OR, removed-control absence with AND. Existing restoration is
   unchanged; General additionally records and verifies a pre-existing General
   form's scroll position through teardown, including failed assertions.
-  General's Launch at login and Remember last tab were empirically confirmed as
-  static-text AXValue, not checkbox titles. Their measured four-pixel leading
+  General's Launch at login, Remember last tab and Notch animation were empirically
+  confirmed against static-text AXValue frames. Their measured four-pixel leading
   Vision-box allowance is label-specific; native frames, exact text, vertical
   alignment and other labels' policies remain unchanged. See the
   [diagnosis and failure-boundary evidence](scenarios/general-haptics-removed.md#measured-native-label-remediation).
-  The thirteen retained General labels are preservation requirements for this
-  haptic removal only; planned compact-mode/panel-swipe PRs revise their own
-  behavior, contracts and native evidence.
+  The prior General master-label expectation deliberately follows the scoped
+  panel-swipe removal; compact mode and the other retained labels remain.
+  Conditional media configuration and live horizontal gestures have source
+  contracts, not native interaction proof from this Settings-only scenario.
+  Removed panel instructions are queried as rendered static text, without
+  Markdown emphasis markers; footer-only AX/OCR matching is unit-covered.
+  The media pulse cleanup has an unconditional-reset source contract, not
+  executed gesture/timer proof. After remediation 1/5, old-source candidate
+  `03f9` is stale; fresh full validation and native evidence require a rebuilt
+  candidate and current harness.
 - Readiness and cleanup are checked, but this remains prototype code, not a
   hardened multi-user execution service or an authorization boundary.
 - User-controlled OS consent, guest idle lock, hardware and application readiness

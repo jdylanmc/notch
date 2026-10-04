@@ -7,6 +7,7 @@ import re
 import subprocess
 import time
 from build_runner import add_prepared_arguments, prepared_arguments
+import interaction_contract as interactions
 
 
 def unload_job(domain, label):
@@ -65,8 +66,9 @@ def main():
     parser.add_argument("--test", default="GuestRegressionProbe/GuestRegressionProbe/testInstalledAboutOutput")
     parser.add_argument("--candidate", type=Path, required=True)
     add_prepared_arguments(parser)
+    interactions.add_arguments(parser)
     args = parser.parse_args()
-    prepared = prepared_arguments(args)
+    prepared = prepared_arguments(args, required=args.scenario in interactions.TESTS)
     if not re.fullmatch(r"[a-z0-9-]{1,40}", args.name):
         raise ValueError("Invalid scoped run name")
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", args.scenario):
@@ -80,6 +82,13 @@ def main():
 
     root = Path(__file__).resolve().parent
     candidate = args.candidate.resolve(strict=True)
+    candidate_hash = ""
+    if args.scenario in interactions.TESTS:
+        candidate_data = json.loads(candidate.read_text())
+        if not isinstance(candidate_data, dict) or not isinstance(candidate_data.get("executableSHA256"), str):
+            raise ValueError("Explicit candidate manifest required")
+        candidate_hash = candidate_data["executableSHA256"]
+    interaction_args = interactions.arguments(args, args.scenario, args.test, candidate_hash)
     manifests = list((root / "Products").glob("*.xctestrun" if prepared else "GuestRegressionProbe_*.xctestrun"))
     if (len(manifests) != 1
             or (prepared and (manifests[0].is_symlink() or not manifests[0].is_file()))):
@@ -102,7 +111,7 @@ def main():
             "/usr/bin/python3", str(root / "GuestRegressionProbe/run-guest.py"),
             "--scenario", args.scenario, "--test", args.test,
             "--candidate", str(candidate), "--xctestrun", str(manifests[0]), "--output", str(output),
-            *prepared,
+            *prepared, *interaction_args,
         ],
         "EnvironmentVariables": {
             "DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer", "PYTHONUNBUFFERED": "1",

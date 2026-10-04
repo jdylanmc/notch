@@ -193,6 +193,7 @@ function hostedContract(config, kind) {
           { name: 'Test hosted release boundaries', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_pocket_release.py'" },
           { name: 'Test regression probe policy', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_regression_probe.py'" },
           { name: 'Test stable regression runner contracts', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_regression_runner.py'" },
+          { name: 'Test retained regression interactions', run: "python3 -B -m unittest discover -s scripts/tests -p 'test_regression_interactions.py'" },
         ]),
       ],
     },
@@ -466,19 +467,24 @@ test('translations remain deferred and issue-form writes remain manual only', ()
   assert.equal(dropdown.jobs['update-dropdown'].steps[0].with.ref, '${{ github.event.repository.default_branch }}');
 });
 
-for (const mutation of ['missing', 'filtered', 'skipped', 'ignored', 'masked', 'credentials']) {
-  test(`reject runner contract mutation: ${mutation}`, () => {
-    const config = workflow('ci_contract_tests');
-    const job = config.jobs.test;
-    const runner = step(job, 'Test stable regression runner contracts');
-    if (mutation === 'missing') job.steps = job.steps.filter((entry) => entry !== runner);
-    if (mutation === 'filtered') runner.run += ' -k one';
-    if (mutation === 'skipped') runner.if = 'false';
-    if (mutation === 'ignored') runner['continue-on-error'] = true;
-    if (mutation === 'masked') runner.run += ' || true';
-    if (mutation === 'credentials') runner.env = { SIGN_IDENTITY: '${{ secrets.SIGN_IDENTITY }}' };
-    assert.throws(() => hostedContract(config), assert.AssertionError);
-  });
+for (const [label, stepName] of [
+  ['runner contract', 'Test stable regression runner contracts'],
+  ['retained regression interactions', 'Test retained regression interactions'],
+]) {
+  for (const mutation of ['missing', 'filtered', 'skipped', 'ignored', 'masked', 'credentials']) {
+    test(`reject ${label} mutation: ${mutation}`, () => {
+      const config = workflow('ci_contract_tests');
+      const job = config.jobs.test;
+      const runner = step(job, stepName);
+      if (mutation === 'missing') job.steps = job.steps.filter((entry) => entry !== runner);
+      if (mutation === 'filtered') runner.run += ' -k one';
+      if (mutation === 'skipped') runner.if = 'false';
+      if (mutation === 'ignored') runner['continue-on-error'] = true;
+      if (mutation === 'masked') runner.run += ' || true';
+      if (mutation === 'credentials') runner.env = { SIGN_IDENTITY: '${{ secrets.SIGN_IDENTITY }}' };
+      assert.throws(() => hostedContract(config), assert.AssertionError);
+    });
+  }
 }
 
 const mutations = [
