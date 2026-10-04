@@ -11,6 +11,14 @@ The runner deliberately refuses a physical host before launching UI tests.
 
 ## Rebuild
 
+For parent-prepared stable signing, exact-source manifests, immutable transfer
+and pre-consent guest verification, use the [runner owner contract](RUNNER.md).
+`build_runner.py build` also supports the default ad-hoc mode and an explicit
+unsigned compile; neither needs credentials. Stable signing preserves XCTest
+debug/sandbox behavior and is not a product release/notarization route.
+
+The original ad-hoc/permission-free build remains supported:
+
 Copy this directory into `.local/vm-regression/work/portable-probe` and build
 there, using a full compatible Xcode:
 
@@ -26,7 +34,14 @@ Copy the complete `Build/Build/Products` directory next to `run-gui-probe.py`.
 The project is standalone: there is no Notch app target, import or build dependency.
 Use an immutable archive to transfer the source and Products into the guest,
 then extract guest-locally; preserve all framework symlinks and verify signatures.
-Delete stale generated runner manifests instead of choosing the newest one.
+For legacy unprepared builds, remove only your own stale generated manifests
+instead of choosing the newest one. Prepared Products are immutable: a hash or
+single-manifest mismatch blocks; do not edit/delete files to make it pass.
+Prepared per-run manifests live in their new owned run outputs, with original
+Products/host references resolved before writing, not back inside Products.
+Never delete or replace another run's Products or an existing owner-granted
+runner. Use a new output path; new panel/ScreenCapture-dependent cases require
+the parent's verified stable Products, not a worker's fresh ad-hoc build.
 
 ## Select the exact candidate
 
@@ -121,6 +136,13 @@ Without `--scenario`, all registered cases run, including separately labeled
 oracle controls. Repeated `--scenario <id>` selects an explicit subset, which is
 labeled in the report. Unknown/duplicate IDs and
 empty or malformed registration fail rather than silently reducing scope.
+The optional case field `requiresPreparedRunner` must be a JSON boolean.
+Only selected cases declaring `true` require the parent's paired
+`--runner-manifest` and `--runner-manifest-sha256`; the nine current entries are
+unchanged. Direct callers carry that requirement with
+`--requires-prepared-runner`. It gates fresh artifact evidence, not OS consent.
+Every prepared invocation rechecks source, whole Products and native signatures;
+neither a prior run nor a cached verification substitutes for that check.
 The suite obtains a guest-wide exclusive lock. Never delete an existing lock or
 terminate its owner just to start another run.
 Uncertain bootstrap, job cleanup or native-process termination retains that lock
@@ -267,6 +289,7 @@ Permission-free policy checks:
 
 ```bash
 python3 -B -m unittest discover -s scripts/tests -p 'test_regression_probe.py'
+python3 -B -m unittest discover -s scripts/tests -p 'test_regression_runner.py'
 bash experiments/tart-regression/test-oracle.sh "$PWD/.local/vm-regression/work/oracle-contract"
 ```
 

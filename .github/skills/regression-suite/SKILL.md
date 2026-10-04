@@ -16,6 +16,27 @@ Read [the approved intent](intent.md), [worker contract](WORKER.md),
 1. Identify context: **ad hoc** or **feature verification**. For feature work,
    record the owning issue/PR/Ship loop. Resolve the candidate, test revision and
    registered scope. Full registered regressions are the default.
+   For panel/ScreenCapture-dependent cases, supply parent-prepared stable
+   Products and the approved manifest hash under the
+   [runner owner contract](../../../experiments/tart-regression/RUNNER.md).
+   Treat signature qualification and human-granted permission readiness as
+   independent prerequisites; a new source hash must retain the verified
+   designated requirement, not reuse stale authorized test code.
+   New cases declare `requiresPreparedRunner: true` in the registry. This
+   optional strict-boolean evidence gate applies only to selected declared cases;
+   the nine existing entries/default CLI remain unchanged. Direct launchers
+   receive `--requires-prepared-runner` as well as the paired manifest arguments.
+   For a rebuilt prepared package, require the coordinator's verified
+   `build_runner.py compare` identity-transition evidence against the recorded
+   baseline before accepting promotion. Compatibility does not establish
+   current permissions: use actual native preflight where the scenario needs
+   capture, never a checkbox or an XCTest screenshot as a proxy. A known stale
+   recording rule is a targeted setup blocker, not a reason to run the same
+   blocked suite repeatedly or request consent for every source change.
+   The configured unattended baseline must be schema v2, accepted through
+   `verify --require-protected-products`. Legacy v1 inspection/migration is
+   not unattended readiness. V2 protection is rechecked during every prepared
+   invocation; metadata drift is still a failure, not an ignored file.
 2. Read `.local/vm-regression/AGENTS.md` when present, or the user's custom setup
    location. Inspect Tart configuration, the named VM and guest readiness.
    Installed Tart alone is insufficient. A stopped prepared VM is not missing

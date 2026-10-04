@@ -180,6 +180,9 @@ final class GuestRegressionProbe: XCTestCase {
                 state.reason = "candidate_integrity_unverified"
             }
         }
+        if state.discovery["screenCapturePreflightAccess"] is Bool {
+            state.discovery["screenCapturePreflightAccessAfterTest"] = CGPreflightScreenCaptureAccess()
+        }
         var receipt: [String: Any] = [
             "runID": runID, "scenario": mode, "verdict": state.verdict, "reason": state.reason,
             "testIdentifier": "GuestRegressionProbe/GuestRegressionProbe/\(testName)",
@@ -516,7 +519,10 @@ final class GuestRegressionProbe: XCTestCase {
             state.app = application
             application.activate()
             let matches = application.descendants(matching: .any).matching(identifier: "NotchPocketSettingsWindow")
-            state.discovery = ["initialSettingsMarkerCount": matches.count]
+            state.discovery = [
+                "initialSettingsMarkerCount": matches.count,
+                "screenCapturePreflightAccess": CGPreflightScreenCaptureAccess()
+            ]
             let settings = matches.firstMatch
             state.window = settings
             if !settings.exists {
