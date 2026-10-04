@@ -30,6 +30,13 @@ Follow [the approved intent](intent.md), root `AGENTS.md`, and
    product regression from an unavailable environment or invalid evidence.
 5. Build the standalone harness and run its permission-free policy/unit checks.
    Preserve the application artifact; do not rebuild or re-sign it implicitly.
+   For the configured unattended guest, reuse its stable signer, role
+   identifiers and entitlement set. Package the new source/Products, then use
+   `build_runner.py compare` with the independently recorded old/new package
+   pins before requesting parent-owned promotion. New tests are not a reason
+   to change identity, fall back to ad-hoc signing or request permission again.
+   Read [the runner lifecycle](../../../experiments/tart-regression/RUNNER.md);
+   genuinely new OS capabilities remain separate setup work.
 6. Invoke `regression-suite` for **independent worker verification** of the new
    scenario and the accumulated suite. Provide exact candidate/test inputs and
    expected behavior, not a desired verdict. The author may run development
