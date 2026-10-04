@@ -137,11 +137,14 @@ The manifest binds Products' root mode explicitly; the full inventory already
 binds the other protected directory modes. Only those declared mode changes
 are permitted during protection; newly appearing files fail the build.
 
-Protected containers must have no extended ACL. Checked native
-`acl_get_fd_np` retrieval uses an open, no-follow directory descriptor; only
-the absent-ACL result is accepted. Every returned ACL object, including an
-explicitly empty one, is rejected and released. Other retrieval or release
-failures block; no listing output or enumeration failure becomes absence.
+Protected containers must have no extended ACL. Checked native `fstatx_np` and
+`filesec` inspection use an open, no-follow directory descriptor. The stat
+identity and all expected owner/group/mode properties must be populated and
+match before the ACL-presence query is accepted; this also rejects libc's
+successful-syscall/failed-ACL-buffer-allocation path. Any ACL property,
+including an explicitly empty ACL, is unsupported. Errors block and the
+file-security object is always released; no listing output, overwritten errno
+or enumeration failure becomes absence.
 Verification checks the
 root mode, all protected containers and their ACLs before and after native
 signature inspection. This prevents incidental directory-entry writes such as

@@ -1431,52 +1431,96 @@ class RunnerContracts(unittest.TestCase):
 
 
 class NativeACLContracts(unittest.TestCase):
-    def library(self, result, error=0, release=0):
+    def setUp(self):
+        self.metadata = Mock(st_dev=1, st_ino=2, st_mode=0o40555, st_uid=501, st_gid=20)
+        for target, result in (("fstat", self.metadata), ("uname", Mock(machine="arm64"))):
+            patcher = patch.object(RUNNER.os, target, return_value=result)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def library(self, *, initialized=True, populated=True, stat_status=0, query_status=0,
+                present=0, wrong_property=False, wrong_stat=False):
         library = Mock()
+        library.filesec_init.return_value = 123 if initialized else None
+        library.filesec_free.return_value = None
 
-        def retrieve(fd, kind):
+        def extended_stat(fd, output, security):
             self.assertEqual(fd, 7)
-            self.assertEqual(kind, 0x100)
-            ctypes.set_errno(error)
-            return result
+            self.assertEqual(security, 123)
+            output._obj.device = self.metadata.st_dev
+            output._obj.inode = self.metadata.st_ino + int(wrong_stat)
+            output._obj.mode = self.metadata.st_mode
+            output._obj.owner = self.metadata.st_uid
+            output._obj.group = self.metadata.st_gid
+            ctypes.set_errno(errno.ENOMEM if not populated else errno.EIO if stat_status else 0)
+            return stat_status
 
-        library.acl_get_fd_np.side_effect = retrieve
-        library.acl_free.return_value = release
+        def get_property(security, property_id, output):
+            self.assertEqual(security, 123)
+            if not populated:
+                ctypes.set_errno(errno.ENOENT)
+                return -1
+            output._obj.value = {1: self.metadata.st_uid, 2: self.metadata.st_gid,
+                                 4: self.metadata.st_mode}[property_id] + int(wrong_property)
+            return 0
+
+        def query_property(security, property_id, output):
+            self.assertEqual((security, property_id), (123, 5))
+            output._obj.value = present
+            ctypes.set_errno(errno.EIO if query_status else 0)
+            return query_status
+
+        library.fstatx_np.side_effect = extended_stat
+        library.filesec_get_property.side_effect = get_property
+        library.filesec_query_property.side_effect = query_property
         return library
 
-    def test_absent_acl_is_only_accepted_for_native_no_acl_result(self):
-        library = self.library(None, errno.ENOENT)
+    def test_absent_acl_requires_populated_native_metadata(self):
+        library = self.library()
         with patch.object(RUNNER.sys, "platform", "darwin"), \
                 patch.object(RUNNER.ctypes, "CDLL", return_value=library):
             RUNNER.require_no_acl(7)
-        library.acl_free.assert_not_called()
+        self.assertEqual(library.filesec_get_property.call_count, 3)
+        library.filesec_query_property.assert_called_once()
+        library.filesec_free.assert_called_once_with(123)
 
-    def test_retrieval_errors_cannot_become_absence(self):
-        for error in (0, errno.EACCES, errno.EBADF, errno.EINVAL, errno.EIO, errno.ENOTSUP):
-            library = self.library(None, error)
-            with self.subTest(error=error), patch.object(RUNNER.sys, "platform", "darwin"), \
+    def test_realloc_failure_masked_by_successful_syscall_is_rejected(self):
+        library = self.library(populated=False)
+        with patch.object(RUNNER.sys, "platform", "darwin"), \
+                patch.object(RUNNER.ctypes, "CDLL", return_value=library), \
+                self.assertRaisesRegex(RUNNER.RunnerError, "not completely populated"):
+            RUNNER.require_no_acl(7)
+        library.filesec_query_property.assert_not_called()
+        library.filesec_free.assert_called_once_with(123)
+
+    def test_stat_property_and_query_failures_cannot_become_absence(self):
+        for configuration in ({"stat_status": -1}, {"stat_status": errno.ENOMEM},
+                              {"wrong_stat": True}, {"wrong_property": True}, {"query_status": -1}):
+            library = self.library(**configuration)
+            with self.subTest(configuration=configuration), patch.object(RUNNER.sys, "platform", "darwin"), \
                     patch.object(RUNNER.ctypes, "CDLL", return_value=library), \
-                    self.assertRaises(RUNNER.RunnerError) as failed:
+                    self.assertRaises(RUNNER.RunnerError):
                 RUNNER.require_no_acl(7)
-            self.assertEqual(failed.exception.details["nativeErrno"], error)
-            library.acl_free.assert_not_called()
+            library.filesec_free.assert_called_once_with(123)
 
-    def test_any_returned_acl_is_rejected_and_released_without_enumeration(self):
-        library = self.library(123)
+    def test_acl_presence_or_invalid_presence_is_rejected_without_enumeration(self):
+        for present in (1, 2, -1):
+            library = self.library(present=present)
+            with self.subTest(present=present), patch.object(RUNNER.sys, "platform", "darwin"), \
+                    patch.object(RUNNER.ctypes, "CDLL", return_value=library), \
+                    self.assertRaisesRegex(RUNNER.RunnerError, "ACLs are unsupported"):
+                RUNNER.require_no_acl(7)
+            library.filesec_free.assert_called_once_with(123)
+            library.acl_get_entry.assert_not_called()
+
+    def test_allocation_failure_does_not_query_or_free_an_invalid_object(self):
+        library = self.library(initialized=False)
         with patch.object(RUNNER.sys, "platform", "darwin"), \
                 patch.object(RUNNER.ctypes, "CDLL", return_value=library), \
-                self.assertRaisesRegex(RUNNER.RunnerError, "ACLs are unsupported"):
+                self.assertRaisesRegex(RUNNER.RunnerError, "allocate file-security"):
             RUNNER.require_no_acl(7)
-        library.acl_free.assert_called_once_with(123)
-        library.acl_get_entry.assert_not_called()
-
-    def test_release_failure_is_explicit(self):
-        library = self.library(123, release=-1)
-        with patch.object(RUNNER.sys, "platform", "darwin"), \
-                patch.object(RUNNER.ctypes, "CDLL", return_value=library), \
-                self.assertRaisesRegex(RUNNER.RunnerError, "release Products ACL"):
-            RUNNER.require_no_acl(7)
-        library.acl_free.assert_called_once_with(123)
+        library.fstatx_np.assert_not_called()
+        library.filesec_free.assert_not_called()
 
     def test_non_macos_inspection_is_not_a_success_fallback(self):
         with patch.object(RUNNER.sys, "platform", "linux"), \

@@ -3,7 +3,6 @@
 
 import argparse
 import ctypes
-import errno
 import hashlib
 import json
 import os
@@ -483,28 +482,69 @@ def product_containers(products, roles):
     return containers
 
 
+class DarwinTimespec(ctypes.Structure):
+    _fields_ = [("seconds", ctypes.c_long), ("nanoseconds", ctypes.c_long)]
+
+
+class DarwinStat64(ctypes.Structure):
+    _fields_ = [
+        ("device", ctypes.c_int32), ("mode", ctypes.c_uint16), ("links", ctypes.c_uint16),
+        ("inode", ctypes.c_uint64), ("owner", ctypes.c_uint32), ("group", ctypes.c_uint32),
+        ("rdevice", ctypes.c_int32), ("access", DarwinTimespec), ("modified", DarwinTimespec),
+        ("changed", DarwinTimespec), ("created", DarwinTimespec), ("size", ctypes.c_int64),
+        ("blocks", ctypes.c_int64), ("block_size", ctypes.c_int32), ("flags", ctypes.c_uint32),
+        ("generation", ctypes.c_uint32), ("spare", ctypes.c_int32), ("qspare", ctypes.c_int64 * 2),
+    ]
+
+
 def require_no_acl(fd):
-    if sys.platform != "darwin":
+    if sys.platform != "darwin" or ctypes.sizeof(ctypes.c_void_p) != 8:
         raise RunnerError("Protected Products require native macOS ACL inspection.")
-    library = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
-    library.acl_get_fd_np.argtypes = [ctypes.c_int, ctypes.c_int]
-    library.acl_get_fd_np.restype = ctypes.c_void_p
-    library.acl_free.argtypes = [ctypes.c_void_p]
-    library.acl_free.restype = ctypes.c_int
-    ctypes.set_errno(0)
-    acl = library.acl_get_fd_np(fd, 0x100)  # ACL_TYPE_EXTENDED
-    error = ctypes.get_errno()
-    if not acl:
-        # On an open, valid descriptor, ENOENT denotes an absent extended ACL.
-        if error == errno.ENOENT:
-            return
-        raise RunnerError("Unable to inspect Products container ACL.", nativeErrno=error)
+    architecture = os.uname().machine
+    if architecture not in ("arm64", "x86_64"):
+        raise RunnerError("Unsupported macOS stat ABI.")
     try:
-        # Even an explicitly empty ACL is unsupported; no enumeration errors can become absence.
-        raise RunnerError("Products container ACLs are unsupported.")
+        library = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+        extended_stat = getattr(library, "fstatx_np" if architecture == "arm64" else "fstatx_np$INODE64")
+        extended_stat.argtypes = [ctypes.c_int, ctypes.POINTER(DarwinStat64), ctypes.c_void_p]
+        extended_stat.restype = ctypes.c_int
+        library.filesec_init.argtypes = []
+        library.filesec_init.restype = ctypes.c_void_p
+        library.filesec_free.argtypes = [ctypes.c_void_p]
+        library.filesec_free.restype = None
+        library.filesec_get_property.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+        library.filesec_get_property.restype = ctypes.c_int
+        library.filesec_query_property.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
+        library.filesec_query_property.restype = ctypes.c_int
+    except (OSError, AttributeError) as error:
+        raise RunnerError("Native file-security inspection is unavailable.") from error
+    expected = os.fstat(fd)
+    security = library.filesec_init()
+    if not security:
+        raise RunnerError("Unable to allocate file-security inspection state.", nativeErrno=ctypes.get_errno())
+    try:
+        result = DarwinStat64()
+        status = extended_stat(fd, ctypes.byref(result), security)
+        if status != 0:
+            raise RunnerError("Extended Products stat failed.", nativeResult=status, nativeErrno=ctypes.get_errno())
+        if (result.device, result.inode, result.mode, result.owner, result.group) != (
+                expected.st_dev, expected.st_ino, expected.st_mode, expected.st_uid, expected.st_gid):
+            raise RunnerError("Extended Products stat identity or ABI mismatch.")
+        # Check population before ACL absence: libc can return zero after its ACL-buffer realloc fails.
+        for property_id, value, wanted in (
+            (1, ctypes.c_uint32(), expected.st_uid), (2, ctypes.c_uint32(), expected.st_gid),
+            (4, ctypes.c_uint16(), expected.st_mode),
+        ):
+            if library.filesec_get_property(security, property_id, ctypes.byref(value)) != 0 or value.value != wanted:
+                raise RunnerError("Products file-security state was not completely populated.",
+                                  nativeErrno=ctypes.get_errno())
+        present = ctypes.c_int(-1)
+        if library.filesec_query_property(security, 5, ctypes.byref(present)) != 0:
+            raise RunnerError("Unable to query Products ACL presence.", nativeErrno=ctypes.get_errno())
+        if present.value != 0:
+            raise RunnerError("Products container ACLs are unsupported or presence is invalid.")
     finally:
-        if library.acl_free(acl) != 0:
-            raise RunnerError("Unable to release Products ACL inspection buffer.", nativeErrno=ctypes.get_errno())
+        library.filesec_free(security)
 
 
 def container_modes(products, roles):
